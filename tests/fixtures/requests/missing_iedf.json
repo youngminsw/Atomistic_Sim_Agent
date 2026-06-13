@@ -1,0 +1,98 @@
+{
+  "request_id": "missing_iedf",
+  "llm_endpoint": {
+    "provider": "openclaw",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "base_url": "https://openclaw.local/v1"
+  },
+  "scene": {
+    "scene_id": "pr_hole_scene",
+    "mode": "3d",
+    "feature_type": "hole",
+    "geometry_source": {
+      "kind": "mesh",
+      "path": "fixtures/geometry/pr_hole.stl",
+      "units": "nm"
+    },
+    "material_stack": {
+      "materials": [
+        {
+          "material_id": "PR",
+          "role": "mask",
+          "phase": "amorphous",
+          "composition": {
+            "C": 8.0,
+            "H": 8.0
+          },
+          "pr_selectivity": 20.0
+        },
+        {
+          "material_id": "Si",
+          "role": "target",
+          "phase": "crystal",
+          "composition": {
+            "Si": 1.0
+          }
+        }
+      ]
+    },
+    "volume_states": [
+      {
+        "material_id": "Si",
+        "phase": "crystal",
+        "initial_amorphous_index": 0.0,
+        "density_factor": 1.0,
+        "preexisting_damage": 0.0,
+        "implanted_inert_fraction": 0.0,
+        "rdf_order_features": {
+          "crystal_similarity": 0.98
+        },
+        "grain_or_orientation_id": "Si_100",
+        "source_structure_id": "si_100_relaxed"
+      }
+    ],
+    "surface_state": {
+      "material_id": "Si",
+      "phase": "crystal",
+      "amorphous_index": 0.0,
+      "damage_dose": 0.0,
+      "roughness_rms_nm": 0.1,
+      "roughness_corr_length_nm": 2.0,
+      "implanted_inert_fraction": 0.0,
+      "local_fluence": 0.0,
+      "removed_depth_nm": 0.0,
+      "rdf_crystal_similarity": 0.98,
+      "rdf_amorphous_similarity": 0.02,
+      "coordination_defect_fraction": 0.0,
+      "active_layer_thickness_nm": 1.0,
+      "kernel_version": "Ar_on_Si__physical_v001"
+    }
+  },
+  "recipe": {
+    "ion_species": "Ar",
+    "ion_angular_distribution": {
+      "kind": "uniform",
+      "polar_min_deg": 0.0,
+      "polar_max_deg": 60.0,
+      "azimuth_min_deg": 0.0,
+      "azimuth_max_deg": 360.0
+    },
+    "flux_schedule": {
+      "unit": "ions_cm2_s",
+      "segments": [
+        {
+          "start_s": 0.0,
+          "end_s": 1.0,
+          "flux": 1000000000000000.0
+        }
+      ]
+    },
+    "species_mix": [
+      {
+        "species": "Ar",
+        "fraction": 1.0
+      }
+    ]
+  }
+}

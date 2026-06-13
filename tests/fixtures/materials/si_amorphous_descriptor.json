@@ -1,0 +1,12 @@
+{
+  "structure_id": "a_si_melt_quench_relaxed",
+  "material_id": "Si",
+  "phase": "amorphous",
+  "preparation": "melt_quench_relax_fixture",
+  "density_g_cm3": 2.28,
+  "rdf_order_features": {
+    "first_peak_nm": 0.237,
+    "crystal_similarity": 0.12,
+    "amorphous_similarity": 0.88
+  }
+}

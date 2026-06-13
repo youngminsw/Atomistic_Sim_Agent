@@ -1,0 +1,10 @@
+{
+  "request_id": "missing_recipe",
+  "llm_endpoint": {
+    "provider": "openclaw",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "base_url": "https://openclaw.local/v1"
+  },
+  "scene_description": "3D PR hole on silicon, etch downward from exposed opening"
+}

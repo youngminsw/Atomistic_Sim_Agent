@@ -1,0 +1,13 @@
+#H2 molecule file
+
+2 atoms
+
+Coords
+
+1 0.0 0.0 0.0 #H
+2 0.0 0.74 0.008000000 #H
+
+Types
+
+1 2 #H
+2 2 #H

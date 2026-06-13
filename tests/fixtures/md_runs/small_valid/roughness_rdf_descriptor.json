@@ -1,0 +1,33 @@
+{
+  "active_layer_thickness_nm": 0.035,
+  "events": {
+    "evt-0001": {
+      "pre_state": {
+        "amorphous_index": 0.0,
+        "damage_dose": 0.0,
+        "roughness_rms_nm": 0.10,
+        "removed_depth_nm": 0.0,
+        "rdf_order_features": {
+          "crystal_similarity": 0.92,
+          "amorphous_similarity": 0.08
+        },
+        "implanted_inert_fraction": 0.0,
+        "local_fluence": 0.0
+      }
+    },
+    "evt-0002": {
+      "pre_state": {
+        "amorphous_index": 0.12,
+        "damage_dose": 1.5,
+        "roughness_rms_nm": 0.14,
+        "removed_depth_nm": 0.03,
+        "rdf_order_features": {
+          "crystal_similarity": 0.82,
+          "amorphous_similarity": 0.18
+        },
+        "implanted_inert_fraction": 0.02,
+        "local_fluence": 1.0
+      }
+    }
+  }
+}

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" font-family="Arial, Helvetica, sans-serif">
+  <rect x="0" y="0" width="1400" height="900" fill="#ffffff"/>
+
+  <text x="700" y="50" text-anchor="middle" font-size="28" font-weight="700" fill="#1a1a1a">Random Search over MDN Hyperparameters (10 Trials)</text>
+  <text x="700" y="82" text-anchor="middle" font-size="16" fill="#555555">Sorted by validation NLL (lower is better) — Best: Trial 2, val NLL = 0.909</text>
+
+  <g transform="translate(120,140)">
+    <line x1="0" y1="0" x2="0" y2="380" stroke="#333" stroke-width="2"/>
+    <line x1="0" y1="380" x2="1180" y2="380" stroke="#333" stroke-width="2"/>
+
+    <text x="-60" y="385" font-size="14" fill="#333" text-anchor="end">0.0</text>
+    <line x1="-8" y1="380" x2="0" y2="380" stroke="#333" stroke-width="1.5"/>
+    <text x="-60" y="309" font-size="14" fill="#333" text-anchor="end">0.3</text>
+    <line x1="-8" y1="304" x2="0" y2="304" stroke="#333" stroke-width="1.5"/>
+    <text x="-60" y="233" font-size="14" fill="#333" text-anchor="end">0.6</text>
+    <line x1="-8" y1="228" x2="0" y2="228" stroke="#333" stroke-width="1.5"/>
+    <text x="-60" y="157" font-size="14" fill="#333" text-anchor="end">0.9</text>
+    <line x1="-8" y1="152" x2="0" y2="152" stroke="#333" stroke-width="1.5"/>
+    <text x="-60" y="81" font-size="14" fill="#333" text-anchor="end">1.2</text>
+    <line x1="-8" y1="76" x2="0" y2="76" stroke="#333" stroke-width="1.5"/>
+    <text x="-60" y="5" font-size="14" fill="#333" text-anchor="end">1.5</text>
+    <line x1="-8" y1="0" x2="0" y2="0" stroke="#333" stroke-width="1.5"/>
+
+    <line x1="0" y1="304" x2="1180" y2="304" stroke="#dddddd" stroke-dasharray="3,4" stroke-width="1"/>
+    <line x1="0" y1="228" x2="1180" y2="228" stroke="#dddddd" stroke-dasharray="3,4" stroke-width="1"/>
+    <line x1="0" y1="152" x2="1180" y2="152" stroke="#dddddd" stroke-dasharray="3,4" stroke-width="1"/>
+    <line x1="0" y1="76" x2="1180" y2="76" stroke="#dddddd" stroke-dasharray="3,4" stroke-width="1"/>
+
+    <text x="-95" y="200" font-size="16" fill="#333" text-anchor="middle" transform="rotate(-90 -95 200)">Validation NLL</text>
+
+    <g transform="translate(38,0)">
+      <rect x="0" y="150" width="80" height="230" fill="#1D9E75" stroke="#0F6E56" stroke-width="2" rx="4"/>
+      <text x="40" y="138" font-size="16" font-weight="700" text-anchor="middle" fill="#0F6E56">0.909</text>
+      <text x="40" y="120" font-size="18" font-weight="700" text-anchor="middle" fill="#0F6E56">★</text>
+    </g>
+    <g transform="translate(154,0)">
+      <rect x="0" y="143" width="80" height="237" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5" rx="4"/>
+      <text x="40" y="131" font-size="15" font-weight="600" text-anchor="middle" fill="#333">0.937</text>
+    </g>
+    <g transform="translate(270,0)">
+      <rect x="0" y="113" width="80" height="267" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5" rx="4"/>
+      <text x="40" y="101" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.058</text>
+    </g>
+    <g transform="translate(386,0)">
+      <rect x="0" y="111" width="80" height="269" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5" rx="4"/>
+      <text x="40" y="99" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.066</text>
+    </g>
+    <g transform="translate(502,0)">
+      <rect x="0" y="91" width="80" height="289" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5" rx="4"/>
+      <text x="40" y="79" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.145</text>
+    </g>
+    <g transform="translate(618,0)">
+      <rect x="0" y="86" width="80" height="294" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5" rx="4"/>
+      <text x="40" y="74" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.166</text>
+    </g>
+    <g transform="translate(734,0)">
+      <rect x="0" y="77" width="80" height="303" fill="#F0997B" stroke="#993C1D" stroke-width="1.5" rx="4"/>
+      <text x="40" y="65" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.198</text>
+    </g>
+    <g transform="translate(850,0)">
+      <rect x="0" y="53" width="80" height="327" fill="#F0997B" stroke="#993C1D" stroke-width="1.5" rx="4"/>
+      <text x="40" y="41" font-size="15" font-weight="600" text-anchor="middle" fill="#333">1.294</text>
+    </g>
+    <g transform="translate(966,0)">
+      <rect x="0" y="38" width="80" height="342" fill="#D85A30" stroke="#993C1D" stroke-width="1.5" rx="4"/>
+      <text x="40" y="26" font-size="15" font-weight="600" text-anchor="middle" fill="#fff">1.355</text>
+    </g>
+    <g transform="translate(1082,0)">
+      <rect x="0" y="38" width="80" height="342" fill="#D85A30" stroke="#993C1D" stroke-width="1.5" rx="4"/>
+      <text x="40" y="26" font-size="15" font-weight="600" text-anchor="middle" fill="#fff">1.355</text>
+    </g>
+
+    <text x="78" y="408" font-size="16" font-weight="700" text-anchor="middle" fill="#0F6E56">Trial 2</text>
+    <text x="194" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 8</text>
+    <text x="310" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 6</text>
+    <text x="426" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 3</text>
+    <text x="542" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 5</text>
+    <text x="658" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 9</text>
+    <text x="774" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 0</text>
+    <text x="890" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 1</text>
+    <text x="1006" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 4</text>
+    <text x="1122" y="408" font-size="16" font-weight="600" text-anchor="middle" fill="#333">Trial 7</text>
+  </g>
+
+  <g transform="translate(120,580)">
+    <text x="-15" y="22" font-size="14" font-weight="600" text-anchor="end" fill="#333">K (num_gaussians)</text>
+    <text x="-15" y="52" font-size="14" font-weight="600" text-anchor="end" fill="#333">hidden_dim</text>
+    <text x="-15" y="82" font-size="14" font-weight="600" text-anchor="end" fill="#333">dropout</text>
+    <text x="-15" y="112" font-size="14" font-weight="600" text-anchor="end" fill="#333">lr</text>
+    <text x="-15" y="142" font-size="14" font-weight="600" text-anchor="end" fill="#333">batch</text>
+
+    <g transform="translate(38,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#E1F5EE" stroke="#0F6E56" stroke-width="2.5" rx="4"/>
+      <text x="40" y="22" font-size="14" font-weight="700" text-anchor="middle" fill="#0F6E56">3</text>
+      <text x="40" y="52" font-size="14" font-weight="700" text-anchor="middle" fill="#0F6E56">64</text>
+      <text x="40" y="82" font-size="14" font-weight="700" text-anchor="middle" fill="#0F6E56">0.2</text>
+      <text x="40" y="112" font-size="14" font-weight="700" text-anchor="middle" fill="#0F6E56">1e-3</text>
+      <text x="40" y="142" font-size="14" font-weight="700" text-anchor="middle" fill="#0F6E56">256</text>
+    </g>
+    <g transform="translate(154,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">5</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">64</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.2</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">1e-3</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">512</text>
+    </g>
+    <g transform="translate(270,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">5</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">64</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.2</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">256</text>
+    </g>
+    <g transform="translate(386,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">3</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">128</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.2</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">1e-3</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">512</text>
+    </g>
+    <g transform="translate(502,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">5</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">128</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.3</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">1e-3</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">512</text>
+    </g>
+    <g transform="translate(618,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">2</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">128</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.2</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">256</text>
+    </g>
+    <g transform="translate(734,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">2</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">64</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.2</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">256</text>
+    </g>
+    <g transform="translate(850,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">2</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">64</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.3</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">256</text>
+    </g>
+    <g transform="translate(966,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">5</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">128</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.3</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">512</text>
+    </g>
+    <g transform="translate(1082,0)">
+      <rect x="0" y="0" width="80" height="160" fill="#fafafa" stroke="#cccccc" stroke-width="1" rx="4"/>
+      <text x="40" y="22" font-size="14" text-anchor="middle" fill="#333">5</text>
+      <text x="40" y="52" font-size="14" text-anchor="middle" fill="#333">128</text>
+      <text x="40" y="82" font-size="14" text-anchor="middle" fill="#333">0.3</text>
+      <text x="40" y="112" font-size="14" text-anchor="middle" fill="#333">5e-4</text>
+      <text x="40" y="142" font-size="14" text-anchor="middle" fill="#333">512</text>
+    </g>
+  </g>
+
+  <g transform="translate(140,790)" font-size="15" fill="#333">
+    <rect x="0" y="0" width="22" height="16" fill="#1D9E75" stroke="#0F6E56" stroke-width="1" rx="3"/>
+    <text x="32" y="13">Best (NLL &lt; 0.95)</text>
+    <rect x="220" y="0" width="22" height="16" fill="#85B7EB" stroke="#185FA5" stroke-width="1" rx="3"/>
+    <text x="252" y="13">Mid (0.95 – 1.20)</text>
+    <rect x="450" y="0" width="22" height="16" fill="#F0997B" stroke="#993C1D" stroke-width="1" rx="3"/>
+    <text x="482" y="13">Poor (1.20 – 1.30)</text>
+    <rect x="690" y="0" width="22" height="16" fill="#D85A30" stroke="#993C1D" stroke-width="1" rx="3"/>
+    <text x="722" y="13">Worst (&gt; 1.30)</text>
+  </g>
+
+  <text x="700" y="855" text-anchor="middle" font-size="14" fill="#555">
+    Best config (Trial 2): K=3, hidden=64, dropout=0.2, lr=1e-3, batch=256 | val NLL = 0.909, test NLL = 2.04, test MSE = 1.25
+  </text>
+</svg>

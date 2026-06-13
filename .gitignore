@@ -1,0 +1,63 @@
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.basedpyright/
+.venv/
+venv/
+
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.local.json
+md_agent_window/.claude/settings.local.json
+
+# Node/Bun dependencies and generated bundles
+node_modules/
+model_gateway/node_modules/
+model_gateway/dist/
+md_agent_window/.opencode/
+
+# OMX/Codex local runtime state
+.omc/
+.omo/
+.omx/
+
+# Generated simulation and QA evidence
+evidence/
+outputs/
+results/
+md_agent_window/results/
+md_agent_window/logs/
+md_agent_window/agent_trace.log
+!md_agent_window/results/
+md_agent_window/results/*
+!md_agent_window/results/run_Ar_Si_3evts/
+!md_agent_window/results/run_Ar_Si_3evts/Si_periodic.data
+
+# Prototype ML/KMC outputs and trained artifacts
+ML_KMC_Model/outputs/
+ML_KMC_Model/checkpoints/
+ML_KMC_Model/runs/
+ML_KMC_Model/rs_runs/
+ML_KMC_Model/*.dump
+ML_KMC_Model/*.csv
+ML_KMC_Model/*.pkl
+ML_KMC_Model/random_search_summary.json
+
+# Large reference run products. Keep small tests/fixtures tracked.
+md_agent_window/Reference/source_code/Molecular Dynamics/*.dump
+md_agent_window/Reference/source_code/Molecular Dynamics/log.lammps
+md_agent_window/Reference/source_code/Monte Carlo simulation/*.csv
+md_agent_window/Reference/source_code/Monte Carlo simulation/*.pkl
+md_agent_window/Reference/source_code/Monte Carlo simulation/*.png
+
+# Misc local artifacts
+*.tmp
+*.bak
+*.swp

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 850" font-family="Calibri, Arial, sans-serif">
+  <rect x="0" y="0" width="1400" height="850" fill="#ffffff"/>
+
+  <rect x="0" y="0" width="1400" height="90" fill="#1E2761"/>
+  <text x="60" y="58" font-size="32" font-weight="700" fill="#ffffff">Random Search Results - 10 Trials</text>
+  <text x="1340" y="58" text-anchor="end" font-size="18" fill="#CADCFC">MDN Surrogate | 754 events</text>
+
+  <g font-size="24" font-weight="700" fill="#ffffff">
+    <rect x="60" y="120" width="200" height="65" fill="#1E2761"/>
+    <text x="160" y="163" text-anchor="middle">Trial</text>
+
+    <rect x="260" y="120" width="280" height="65" fill="#0F6E56"/>
+    <text x="400" y="163" text-anchor="middle">val NLL</text>
+
+    <rect x="540" y="120" width="280" height="65" fill="#0F6E56"/>
+    <text x="680" y="163" text-anchor="middle">val MSE</text>
+
+    <rect x="820" y="120" width="280" height="65" fill="#993C1D"/>
+    <text x="960" y="163" text-anchor="middle">test NLL</text>
+
+    <rect x="1100" y="120" width="240" height="65" fill="#993C1D"/>
+    <text x="1220" y="163" text-anchor="middle">test MSE</text>
+  </g>
+
+  <g font-size="22" fill="#1a1a1a">
+    <rect x="60" y="185" width="1280" height="50" fill="#f7f7f7" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="218" text-anchor="middle" font-weight="600">0</text>
+    <text x="400" y="218" text-anchor="middle">1.1984</text>
+    <text x="680" y="218" text-anchor="middle">0.5499</text>
+    <text x="960" y="218" text-anchor="middle">2.1549</text>
+    <text x="1220" y="218" text-anchor="middle">1.2526</text>
+
+    <rect x="60" y="235" width="1280" height="50" fill="#ffffff" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="268" text-anchor="middle" font-weight="600">1</text>
+    <text x="400" y="268" text-anchor="middle">1.2941</text>
+    <text x="680" y="268" text-anchor="middle">0.5495</text>
+    <text x="960" y="268" text-anchor="middle">2.2971</text>
+    <text x="1220" y="268" text-anchor="middle">1.2499</text>
+
+    <rect x="60" y="285" width="1280" height="50" fill="#E1F5EE" stroke="#0F6E56" stroke-width="3"/>
+    <text x="160" y="318" text-anchor="middle" font-weight="700" fill="#0F6E56">2 ★</text>
+    <text x="400" y="318" text-anchor="middle" font-weight="700" fill="#0F6E56">0.9092</text>
+    <text x="680" y="318" text-anchor="middle" font-weight="700" fill="#0F6E56">0.5498</text>
+    <text x="960" y="318" text-anchor="middle" font-weight="700" fill="#0F6E56">2.0379</text>
+    <text x="1220" y="318" text-anchor="middle" font-weight="700" fill="#0F6E56">1.2523</text>
+
+    <rect x="60" y="335" width="1280" height="50" fill="#ffffff" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="368" text-anchor="middle" font-weight="600">3</text>
+    <text x="400" y="368" text-anchor="middle">1.0661</text>
+    <text x="680" y="368" text-anchor="middle">0.5509</text>
+    <text x="960" y="368" text-anchor="middle">1.9908</text>
+    <text x="1220" y="368" text-anchor="middle">1.2577</text>
+
+    <rect x="60" y="385" width="1280" height="50" fill="#f7f7f7" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="418" text-anchor="middle" font-weight="600">4</text>
+    <text x="400" y="418" text-anchor="middle">1.3547</text>
+    <text x="680" y="418" text-anchor="middle">0.5505</text>
+    <text x="960" y="418" text-anchor="middle">2.2224</text>
+    <text x="1220" y="418" text-anchor="middle">1.2516</text>
+
+    <rect x="60" y="435" width="1280" height="50" fill="#ffffff" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="468" text-anchor="middle" font-weight="600">5</text>
+    <text x="400" y="468" text-anchor="middle">1.1449</text>
+    <text x="680" y="468" text-anchor="middle">0.5488</text>
+    <text x="960" y="468" text-anchor="middle">1.9922</text>
+    <text x="1220" y="468" text-anchor="middle">1.2535</text>
+
+    <rect x="60" y="485" width="1280" height="50" fill="#f7f7f7" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="518" text-anchor="middle" font-weight="600">6</text>
+    <text x="400" y="518" text-anchor="middle">1.0583</text>
+    <text x="680" y="518" text-anchor="middle">0.5488</text>
+    <text x="960" y="518" text-anchor="middle">1.9042</text>
+    <text x="1220" y="518" text-anchor="middle">1.2531</text>
+
+    <rect x="60" y="535" width="1280" height="50" fill="#ffffff" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="568" text-anchor="middle" font-weight="600">7</text>
+    <text x="400" y="568" text-anchor="middle">1.3547</text>
+    <text x="680" y="568" text-anchor="middle">0.5505</text>
+    <text x="960" y="568" text-anchor="middle">2.2224</text>
+    <text x="1220" y="568" text-anchor="middle">1.2516</text>
+
+    <rect x="60" y="585" width="1280" height="50" fill="#f7f7f7" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="618" text-anchor="middle" font-weight="600">8</text>
+    <text x="400" y="618" text-anchor="middle">0.9368</text>
+    <text x="680" y="618" text-anchor="middle">0.5501</text>
+    <text x="960" y="618" text-anchor="middle">1.7532</text>
+    <text x="1220" y="618" text-anchor="middle">1.2524</text>
+
+    <rect x="60" y="635" width="1280" height="50" fill="#ffffff" stroke="#cccccc" stroke-width="0.5"/>
+    <text x="160" y="668" text-anchor="middle" font-weight="600">9</text>
+    <text x="400" y="668" text-anchor="middle">1.1659</text>
+    <text x="680" y="668" text-anchor="middle">0.5513</text>
+    <text x="960" y="668" text-anchor="middle">2.2296</text>
+    <text x="1220" y="668" text-anchor="middle">1.2537</text>
+  </g>
+
+  <g transform="translate(60,710)">
+    <rect x="0" y="0" width="1280" height="105" fill="#E1F5EE" stroke="#0F6E56" stroke-width="2.5"/>
+    <text x="25" y="40" font-size="22" font-weight="700" fill="#0F6E56">★ Best: Trial 2</text>
+    <text x="25" y="73" font-size="18" fill="#0F6E56">val NLL = 0.9092   |   val MSE = 0.5498   |   test NLL = 2.0379   |   test MSE = 1.2523</text>
+    <text x="25" y="96" font-size="14" fill="#444">Selection by validation NLL. Lower is better for both metrics.</text>
+  </g>
+</svg>

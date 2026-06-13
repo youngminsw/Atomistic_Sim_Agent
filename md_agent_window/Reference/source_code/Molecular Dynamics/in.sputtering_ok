@@ -1,0 +1,181 @@
+label MainLoop
+clear
+variable loopCounter loop 10 ## 큰 루프 ##
+variable seed equal 1 #난수 시드(기저값)
+
+dimension 3
+units metal            # A, amu, ps, eV, K, bar
+atom_style charge
+boundary p p f
+newton on
+
+read_data si_sub.lammps
+mass 1 28.085          # Si
+mass 2 39.948          # Ar
+
+# 박스 관련 변수
+variable lx equal lx
+variable ly equal ly
+variable lz equal lz
+variable zhi equal zhi
+variable zcut equal 28
+
+# 리전
+region bot block INF INF INF INF 0 2.72 units box
+region thermos block INF INF INF INF 2.72 12.72 units box
+region boxOut block INF INF INF INF ${zcut} ${lz} units box
+
+# 입사 리전: 상단에서 30 Å 아래, 0 두께 회피용 1e-6 Å
+variable z_in equal v_zhi-30
+variable z_in_hi equal v_z_in+1.0e-6
+region sput block 0 ${lx} 0 ${ly} ${z_in} ${z_in_hi} units box
+
+# 반사 판정용(박스 전체)
+region reflOut block INF INF INF INF 0 ${lz} units box
+
+# 그룹
+group fbot region bot
+group fthermo region thermos
+group addatom type 2
+group other subtract all fbot fthermo addatom
+
+# 포텐셜/네이버
+pair_style hybrid tersoff zbl 3.0 4.0
+pair_coeff * * tersoff Si.tersoff Si NULL
+pair_coeff 1 2 zbl 14 18
+pair_coeff 2 2 zbl 18 18
+neighbor 2.5 bin
+neigh_modify every 1 delay 0 check yes
+
+# 속도/각도/KE 등
+compute Cvel all property/atom vx vy vz
+variable pavx atom c_Cvel[1]
+variable pavy atom c_Cvel[2]
+variable pavz atom c_Cvel[3]
+variable speed atom sqrt(v_pavx^2+v_pavy^2+v_pavz^2+1e-20)
+variable theta atom acos(v_pavz/v_speed)*180/PI
+variable phi atom atan2(v_pavy,v_pavx)*180/PI
+compute KE all ke/atom
+variable ke atom c_KE
+variable vxout atom c_Cvel[1]
+variable vyout atom c_Cvel[2]
+variable vzout atom c_Cvel[3]
+
+timestep 0.001
+thermo 10
+
+# 기판 온도 모니터
+group gSubstrate type 1
+compute Tsubstrate gSubstrate temp
+thermo_style custom step pe ke etotal temp c_Tsubstrate vol press
+
+# 바닥 고정
+fix s1 fbot setforce 0 0 0
+
+# 전체 트랙 덤프
+dump dAll all custom 14 traj.dump id type x y z v_pavx v_pavy v_pavz v_ke
+dump_modify dAll append yes sort id
+
+# ----------------- 작은 루프 -----------------
+label SubLoop
+variable subCounter loop 10
+
+# 이전 루프의 Ar 정리
+delete_atoms group addatom
+group addatom clear
+group addatom type 2
+
+# ----------------- 입사 파라미터 계산 -----------------
+# 이벤트/블록 인덱스: 10회/메인루프 → 10,000개마다 block 증가
+variable evt equal (v_loopCounter-1)*10+v_subCounter        # 1,2,3,...
+variable block equal floor((v_evt-1)/10000)                 # 0,1,2,...
+variable seed_eff equal ${seed}+10000*v_block+v_evt         # 블록마다 +10000, 이벤트마다 +1
+
+# 에너지/질량
+variable Qe1 equal random(0.1,100.0,${seed_eff})            # eV
+variable Qm1 equal 39.948                                   # amu
+
+# incident.dump에 E_in 기록용 per-atom 변수(=Qe1)
+variable E_in atom v_Qe1
+
+# 입사 각도(극각/방위각) - 이벤트별 서로 다른 시드 오프셋
+variable Iangl equal random(0.0,70.0,${seed_eff}+1)         # deg
+variable IanglP equal random(0.0,360.0,${seed_eff}+2)       # deg
+variable anglR equal v_Iangl/180*PI
+variable anglP equal v_IanglP/180*PI
+
+# 속도 크기(Å/ps)
+variable EnergyinJ1 equal v_Qe1*1.602176634E-19
+variable IonVelocityMean1 equal -sqrt(2*v_EnergyinJ1/(v_Qm1*1.66054e-27))/1e2
+
+# 속도 성분(동적평가)
+variable vx equal v_IonVelocityMean1*sin(v_anglR)*cos(v_anglP)*(-1)
+variable vy equal v_IonVelocityMean1*sin(v_anglR)*sin(v_anglP)*(-1)
+variable vz equal v_IonVelocityMean1*cos(v_anglR)
+
+# deposit용 시드(옵션)
+variable RandNfsub equal floor(random(1,1000000,${seed_eff}+3))
+
+# ----------------- 원자 삽입 -----------------
+fix fh addatom deposit 1 2 1 ${RandNfsub} region sput near 3 vx ${vx} ${vx} vy ${vy} ${vy} vz ${vz} ${vz} units box
+thermo_modify lost ignore flush yes
+run 1
+unfix fh
+
+# 방금 삽입된 Ar 정보 스냅샷
+group addatom type 2
+# incident.dump 컬럼 순서: x y z v_pavx v_pavy v_pavz v_E_in v_speed v_theta v_phi
+dump dInc addatom custom 1 incident.dump x y z v_pavx v_pavy v_pavz v_E_in v_speed v_theta v_phi
+dump_modify dInc append yes
+run 0
+undump dInc
+
+# ----------------- 200 step NVE -----------------
+fix f1 other nve
+fix f2 fthermo nve
+fix f3 addatom nve
+run 200
+unfix f1
+unfix f2
+unfix f3
+
+# ----------------- 500 step NVT (기판만 NVT, Ar는 NVE) -----------------
+fix f1 other nvt temp 300 300 0.1
+fix f2 fthermo nvt temp 300 300 0.1
+fix f3 addatom nve
+run 500
+unfix f1
+unfix f2
+unfix f3
+
+# ----------------- 탈출/반사/스퍼터 기록 -----------------
+group gSub type 1 2
+group gOut region boxOut
+group gSputtered intersect gOut gSubstrate    # Si 스퍼터만
+group gReflOut region reflOut
+group gReflected intersect gReflOut addatom   # 박스 내 Ar
+
+dump dRefl gReflected custom 1 reflected.dump id type x y z v_vxout v_vyout v_vzout v_ke
+dump dSput gSputtered custom 1 sputtered.dump id type x y z v_vxout v_vyout v_vzout v_ke
+dump_modify dRefl append yes
+dump_modify dSput append yes
+run 0
+undump dRefl
+undump dSput
+
+# 상부로 나간 원자 삭제(재충돌 방지)
+delete_atoms group gOut
+
+# 그룹 정리
+group gSub clear
+group gOut clear
+group gReflected clear
+group gSputtered clear
+
+# 반복 제어
+next subCounter
+jump SELF SubLoop
+
+# 메인 루프 제어
+next loopCounter
+jump SELF MainLoop

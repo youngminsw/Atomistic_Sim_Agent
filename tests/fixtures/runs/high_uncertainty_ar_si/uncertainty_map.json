@@ -1,0 +1,45 @@
+{
+  "run_id": "high-uncertainty-ar-si",
+  "expert": {
+    "expert_id": "Ar_on_Si",
+    "material_id": "Si",
+    "ion_species": "Ar",
+    "force_field_protocol_id": "Si_Tersoff_ZBL_physical_v001",
+    "physics_scope": "physical_bombardment_no_chemistry"
+  },
+  "samples": [
+    {
+      "sample_id": "u-001",
+      "material_id": "Si",
+      "ion_species": "Ar",
+      "energy_eV": 2000.0,
+      "polar_deg": 80.0,
+      "azimuth_deg": 120.0,
+      "uncertainty_score": 0.96,
+      "snapshot_id": "snap-top-001",
+      "chemistry_requested": false
+    },
+    {
+      "sample_id": "u-002",
+      "material_id": "Si",
+      "ion_species": "Ar",
+      "energy_eV": 1800.0,
+      "polar_deg": 78.0,
+      "azimuth_deg": 140.0,
+      "uncertainty_score": 0.91,
+      "snapshot_id": "snap-top-002",
+      "chemistry_requested": false
+    },
+    {
+      "sample_id": "u-003",
+      "material_id": "Si",
+      "ion_species": "Ar",
+      "energy_eV": 105.0,
+      "polar_deg": 32.0,
+      "azimuth_deg": 122.0,
+      "uncertainty_score": 0.12,
+      "snapshot_id": "snap-covered",
+      "chemistry_requested": false
+    }
+  ]
+}
