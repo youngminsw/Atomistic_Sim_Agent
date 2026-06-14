@@ -81,6 +81,7 @@ def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, mo
     assert login_code == 200
     assert login_body["ok"] is True
     assert login_body["provider"] == "oauth_gateway"
+    assert "credential_store" not in login_body
     assert "controller-secret-token" not in json.dumps(login_body)
     provider_status = _first_provider_status(status_body)
     assert provider_status["provider"] == "oauth_gateway"

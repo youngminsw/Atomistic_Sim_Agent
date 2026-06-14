@@ -14,6 +14,7 @@ class SlashCommand:
 COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand("/model", "/model status|set|login", "select gateway/model and manage OAuth/API credentials"),
     SlashCommand("/login", "/login [oauth|api-key] --provider <id>", "choose OAuth gateway or API key login flow"),
+    SlashCommand("/hud", "/hud", "provider/model/auth/session HUD with connection guidance"),
     SlashCommand("/agents", "/agents", "show the orchestrator and specialist agent roster"),
     SlashCommand("/harness", "/harness", "show agent call matrix, QA gates, heartbeat, and recovery policy"),
     SlashCommand("/team", "/team [--output-dir PATH]", "start a team-session smoke and render agent activity"),

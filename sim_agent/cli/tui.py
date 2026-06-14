@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from .tui_info import handle_log, handle_status, handle_ui, write_banner, write_help
+from .tui_info import handle_hud, handle_log, handle_status, handle_ui, write_banner, write_help
 from .tui_login import TerminalLoginSelector, handle_login
 from .tui_model import handle_model
 from .tui_parse import ParseError, parse_line, parse_options
@@ -68,6 +68,9 @@ def _handle_line(
         case "/login":
             selector = TerminalLoginSelector(input_stream, output_stream) if interactive else None
             return TuiStep(state=handle_login(parsed.args, state, output_stream, selector), exit_requested=False)
+        case "/hud":
+            handle_hud(state, output_stream)
+            return TuiStep(state=state, exit_requested=False)
         case "/run":
             return TuiStep(state=handle_run(parsed.args, state, output_stream), exit_requested=False)
         case "/agents":

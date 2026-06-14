@@ -47,7 +47,7 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
             case "/api/knowledge/agent-context":
                 self._write_json(build_ui_agent_graph_context(), 200)
             case "/api/model/auth/status":
-                self._write_json(model_auth_status_payload(), 200)
+                self._write_json(model_auth_status_payload(include_credential_store=False), 200)
             case "/api/click-diagnostics":
                 self._write_json(click_diagnostic_contract_payload(), 200)
             case "/":
@@ -89,7 +89,9 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
 
     def _handle_model_auth_login(self, payload: JsonMap) -> None:
         try:
-            self._write_json(login_model_gateway(payload), 200)
+            result = dict(login_model_gateway(payload))
+            result.pop("credential_store", None)
+            self._write_json(result, 200)
         except ModelAuthError as exc:
             self._write_json({"error": str(exc)}, 400)
 

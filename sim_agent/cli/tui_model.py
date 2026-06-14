@@ -5,7 +5,12 @@ from collections.abc import Sequence
 from typing import TextIO
 
 from sim_agent.schemas._parse import as_mapping, as_sequence
-from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway, model_auth_status_payload
+from sim_agent.ui.model_auth import (
+    CREDENTIAL_STORE_ENV,
+    login_model_gateway,
+    model_auth_status_payload,
+)
+from sim_agent.ui.model_connection import model_connection_status
 
 from .tui_parse import parse_options
 from .tui_state import ModelSettings, TuiState, append_event, replace_model
@@ -32,11 +37,21 @@ def handle_model(args: Sequence[str], state: TuiState, output_stream: TextIO) ->
 
 
 def write_model_status(state: TuiState, output_stream: TextIO) -> None:
+    connection = model_connection_status(
+        state.model.provider,
+        state.model.name,
+        state.model.auth_mode,
+        state.model.api_key_env,
+    )
     output_stream.write("model_status=true\n")
     output_stream.write(
         f"provider={state.model.provider} model={state.model.name} "
         f"base_url={state.model.base_url} auth_mode={state.model.auth_mode}\n"
     )
+    output_stream.write(f"model_connected={connection.connected}\n")
+    output_stream.write(f"connection_label={connection.connection_label}\n")
+    output_stream.write(f"model_notice={connection.friendly_message}\n")
+    output_stream.write(f"model_action={connection.action_hint}\n")
     payload = model_auth_status_payload()
     providers = as_sequence(payload["providers"], "providers")
     if not providers:

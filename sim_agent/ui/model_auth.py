@@ -23,6 +23,30 @@ class ModelAuthError(ValueError):
         return self.code
 
 
+@dataclass(frozen=True, slots=True)
+class ModelCredentialStatus:
+    provider: str
+    stored: bool
+    logged_in: bool
+    expires: int | None
+    auth_mode: str
+    updated_at_ms: int | None
+    credential_store: Path
+
+    def to_payload(self, *, include_credential_store: bool = True) -> JsonMap:
+        payload: dict[str, object] = {
+            "provider": self.provider,
+            "stored": self.stored,
+            "logged_in": self.logged_in,
+            "expires": self.expires,
+            "auth_mode": self.auth_mode,
+            "updated_at_ms": self.updated_at_ms,
+        }
+        if include_credential_store:
+            payload["credential_store"] = str(self.credential_store)
+        return payload
+
+
 def login_model_gateway(payload: JsonMap) -> JsonMap:
     provider = as_str(require(payload, "provider"), "provider").strip().lower()
     access_token = as_str(require(payload, "access_token"), "access_token")
@@ -50,20 +74,54 @@ def login_model_gateway(payload: JsonMap) -> JsonMap:
     }
 
 
-def model_auth_status_payload() -> JsonMap:
+def model_auth_status_payload(*, include_credential_store: bool = True) -> JsonMap:
     store = _credential_store_path()
     items = _read_credentials(store)
-    providers = [
-        {
-            "provider": provider,
-            "logged_in": True,
-            "expires": _entry_expires(entry),
-            "auth_mode": _entry_auth_mode(entry),
-            "updated_at_ms": _int_or_none(entry.get("updatedAtMs")),
-        }
+    statuses = [
+        model_credential_status(provider, store=store, entry=entry)
         for provider, entry in sorted(items.items())
     ]
-    return {"ok": True, "credential_store": str(store), "providers": providers}
+    providers = [status.to_payload(include_credential_store=False) for status in statuses]
+    connected_count = sum(1 for status in statuses if status.logged_in)
+    payload: dict[str, object] = {
+        "ok": True,
+        "providers": providers,
+        "connected_provider_count": connected_count,
+        "friendly_message": _status_message(connected_count),
+        "action_hint": "Run /login, or set a provider token and use /model set before Smoke API.",
+    }
+    if include_credential_store:
+        payload["credential_store"] = str(store)
+    return payload
+
+
+def model_credential_status(
+    provider: str,
+    *,
+    store: Path | None = None,
+    entry: JsonMap | None = None,
+) -> ModelCredentialStatus:
+    resolved_store = store or _credential_store_path()
+    resolved_entry = entry if entry is not None else _read_credentials(resolved_store).get(provider)
+    if resolved_entry is None:
+        return ModelCredentialStatus(
+            provider=provider,
+            stored=False,
+            logged_in=False,
+            expires=None,
+            auth_mode="oauth",
+            updated_at_ms=None,
+            credential_store=resolved_store,
+        )
+    return ModelCredentialStatus(
+        provider=provider,
+        stored=True,
+        logged_in=_entry_is_active(resolved_entry),
+        expires=_entry_expires(resolved_entry),
+        auth_mode=_entry_auth_mode(resolved_entry),
+        updated_at_ms=_int_or_none(resolved_entry.get("updatedAtMs")),
+        credential_store=resolved_store,
+    )
 
 
 def run_model_gateway_smoke_from_controller(payload: JsonMap) -> JsonMap:
@@ -182,3 +240,24 @@ def _entry_auth_mode(entry: JsonMap) -> str:
         return "oauth"
     value = credentials.get("authMode")
     return value if isinstance(value, str) and value else "oauth"
+
+
+def _entry_has_access_token(entry: JsonMap) -> bool:
+    credentials = entry.get("credentials")
+    if not isinstance(credentials, dict):
+        return False
+    token = credentials.get("access")
+    return isinstance(token, str) and len(token) > 0
+
+
+def _entry_is_active(entry: JsonMap) -> bool:
+    if not _entry_has_access_token(entry):
+        return False
+    expires = _entry_expires(entry)
+    return expires is None or expires > int(time.time() * 1000)
+
+
+def _status_message(connected_count: int) -> str:
+    if connected_count > 0:
+        return f"Model credentials available for {connected_count} provider(s)."
+    return "Model is not connected. Choose a provider and run /login before live model calls."

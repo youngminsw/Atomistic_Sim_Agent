@@ -141,6 +141,7 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
         reserve_space_for_menu=10,
         bottom_toolbar=HTML(
             "<b>/</b> commands  "
+            "<style fg='ansicyan'>/hud</style> "
             "<style fg='ansicyan'>/model</style> "
             "<style fg='ansicyan'>/run</style> "
             "<style fg='ansicyan'>/team</style> "

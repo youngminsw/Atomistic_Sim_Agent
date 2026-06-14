@@ -7,6 +7,11 @@
   }
 })(typeof window !== "undefined" ? window : globalThis, function createModelAuthClient() {
   function mount(documentRef, fetcher) {
+    if (typeof fetcher === "function") {
+      refreshStatus(documentRef, fetcher).catch((error) => {
+        renderStatus(documentRef, { error: statusErrorMessage(error) });
+      });
+    }
     const form = documentRef.getElementById("model-auth-form");
     if (form && typeof fetcher === "function") {
       form.addEventListener("submit", (event) => submitLogin(documentRef, fetcher, event));
@@ -15,6 +20,15 @@
     if (smoke && typeof fetcher === "function") {
       smoke.addEventListener("click", () => submitSmoke(documentRef, fetcher));
     }
+  }
+
+  function refreshStatus(documentRef, fetcher) {
+    return fetcher("/api/model/auth/status")
+      .then((response) => response.json().then((body) => ({ ok: response.ok, body })))
+      .then((result) => {
+        renderStatus(documentRef, result.body);
+        return result.body;
+      });
   }
 
   function submitLogin(documentRef, fetcher, event) {
@@ -69,8 +83,11 @@
   function renderStatus(documentRef, body) {
     const node = documentRef.getElementById("model-auth-status");
     if (!node) return;
+    node.className = "controller-errors";
+    const statusBody = body.model_auth || body;
     const error = text(body.error);
     if (error) {
+      node.className = "controller-errors blocked";
       node.textContent = `Blocked: ${error}`;
       return;
     }
@@ -81,7 +98,20 @@
     }
     const provider = text(body.provider) || "model";
     const loggedIn = body.logged_in === true || body.ok === true;
-    node.textContent = loggedIn ? `${provider} logged in` : `${provider} not logged in`;
+    if (provider !== "model" && loggedIn) {
+      node.textContent = `${provider} logged in`;
+      return;
+    }
+    const connectedCount = number(statusBody.connected_provider_count);
+    const providers = Array.isArray(statusBody.providers) ? statusBody.providers : [];
+    if (connectedCount === 0) {
+      node.className = "controller-errors blocked";
+      node.textContent = `${text(statusBody.friendly_message) || "Model is not connected."} ${text(statusBody.action_hint) || "Run /login."}`;
+      return;
+    }
+    node.textContent = providers.length > 0
+      ? `Model credentials: ${providers.map((item) => text(item.provider)).join(", ")}`
+      : "Model credential status ready";
   }
 
   function parseRequest(raw) {
@@ -107,5 +137,17 @@
     return typeof value === "string" && value.length > 0 ? value : "";
   }
 
-  return { mount, submitLogin, submitSmoke };
+  function number(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function statusErrorMessage(error) {
+    if (error && typeof error.message === "string" && error.message.length > 0) {
+      return `Model status is unavailable: ${error.message}`;
+    }
+    return "Model status is unavailable. Check the ASA controller backend.";
+  }
+
+  return { mount, refreshStatus, renderStatus, submitLogin, submitSmoke };
 });

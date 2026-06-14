@@ -5,7 +5,7 @@ from typing import TextIO
 from sim_agent.schemas._parse import as_str
 from sim_agent.ui import build_ui_api_status
 
-from .tui_render import write_command_palette, write_welcome
+from .tui_render import write_command_palette, write_hud_panel, write_welcome
 from .tui_state import TuiState, recent_events
 
 
@@ -17,6 +17,7 @@ def write_help(output_stream: TextIO) -> None:
     write_command_palette("/", output_stream)
     output_stream.write("/model status|set|login\n")
     output_stream.write("/login [oauth|api-key] --provider <id>\n")
+    output_stream.write("/hud\n")
     output_stream.write("/agents\n")
     output_stream.write("/harness\n")
     output_stream.write("/team [--output-dir PATH] [--simulate-agent-failure AGENT] [--slurm-job-script]\n")
@@ -39,6 +40,10 @@ def handle_status(state: TuiState, output_stream: TextIO) -> None:
     output_stream.write(f"last_run_ledger={state.last_run_ledger or ''}\n")
     output_stream.write(f"team_ledger={state.team_ledger or ''}\n")
     output_stream.write(f"runtime_ledger={state.runtime_ledger or ''}\n")
+
+
+def handle_hud(state: TuiState, output_stream: TextIO) -> None:
+    write_hud_panel(state, output_stream)
 
 
 def handle_log(limit: int, state: TuiState, output_stream: TextIO) -> None:

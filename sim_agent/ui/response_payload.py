@@ -5,9 +5,10 @@ from pathlib import Path
 
 from sim_agent.runner import OfflineRunResult
 from sim_agent.runner.artifact_contract import RUN_ARTIFACT_DESCRIPTORS
-from sim_agent.schemas._parse import JsonMap, as_mapping, as_str
+from sim_agent.schemas._parse import JsonMap, as_mapping, as_sequence, as_str
 
 from .api import UiApiStatus, UiApiValidation
+from .model_auth import model_auth_status_payload
 from .readiness import offline_production_readiness_payload
 
 
@@ -20,6 +21,7 @@ def status_payload(status: UiApiStatus) -> JsonMap:
         "model_options": list(status.model_options),
         "auth_modes": list(status.auth_modes),
         "agent_roles": list(status.agent_roles),
+        "model_auth": model_auth_status_payload(include_credential_store=False),
         "graphdb": {
             "database_name": status.graphdb_database_name,
             "write_requires_approval": status.graphdb_write_requires_approval,
@@ -144,7 +146,7 @@ def _agent_statuses(validation: UiApiValidation, result: OfflineRunResult, readi
             "qa_agent",
             "QA Agent",
             qa_status,
-            f"QA report: {qa_status}; hard blockers={len(qa.get('hard_blockers', []))}.",
+            f"QA report: {qa_status}; hard blockers={len(as_sequence(qa.get('hard_blockers', []), 'qa.hard_blockers'))}.",
             "Checks profile timeline, position-resolved energy, click diagnostics, and process time scale.",
         ),
         _agent_status(
