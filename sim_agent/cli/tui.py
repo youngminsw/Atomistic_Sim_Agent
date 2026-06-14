@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TextIO
 
 from .tui_info import handle_log, handle_status, handle_ui, write_banner, write_help
-from .tui_login import handle_login
+from .tui_login import TerminalLoginSelector, handle_login
 from .tui_model import handle_model
 from .tui_parse import ParseError, parse_line, parse_options
 from .tui_prompt import build_prompt_reader
@@ -32,13 +32,19 @@ def run_tui(
             return 0
         if not prompt_reader.echoes_input:
             output_stream.write("\n")
-        step = _handle_line(raw.strip(), state, output_stream)
+        step = _handle_line(raw.strip(), state, input_stream, output_stream, prompt_reader.echoes_input)
         state = step.state
         if step.exit_requested:
             return 0
 
 
-def _handle_line(line: str, state: TuiState, output_stream: TextIO) -> TuiStep:
+def _handle_line(
+    line: str,
+    state: TuiState,
+    input_stream: TextIO,
+    output_stream: TextIO,
+    interactive: bool,
+) -> TuiStep:
     try:
         parsed = parse_line(line)
     except ParseError as exc:
@@ -60,7 +66,8 @@ def _handle_line(line: str, state: TuiState, output_stream: TextIO) -> TuiStep:
         case "/model":
             return TuiStep(state=handle_model(parsed.args, state, output_stream), exit_requested=False)
         case "/login":
-            return TuiStep(state=handle_login(parsed.args, state, output_stream), exit_requested=False)
+            selector = TerminalLoginSelector(input_stream, output_stream) if interactive else None
+            return TuiStep(state=handle_login(parsed.args, state, output_stream, selector), exit_requested=False)
         case "/run":
             return TuiStep(state=handle_run(parsed.args, state, output_stream), exit_requested=False)
         case "/agents":

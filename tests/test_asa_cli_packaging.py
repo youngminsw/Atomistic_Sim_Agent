@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import sys
 import tomllib
+from io import StringIO
 from pathlib import Path
 
 
@@ -126,6 +127,39 @@ def test_asa_interactive_login_selector_and_api_key_mode_redacts_secret(tmp_path
     assert "login_ok=true" in result.stdout
     assert "provider=openai logged_in=True" in result.stdout
     assert "cli-secret-token" not in result.stdout
+
+
+def test_asa_bare_login_interactive_selector_persists_api_key(tmp_path: Path, monkeypatch) -> None:
+    if str(SOURCE_ROOT) not in sys.path:
+        sys.path.insert(0, str(SOURCE_ROOT))
+
+    from sim_agent.cli.tui_login import LoginMode, handle_login
+    from sim_agent.cli.tui_state import initial_state
+    from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV
+
+    class FakeSelector:
+        def choose_mode(self) -> LoginMode:
+            return "api_key"
+
+        def prompt_provider(self, default: str) -> str:
+            assert default == "openclaw"
+            return "openai"
+
+        def prompt_token(self, mode: LoginMode) -> str:
+            assert mode == "api_key"
+            return "interactive-secret-token"
+
+    store = tmp_path / "credentials.json"
+    monkeypatch.setenv(CREDENTIAL_STORE_ENV, str(store))
+    output = StringIO()
+
+    handle_login((), initial_state(tmp_path), output, FakeSelector())
+
+    assert "login_ok=true" in output.getvalue()
+    assert "provider=openai auth_mode=api_key" in output.getvalue()
+    assert "interactive-secret-token" not in output.getvalue()
+    payload = json.loads(store.read_text(encoding="utf-8"))
+    assert payload["openai"]["provider"] == "openai"
 
 
 def test_asa_live_slash_completion_catalog_exposes_commands_and_skills() -> None:

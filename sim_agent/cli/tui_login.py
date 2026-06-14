@@ -2,16 +2,80 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from typing import TextIO
+from dataclasses import dataclass
+from typing import Literal, Protocol, TextIO
 
 from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway
 
 from .tui_parse import parse_options
+from .tui_select import MenuOption, choose_option, prompt_secret, prompt_visible
 from .tui_state import TuiState, append_event
 
 
-def handle_login(args: Sequence[str], state: TuiState, output_stream: TextIO) -> TuiState:
-    if not args or args[0] == "help":
+LoginMode = Literal["oauth", "api_key"]
+
+
+class LoginSelector(Protocol):
+    def choose_mode(self) -> LoginMode | None:
+        raise NotImplementedError
+
+    def prompt_provider(self, default: str) -> str:
+        raise NotImplementedError
+
+    def prompt_token(self, mode: LoginMode) -> str:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalLoginSelector:
+    input_stream: TextIO
+    output_stream: TextIO
+
+    def choose_mode(self) -> LoginMode | None:
+        selected = choose_option(
+            "Login Method",
+            (
+                MenuOption("oauth", "OAuth gateway", "browser/OAuth backed model gateway"),
+                MenuOption("api_key", "API key", "direct provider token or key"),
+                MenuOption("cancel", "Cancel", "return to ASA shell"),
+            ),
+            self.input_stream,
+            self.output_stream,
+        )
+        match selected:
+            case "oauth":
+                return "oauth"
+            case "api_key":
+                return "api_key"
+            case "cancel" | None:
+                return None
+            case unreachable:
+                raise AssertionError(f"unexpected login mode: {unreachable}")
+
+    def prompt_provider(self, default: str) -> str:
+        return prompt_visible("Provider", default, self.input_stream, self.output_stream)
+
+    def prompt_token(self, mode: LoginMode) -> str:
+        match mode:
+            case "oauth":
+                return prompt_secret("OAuth access token", self.input_stream, self.output_stream)
+            case "api_key":
+                return prompt_secret("API key", self.input_stream, self.output_stream)
+
+
+def handle_login(
+    args: Sequence[str],
+    state: TuiState,
+    output_stream: TextIO,
+    selector: LoginSelector | None = None,
+) -> TuiState:
+    if not args:
+        if selector is not None:
+            _login_interactively(selector, state, output_stream)
+            return state
+        write_login_options(output_stream)
+        return state
+    if args[0] == "help":
         write_login_options(output_stream)
         return state
     mode = args[0]
@@ -25,6 +89,20 @@ def handle_login(args: Sequence[str], state: TuiState, output_stream: TextIO) ->
             output_stream.write("login_error=unknown_login_mode\n")
             write_login_options(output_stream)
     return state
+
+
+def _login_interactively(selector: LoginSelector, state: TuiState, output_stream: TextIO) -> None:
+    mode = selector.choose_mode()
+    if mode is None:
+        output_stream.write("login_cancelled=true\n")
+        return
+    provider = selector.prompt_provider(state.model.provider)
+    token = selector.prompt_token(mode)
+    if not token:
+        output_stream.write(f"login_error={mode}_token_required\n")
+        return
+    token_flag = "--access-token" if mode == "oauth" else "--api-key"
+    _login_with_token(mode, ("--provider", provider, token_flag, token), state, output_stream)
 
 
 def write_login_options(output_stream: TextIO) -> None:
