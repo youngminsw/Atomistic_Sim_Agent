@@ -53,6 +53,7 @@ def prepare_remote_capability_probe(
             required_lammps_packages,
         ),
         encoding="utf-8",
+        newline="\n",
     )
     chmod_applied = _try_set_executable(script_path)
     manifest = _manifest_payload(

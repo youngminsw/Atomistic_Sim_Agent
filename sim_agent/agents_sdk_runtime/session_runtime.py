@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -10,11 +9,18 @@ from sim_agent.llm_endpoints import ModelProviderConfig
 from sim_agent.schemas._parse import JsonMap
 
 from .runtime import AGENT_ROLES
-
-
-AGENT_TEAM_SESSION_LEDGER_NAME = "agent_team_session_ledger.json"
-TEAM_HEARTBEAT_INTERVAL_S = 3600
-INTER_AGENT_CALL_TIMEOUT_S = 1800
+from .session_events import (
+    INTER_AGENT_CALL_TIMEOUT_S,
+    TEAM_HEARTBEAT_INTERVAL_S,
+    AgentTeamSessionEvent,
+    bootstrap_events,
+    bounded_call_events,
+    call_matrix,
+    failure_recovery_events,
+    role_ids,
+    session_event,
+    write_session_files,
+)
 
 
 class AgentTeamSessionStatus(StrEnum):
@@ -23,23 +29,13 @@ class AgentTeamSessionStatus(StrEnum):
     BLOCKED = "blocked"
 
 
-@dataclass(frozen=True, slots=True)
-class AgentTeamSessionEvent:
-    at: float
-    session_id: str
-    event_type: str
-    agent_id: str
-    summary: str
-    status: str
-    peer: str | None = None
-    timeout_s: int | None = None
-    heartbeat_interval_s: int | None = None
-    artifact_ref: str | None = None
+AGENT_TEAM_SESSION_LEDGER_NAME = "agent_team_session_ledger.json"
 
 
 @dataclass(frozen=True, slots=True)
 class AgentTeamSessionResult:
     session_id: str
+    execution_mode: str
     status: AgentTeamSessionStatus
     provider: str
     model: str
@@ -68,32 +64,89 @@ def run_agent_team_session_smoke(
     slurm_job_script: bool = False,
     qa_job_script_reviewed: bool = False,
 ) -> AgentTeamSessionResult:
+    return _run_agent_team_session(
+        payload,
+        endpoint,
+        output_dir,
+        execution_mode="smoke",
+        simulate_agent_failure=simulate_agent_failure,
+        slurm_job_script=slurm_job_script,
+        qa_job_script_reviewed=qa_job_script_reviewed,
+    )
+
+
+def run_agent_team_session_runtime(
+    payload: JsonMap,
+    endpoint: ModelProviderConfig,
+    output_dir: Path,
+) -> AgentTeamSessionResult:
+    return _run_agent_team_session(
+        payload,
+        endpoint,
+        output_dir,
+        execution_mode="team_contract_runtime",
+        runtime_primary=True,
+    )
+
+
+def _run_agent_team_session(
+    payload: JsonMap,
+    endpoint: ModelProviderConfig,
+    output_dir: Path,
+    *,
+    execution_mode: str,
+    runtime_primary: bool = False,
+    simulate_agent_failure: str | None = None,
+    slurm_job_script: bool = False,
+    qa_job_script_reviewed: bool = False,
+) -> AgentTeamSessionResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     session_id = f"agent-team-{_request_id(payload)}"
-    role_ids = _role_ids()
-    call_matrix = _call_matrix(role_ids)
-    events = _bootstrap_events(session_id, role_ids)
+    role_id_set = role_ids(AGENT_ROLES)
+    team_call_matrix = call_matrix(role_id_set)
+    events = bootstrap_events(session_id, role_id_set)
     qa_gates: dict[str, str] = {"slurm_job_script": "not_required"}
     hard_blockers: list[str] = []
     recoverable_events: list[str] = []
     status = AgentTeamSessionStatus.READY
 
-    events.extend(_exercise_bounded_calls(session_id, call_matrix))
+    events.extend(bounded_call_events(session_id, team_call_matrix))
+    if runtime_primary:
+        events.append(
+            session_event(
+                session_id,
+                "team_runtime_primary",
+                "orchestrator",
+                "TUI default goal entered team contract runtime before bundle preparation",
+                "ready",
+                artifact_ref="team_contract_runtime",
+            )
+        )
+        events.append(
+            session_event(
+                session_id,
+                "team_contract_runtime_ready",
+                "qa_agent",
+                "bounded team call matrix, QA gates, recovery policy, and session ledgers are ready",
+                "ready",
+                artifact_ref="agent_team_session_ledger.json",
+            )
+        )
 
     if simulate_agent_failure:
-        if simulate_agent_failure not in role_ids:
+        if simulate_agent_failure not in role_id_set:
             status = AgentTeamSessionStatus.BLOCKED
             hard_blockers.append(f"unknown_agent={simulate_agent_failure}")
         else:
             status = AgentTeamSessionStatus.DEGRADED
             recoverable_events.append(f"agent_failure:{simulate_agent_failure}")
-            events.extend(_failure_recovery_events(session_id, simulate_agent_failure))
+            events.extend(failure_recovery_events(session_id, simulate_agent_failure))
 
     if slurm_job_script:
         if qa_job_script_reviewed:
             qa_gates["slurm_job_script"] = "pass"
             events.append(
-                _event(
+                session_event(
                     session_id,
                     "qa_gate_pass",
                     "qa_agent",
@@ -107,7 +160,7 @@ def run_agent_team_session_smoke(
             status = AgentTeamSessionStatus.BLOCKED
             hard_blockers.append("qa_job_script_review_required")
             events.append(
-                _event(
+                session_event(
                     session_id,
                     "qa_gate_required",
                     "qa_agent",
@@ -117,16 +170,17 @@ def run_agent_team_session_smoke(
                 )
             )
 
-    session_files = _write_session_files(output_dir, role_ids, events)
+    session_files = write_session_files(output_dir, role_id_set, events)
     result = AgentTeamSessionResult(
         session_id=session_id,
+        execution_mode=execution_mode,
         status=status,
         provider=endpoint.provider,
         model=endpoint.model,
         auth_mode=endpoint.auth_mode,
         heartbeat_interval_s=TEAM_HEARTBEAT_INTERVAL_S,
         inter_agent_call_timeout_s=INTER_AGENT_CALL_TIMEOUT_S,
-        call_matrix=call_matrix,
+        call_matrix=team_call_matrix,
         qa_gates=qa_gates,
         session_files=tuple(str(path) for path in session_files),
         events=tuple(events),
@@ -149,6 +203,7 @@ def agent_team_session_payload(result: AgentTeamSessionResult) -> JsonMap:
     return {
         "ledger_version": "agent_team_session_v1",
         "session_id": result.session_id,
+        "execution_mode": result.execution_mode,
         "status": result.status.value,
         "provider": result.provider,
         "model": result.model,
@@ -163,143 +218,6 @@ def agent_team_session_payload(result: AgentTeamSessionResult) -> JsonMap:
         "recoverable_events": list(result.recoverable_events),
         "deadlock": result.deadlock,
     }
-
-
-def _role_ids() -> tuple[str, ...]:
-    return ("orchestrator",) + tuple(role.role_id for role in AGENT_ROLES)
-
-
-def _call_matrix(role_ids: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
-    specialists = tuple(role for role in role_ids if role != "orchestrator")
-    matrix: dict[str, tuple[str, ...]] = {"orchestrator": specialists}
-    common_peers = ("orchestrator", "research_graphdb_agent", "qa_agent")
-    for role_id in specialists:
-        matrix[role_id] = tuple(peer for peer in common_peers if peer != role_id)
-    return matrix
-
-
-def _bootstrap_events(session_id: str, role_ids: tuple[str, ...]) -> list[AgentTeamSessionEvent]:
-    events: list[AgentTeamSessionEvent] = []
-    for role_id in role_ids:
-        events.append(_event(session_id, "session_created", role_id, "durable session opened", "ready"))
-        events.append(_event(session_id, "harness_ready", role_id, "role-local harness initialized", "ready"))
-        events.append(
-            _event(
-                session_id,
-                "heartbeat_registered",
-                role_id,
-                "long-running job heartbeat policy registered",
-                "ready",
-                heartbeat_interval_s=TEAM_HEARTBEAT_INTERVAL_S,
-            )
-        )
-        events.append(
-            _event(
-                session_id,
-                "context_compaction_checkpoint",
-                role_id,
-                "session can compact prior peer messages into durable summary",
-                "ready",
-                artifact_ref=f"sessions/{role_id}.jsonl",
-            )
-        )
-    return events
-
-
-def _exercise_bounded_calls(
-    session_id: str,
-    call_matrix: dict[str, tuple[str, ...]],
-) -> list[AgentTeamSessionEvent]:
-    events: list[AgentTeamSessionEvent] = []
-    for agent_id, peers in call_matrix.items():
-        for peer in peers:
-            events.append(
-                _event(
-                    session_id,
-                    "bounded_inter_agent_call",
-                    agent_id,
-                    f"call {peer} with finite wait policy",
-                    "ack",
-                    peer=peer,
-                    timeout_s=INTER_AGENT_CALL_TIMEOUT_S,
-                )
-            )
-    return events
-
-
-def _failure_recovery_events(session_id: str, failed_agent: str) -> list[AgentTeamSessionEvent]:
-    return [
-        _event(
-            session_id,
-            "agent_failure",
-            failed_agent,
-            "simulated recoverable worker failure",
-            "failed",
-            timeout_s=INTER_AGENT_CALL_TIMEOUT_S,
-        ),
-        _event(
-            session_id,
-            "recovery_route",
-            "orchestrator",
-            f"route {failed_agent} failure to QA and continue session supervision",
-            "degraded",
-            peer="qa_agent",
-            timeout_s=INTER_AGENT_CALL_TIMEOUT_S,
-        ),
-        _event(
-            session_id,
-            "qa_recovery_review",
-            "qa_agent",
-            f"review recoverable {failed_agent} failure without deadlock",
-            "degraded",
-            peer="orchestrator",
-        ),
-    ]
-
-
-def _write_session_files(
-    output_dir: Path,
-    role_ids: tuple[str, ...],
-    events: list[AgentTeamSessionEvent],
-) -> tuple[Path, ...]:
-    session_dir = output_dir / "sessions"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    files: list[Path] = []
-    for role_id in role_ids:
-        path = session_dir / f"{role_id}.jsonl"
-        role_events = [event for event in events if event.agent_id == role_id]
-        path.write_text(
-            "".join(json.dumps(asdict(event), sort_keys=True) + "\n" for event in role_events),
-            encoding="utf-8",
-        )
-        files.append(path)
-    return tuple(files)
-
-
-def _event(
-    session_id: str,
-    event_type: str,
-    agent_id: str,
-    summary: str,
-    status: str,
-    *,
-    peer: str | None = None,
-    timeout_s: int | None = None,
-    heartbeat_interval_s: int | None = None,
-    artifact_ref: str | None = None,
-) -> AgentTeamSessionEvent:
-    return AgentTeamSessionEvent(
-        at=time.time(),
-        session_id=session_id,
-        event_type=event_type,
-        agent_id=agent_id,
-        summary=summary,
-        status=status,
-        peer=peer,
-        timeout_s=timeout_s,
-        heartbeat_interval_s=heartbeat_interval_s,
-        artifact_ref=artifact_ref,
-    )
 
 
 def _request_id(payload: JsonMap) -> str:

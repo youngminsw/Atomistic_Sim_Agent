@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final
 
+from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import JsonMap
 
 
@@ -45,10 +46,17 @@ class TuiStep:
 def initial_state(session_dir: Path | None = None) -> TuiState:
     env_dir = os.environ.get(SESSION_DIR_ENV)
     resolved = session_dir or (Path(env_dir) if env_dir else DEFAULT_OUTPUT_DIR)
+    endpoint = load_runtime_config().model_endpoint
     state = TuiState(
         session_id=f"asa-{int(time.time())}",
         session_dir=resolved,
-        model=ModelSettings(),
+        model=ModelSettings(
+            provider=endpoint.provider,
+            name=endpoint.model,
+            base_url=endpoint.base_url,
+            auth_mode=endpoint.auth_mode,
+            api_key_env=endpoint.api_key_env,
+        ),
     )
     persist_state(state)
     append_event(state, "session_created", "Interactive ASA session opened")

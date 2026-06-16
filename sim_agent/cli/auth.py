@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 
+from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import as_mapping, as_sequence
 from sim_agent.ui.model_auth import (
     CREDENTIAL_STORE_ENV,
@@ -13,24 +14,25 @@ from sim_agent.ui.model_auth import (
 
 
 def add_auth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    endpoint = load_runtime_config().model_endpoint
     parser = subparsers.add_parser("auth", help="Login, inspect, and smoke-test model gateway credentials.")
     auth_subparsers = parser.add_subparsers(dest="auth_command", required=True)
     login = auth_subparsers.add_parser("login", help="Store a model gateway access token.")
-    login.add_argument("--provider", default="oauth_gateway")
+    login.add_argument("--provider", default=endpoint.provider)
     login.add_argument("--access-token")
     login.add_argument("--api-key")
     login.add_argument("--api-key-env")
-    login.add_argument("--auth-mode", choices=("api_key", "oauth", "gateway"), default="oauth")
+    login.add_argument("--auth-mode", choices=("api_key", "oauth", "gateway"), default=endpoint.auth_mode)
     login.add_argument("--refresh-token")
     login.add_argument("--credential-store")
     status = auth_subparsers.add_parser("status", help="Show redacted credential status.")
     status.add_argument("--credential-store")
     smoke = auth_subparsers.add_parser("smoke", help="Call the configured model gateway API.")
-    smoke.add_argument("--provider", default="oauth_gateway")
-    smoke.add_argument("--model", default="gpt-5.5")
-    smoke.add_argument("--base-url", required=True)
-    smoke.add_argument("--auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="gateway")
-    smoke.add_argument("--api-key-env", default="MODEL_GATEWAY_TOKEN")
+    smoke.add_argument("--provider", default=endpoint.provider)
+    smoke.add_argument("--model", default=endpoint.model)
+    smoke.add_argument("--base-url", default=endpoint.base_url)
+    smoke.add_argument("--auth-mode", choices=("api_key", "oauth", "gateway", "none"), default=endpoint.auth_mode)
+    smoke.add_argument("--api-key-env", default=endpoint.api_key_env)
     smoke.add_argument("--credential-store")
 
 

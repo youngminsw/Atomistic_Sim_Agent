@@ -23,6 +23,7 @@ def handle_runtime(args: Sequence[str], state: TuiState, output_stream: TextIO) 
             "api_key_env": state.model.api_key_env,
         }
     )
+    output_dir = Path(parsed.options.get("output_dir", str(state.session_dir / "runtime")))
     result = run_agents_sdk_runtime_dry_run(
         {
             "request_id": state.session_id,
@@ -33,8 +34,8 @@ def handle_runtime(args: Sequence[str], state: TuiState, output_stream: TextIO) 
         },
         endpoint,
         run_sdk_smoke="smoke" in parsed.flags,
+        output_dir=output_dir,
     )
-    output_dir = Path(parsed.options.get("output_dir", str(state.session_dir / "runtime")))
     ledger = write_agents_sdk_runtime_ledger(output_dir, result)
     next_state = replace_runtime_ledger(state, ledger)
     append_event(next_state, "runtime_dry_run", result.run_id)

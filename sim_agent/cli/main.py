@@ -40,6 +40,8 @@ def _parser() -> argparse.ArgumentParser:
     ui = subparsers.add_parser("ui", help="Start the HTML controller.")
     ui.add_argument("--host", default="127.0.0.1")
     ui.add_argument("--port", type=int, default=8779)
+    ui.add_argument("--allow-non-loopback", action="store_true")
+    ui.add_argument("--controller-token")
     ui.add_argument("--smoke", action="store_true")
     return parser
 
@@ -49,7 +51,13 @@ def _run_ui(args: argparse.Namespace) -> int:
     if args.smoke:
         _print_ui_smoke(status.static_root)
         return 0
-    server = build_ui_http_server(args.host, args.port, status.static_root)
+    server = build_ui_http_server(
+        args.host,
+        args.port,
+        status.static_root,
+        allow_non_loopback=args.allow_non_loopback,
+        csrf_token=args.controller_token,
+    )
     with server:
         print(f"ui_url=http://{args.host}:{args.port}/run_bundle_viewer.html")
         server.serve_forever()

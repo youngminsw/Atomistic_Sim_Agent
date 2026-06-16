@@ -21,7 +21,7 @@
       geometry_path: value(documentRef, "geometry-path"),
       kernel_path: value(documentRef, "kernel-path"),
       events_path: value(documentRef, "events-path"),
-      compute_target: value(documentRef, "compute-target") || "gpu-5090",
+      compute_target: value(documentRef, "compute-target"),
       steps: positiveInteger(value(documentRef, "run-steps"), 5),
       ions: positiveInteger(value(documentRef, "run-ions"), 8),
       run_id: runId,
@@ -50,7 +50,7 @@
     statusNode.textContent = "Running offline fixture...";
     return fetcher("/api/run/offline", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(buildPayloadFromDocument(documentRef)),
     })
       .then((response) => response.json().then((body) => ({ ok: response.ok, body })))
@@ -188,6 +188,11 @@
   }
 
   function value(documentRef, id) { const node = documentRef.getElementById(id); return node ? node.value : ""; }
+
+  function csrfHeaders(headers) {
+    const token = globalThis.__ASA_CONTROLLER_TOKEN__;
+    return token ? { ...headers, "X-ASA-CSRF-Token": token } : headers;
+  }
 
   function checked(documentRef, id) {
     const node = documentRef.getElementById(id);

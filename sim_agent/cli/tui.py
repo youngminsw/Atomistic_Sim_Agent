@@ -12,6 +12,7 @@ from .tui_prompt import build_prompt_reader
 from .tui_render import write_command_palette
 from .tui_run import handle_run
 from .tui_runtime import handle_runtime
+from .tui_setup import handle_setup
 from .tui_state import TuiState, TuiStep, append_event, initial_state
 from .tui_team import handle_agents, handle_contract, handle_harness, handle_skills, handle_team
 
@@ -86,6 +87,8 @@ def _handle_line(
             return TuiStep(state=_handle_team(parsed.args, state, output_stream), exit_requested=False)
         case "/runtime":
             return TuiStep(state=handle_runtime(parsed.args, state, output_stream), exit_requested=False)
+        case "/setup":
+            return TuiStep(state=handle_setup(parsed.args, state, output_stream), exit_requested=False)
         case "/status":
             handle_status(state, output_stream)
             return TuiStep(state=state, exit_requested=False)

@@ -8,7 +8,7 @@ from sim_agent.schemas._parse import JsonMap, as_bool, as_mapping, as_sequence, 
 from sim_agent.schemas.errors import SchemaValidationError
 
 from .capability import worker_capability_requirements_payload
-from .policy import require_allowed_host
+from .policy import compute_resource_for_host, require_allowed_host
 from .types import ComputePolicyError, JobBundleSpec, WorkerBundle
 
 
@@ -27,6 +27,9 @@ def load_job_bundle(path: Path) -> JobBundleSpec:
 
 def build_worker_bundle(host_alias: str, job: JobBundleSpec, remote_user: str) -> WorkerBundle:
     target = require_allowed_host(host_alias)
+    resource = compute_resource_for_host(host_alias)
+    if job.requires_cuda and "gpu" not in resource.roles:
+        raise ComputePolicyError(f"host_role_not_allowed={host_alias}:requires_gpu")
     run_id = _safe_segment(job.job_id, "job_id")
     user_segment = _safe_segment(remote_user, "remote_user")
     remote_run_dir = PurePosixPath("/home") / user_segment / "atomistic_sim_agent" / "runs" / run_id

@@ -146,7 +146,8 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
             "<style fg='ansicyan'>/run</style> "
             "<style fg='ansicyan'>/team</style> "
             "<style fg='ansicyan'>/skills</style> "
-            "<style fg='ansicyan'>/runtime</style>"
+            "<style fg='ansicyan'>/runtime</style> "
+            "<style fg='ansicyan'>/setup</style>"
         ),
         style=Style.from_dict(
             {

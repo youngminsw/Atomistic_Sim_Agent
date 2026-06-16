@@ -9,6 +9,8 @@ from typing import Any
 from sim_agent.llm_endpoints import ModelProviderConfig
 from sim_agent.schemas._parse import JsonMap, as_mapping
 
+from .session_files import ensure_runtime_session_path
+from .skill_registry import run_registered_agent_skills, skill_registry_summary
 from .types import (
     AgentRoleDefinition,
     AgentsSdkRuntimeResult,
@@ -70,7 +72,7 @@ def agents_sdk_available() -> bool:
     return importlib.util.find_spec("agents") is not None
 
 
-def build_agents_sdk_team(endpoint: ModelProviderConfig, session_id: str) -> AgentsSdkTeam:
+def build_agents_sdk_team(endpoint: ModelProviderConfig, session_id: str, session_path: Path | None = None) -> AgentsSdkTeam:
     try:
         from agents import Agent, SQLiteSession, handoff
     except ImportError as exc:
@@ -106,12 +108,17 @@ def build_agents_sdk_team(endpoint: ModelProviderConfig, session_id: str) -> Age
     return AgentsSdkTeam(
         orchestrator=orchestrator,
         specialists=specialists,
-        session=SQLiteSession(session_id, ":memory:"),
+        session=SQLiteSession(session_id, str(session_path or ensure_runtime_session_path(session_id))),
         handoff_tool_names=tuple(role.handoff_tool_name for role in AGENT_ROLES),
     )
 
 
-def run_agents_sdk_fake_gateway_smoke(endpoint: ModelProviderConfig, session_id: str, user_goal: str) -> str:
+def run_agents_sdk_fake_gateway_smoke(
+    endpoint: ModelProviderConfig,
+    session_id: str,
+    user_goal: str,
+    session_path: Path | None = None,
+) -> str:
     try:
         from agents import RunConfig, Runner, Usage
         from agents.items import ModelResponse
@@ -161,7 +168,7 @@ def run_agents_sdk_fake_gateway_smoke(endpoint: ModelProviderConfig, session_id:
         def get_model(self, model_name: str | None) -> Any:
             return FakeGatewayModel()
 
-    team = build_agents_sdk_team(endpoint, session_id)
+    team = build_agents_sdk_team(endpoint, session_id, session_path)
     result = Runner.run_sync(
         team.orchestrator,
         user_goal,
@@ -181,13 +188,16 @@ def run_agents_sdk_runtime_dry_run(
     endpoint: ModelProviderConfig,
     *,
     run_sdk_smoke: bool = False,
+    output_dir: Path | None = None,
 ) -> AgentsSdkRuntimeResult:
     request_id = _request_id(payload)
     session_id = f"sim-agent-sdk-{request_id}"
+    session_path = ensure_runtime_session_path(session_id, output_dir)
     sdk_available = agents_sdk_available()
     sdk_output = ""
     if run_sdk_smoke:
-        sdk_output = run_agents_sdk_fake_gateway_smoke(endpoint, session_id, _user_goal(payload))
+        sdk_output = run_agents_sdk_fake_gateway_smoke(endpoint, session_id, _user_goal(payload), session_path)
+    skill_invocations = run_registered_agent_skills(payload)
     messages = _message_log()
     approvals = _approval_gates(payload)
     trace = _trace_events(session_id, sdk_available, bool(sdk_output), approvals)
@@ -200,10 +210,13 @@ def run_agents_sdk_runtime_dry_run(
         model=endpoint.model,
         reasoning_effort=endpoint.reasoning_effort,
         auth_mode=endpoint.auth_mode,
+        session_path=str(session_path),
         handoff_sequence=tuple(role.role_id for role in AGENT_ROLES),
         messages=messages,
         trace=trace,
         approval_gates=approvals,
+        skill_registry=skill_registry_summary(),
+        skill_invocations=skill_invocations,
         final_output=sdk_output or "agents_sdk_runtime_dry_run_planned",
     )
 
@@ -226,6 +239,7 @@ def agents_sdk_runtime_payload(result: AgentsSdkRuntimeResult) -> JsonMap:
         "model": result.model,
         "reasoning_effort": result.reasoning_effort,
         "auth_mode": result.auth_mode,
+        "session_path": result.session_path,
         "handoff_sequence": list(result.handoff_sequence),
         "messages": [asdict(message) for message in result.messages],
         "trace": [asdict(event) for event in result.trace],
@@ -237,6 +251,8 @@ def agents_sdk_runtime_payload(result: AgentsSdkRuntimeResult) -> JsonMap:
             }
             for gate in result.approval_gates
         ],
+        "skill_registry": result.skill_registry,
+        "skill_invocations": [asdict(invocation) for invocation in result.skill_invocations],
         "final_output": result.final_output,
     }
 
@@ -259,6 +275,7 @@ def _trace_events(
         RuntimeTraceEvent("session_created", "orchestrator", session_id),
         RuntimeTraceEvent("sdk_available", "orchestrator", str(sdk_available).lower()),
         RuntimeTraceEvent("sdk_run_completed", "orchestrator", str(sdk_run_completed).lower()),
+        RuntimeTraceEvent("skill_registry_loaded", "orchestrator", "callable_handlers"),
     ]
     events.extend(
         RuntimeTraceEvent("handoff_registered", "orchestrator", f"{role.handoff_tool_name}:{role.role_id}")

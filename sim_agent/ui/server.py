@@ -8,6 +8,13 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import assert_never
 
+from sim_agent.compute import ComputePolicyError
+from sim_agent.runtime_config import (
+    load_runtime_config,
+    runtime_config_from_payload,
+    runtime_config_payload,
+    save_runtime_config,
+)
 from sim_agent.schemas._parse import JsonMap, as_bool, as_mapping, as_str, require
 from sim_agent.runner import OfflineRunRequest, OfflineRunResult, RunManagerError, run_offline_simulation
 
@@ -21,6 +28,14 @@ from .response_payload import (
     run_response_payload,
     status_payload,
     validation_payload,
+)
+from .security import (
+    UiHttpSecurityContext,
+    authorized_state_change,
+    build_security_context,
+    require_safe_bind,
+    security_payload,
+    session_cookie_header,
 )
 
 
@@ -43,7 +58,9 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
         route = self.path.split("?", 1)[0]
         match route:
             case "/api/status":
-                self._write_json(status_payload(build_ui_api_status()), 200)
+                self._write_json(self._status_response(), 200)
+            case "/api/runtime/config":
+                self._write_json(self._runtime_config_response(), 200)
             case "/api/knowledge/agent-context":
                 self._write_json(build_ui_agent_graph_context(), 200)
             case "/api/model/auth/status":
@@ -63,9 +80,13 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
             "/api/agent/prepare-md-campaign-worker-bundle",
             "/api/model/auth/login",
             "/api/model/gateway/smoke",
+            "/api/runtime/config",
             "/api/run/offline",
         }:
             self._write_json({"error": "route_not_found"}, 404)
+            return
+        if not authorized_state_change(self.headers, self._security_context()):
+            self._write_json({"error": "unauthorized_state_change"}, 401)
             return
         try:
             payload = _read_payload(self)
@@ -84,8 +105,22 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
                 self._handle_model_auth_login(payload)
             case "/api/model/gateway/smoke":
                 self._handle_model_gateway_smoke(payload)
+            case "/api/runtime/config":
+                self._handle_runtime_config_save(payload)
             case "/api/run/offline":
                 self._handle_offline_run(payload)
+
+    def _status_response(self) -> JsonMap:
+        payload = dict(status_payload(build_ui_api_status()))
+        payload["runtime_config"] = runtime_config_payload(load_runtime_config())
+        payload["controller_security"] = security_payload(self._security_context())
+        return payload
+
+    def _runtime_config_response(self) -> JsonMap:
+        return {
+            "runtime_config": runtime_config_payload(load_runtime_config()),
+            "controller_security": security_payload(self._security_context()),
+        }
 
     def _handle_model_auth_login(self, payload: JsonMap) -> None:
         try:
@@ -104,6 +139,16 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
         status_code = 200 if result.get("ok") is True else 400
         self._write_json(result, status_code)
 
+    def _handle_runtime_config_save(self, payload: JsonMap) -> None:
+        try:
+            value = payload.get("runtime_config", payload)
+            config = runtime_config_from_payload(as_mapping(value, "runtime_config"))
+            path = save_runtime_config(config)
+        except (OSError, TypeError, ValueError) as exc:
+            self._write_json({"error": str(exc)}, 400)
+            return
+        self._write_json({"runtime_config": runtime_config_payload(config), "config_path": str(path)}, 200)
+
     def _handle_offline_run(self, payload: JsonMap) -> None:
         try:
             request = _request_from_payload(payload)
@@ -116,7 +161,7 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
             return
         try:
             result = _run_offline_request(validation.request)
-        except (UiHttpPayloadError, RunManagerError, OSError) as exc:
+        except (ComputePolicyError, UiHttpPayloadError, RunManagerError, OSError) as exc:
             status_code = exc.status_code if isinstance(exc, UiHttpPayloadError) else 400
             self._write_json({"error": str(exc)}, status_code)
             return
@@ -128,16 +173,36 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        cookie = session_cookie_header(self._security_context())
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
             return
 
+    def _security_context(self) -> UiHttpSecurityContext:
+        context = getattr(self.server, "asa_security_context")
+        if isinstance(context, UiHttpSecurityContext):
+            return context
+        raise UiHttpPayloadError("controller_security_context_missing", 500)
 
-def build_ui_http_server(host: str, port: int, static_root: Path) -> ThreadingHTTPServer:
+
+def build_ui_http_server(
+    host: str,
+    port: int,
+    static_root: Path,
+    *,
+    allow_non_loopback: bool = False,
+    csrf_token: str | None = None,
+) -> ThreadingHTTPServer:
+    security_context = build_security_context(host, allow_non_loopback=allow_non_loopback, csrf_token=csrf_token)
+    require_safe_bind(security_context)
     handler = partial(UiRequestHandler, directory=str(static_root))
-    return ThreadingHTTPServer((host, port), handler)
+    server = ThreadingHTTPServer((host, port), handler)
+    server.asa_security_context = security_context
+    return server
 
 
 def _read_payload(handler: SimpleHTTPRequestHandler) -> JsonMap:

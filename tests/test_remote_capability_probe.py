@@ -97,4 +97,4 @@ def test_prepare_remote_capability_probe_cli_uses_5090_inventory_default(
     assert manifest["ssh_target"] == "swym@10.24.12.85"
     assert manifest["ssh_port"] == 55555
     assert manifest["remote_user"] == "swym"
-    assert manifest["inventory_source"] == "default"
+    assert manifest["inventory_source"] == "runtime_config"

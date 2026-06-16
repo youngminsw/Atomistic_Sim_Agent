@@ -28,9 +28,11 @@ from .session_runtime import (
     AgentTeamSessionResult,
     AgentTeamSessionStatus,
     agent_team_session_payload,
+    run_agent_team_session_runtime,
     run_agent_team_session_smoke,
     write_agent_team_session_ledger,
 )
+from .skill_registry import agent_skill_contracts, run_registered_agent_skills, skill_registry_summary
 from .types import (
     AgentRoleDefinition,
     AgentsSdkRuntimeResult,
@@ -39,6 +41,7 @@ from .types import (
     ApprovalStatus,
     RuntimeMessage,
     RuntimeTraceEvent,
+    SkillInvocationResult,
 )
 
 __all__ = [
@@ -61,15 +64,20 @@ __all__ = [
     "PRODUCTION_GATEWAY_SMOKE_LEDGER_NAME",
     "RuntimeMessage",
     "RuntimeTraceEvent",
+    "SkillInvocationResult",
     "TEAM_HEARTBEAT_INTERVAL_S",
     "agents_sdk_available",
     "agents_sdk_runtime_payload",
     "agent_team_session_payload",
+    "agent_skill_contracts",
     "build_agents_sdk_team",
     "production_gateway_smoke_payload",
+    "run_agent_team_session_runtime",
     "run_agent_team_session_smoke",
     "run_agents_sdk_fake_gateway_smoke",
     "run_agents_sdk_runtime_dry_run",
+    "run_registered_agent_skills",
+    "skill_registry_summary",
     "run_production_gateway_client_smoke",
     "write_agent_team_session_ledger",
     "write_agents_sdk_runtime_ledger",

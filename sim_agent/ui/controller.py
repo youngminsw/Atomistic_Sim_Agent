@@ -33,8 +33,15 @@ class ControllerValidation:
 
 
 def validate_controller_request(request: ControllerRunRequest) -> ControllerValidation:
-    target = require_allowed_host(request.compute_target)
     missing = _missing_fields(request)
+    if missing:
+        return ControllerValidation(
+            can_run=False,
+            missing_fields=missing,
+            compute_target=request.compute_target,
+            request=request,
+        )
+    target = require_allowed_host(request.compute_target)
     return ControllerValidation(
         can_run=not missing,
         missing_fields=missing,
@@ -77,6 +84,8 @@ def _missing_fields(request: ControllerRunRequest) -> tuple[str, ...]:
         missing.append("kernel")
     if not request.events_path:
         missing.append("events")
+    if not request.compute_target:
+        missing.append("compute")
     if request.steps <= 0:
         missing.append("steps")
     if request.ions <= 0:

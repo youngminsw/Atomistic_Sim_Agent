@@ -21,6 +21,7 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand("/team", "/team contract", "show heartbeat, timeout, call-matrix, and QA-gate contract"),
     SlashCommand("/skills", "/skills", "show simulation skills available to the agent team"),
     SlashCommand("/runtime", "/runtime [--output-dir PATH] [--smoke]", "exercise the OpenAI Agents SDK runtime path"),
+    SlashCommand("/setup", "/setup runtime --compute-resource <alias> [...]", "edit saved runtime config and compute resources"),
     SlashCommand("/status", "/status", "show session, model, ledgers, and latest agent board"),
     SlashCommand("/log", "/log [--limit N]", "show recent session events"),
     SlashCommand("/run", "/run [--output-dir PATH] <goal>", "ask the main Orchestrator to prepare a run bundle"),

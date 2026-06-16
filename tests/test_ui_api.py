@@ -9,6 +9,8 @@ from threading import Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import pytest
+
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT
@@ -88,7 +90,7 @@ def test_ui_http_server_serves_status_and_blocks_missing_iedf() -> None:
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -133,12 +135,47 @@ def test_ui_http_server_serves_status_and_blocks_missing_iedf() -> None:
     assert blocked_body["runner_command"] == []
 
 
+def test_ui_http_server_denies_unauthorized_post_and_protects_non_loopback() -> None:
+    from sim_agent.ui import build_ui_api_status
+    from sim_agent.ui.server import build_ui_http_server
+
+    status = build_ui_api_status()
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
+    host, port = server.server_address
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        status_payload = as_mapping(
+            json.loads(urlopen(f"http://{host}:{port}/api/status", timeout=5).read().decode("utf-8")),
+            "status",
+        )
+        body, status_code = _post_json(
+            f"http://{host}:{port}/api/runtime/config",
+            status_payload["runtime_config"],
+            headers={"Content-Type": "application/json"},
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    security = as_mapping(status_payload["controller_security"], "controller_security")
+    assert status_code == 401
+    assert body["error"] == "unauthorized_state_change"
+    assert security["token_exposed"] is False
+    with pytest.raises(PermissionError, match="non_loopback_bind_requires_controller_token"):
+        build_ui_http_server("0.0.0.0", 0, status.static_root)
+    with pytest.raises(PermissionError, match="non_loopback_bind_requires_explicit_opt_in"):
+        build_ui_http_server("0.0.0.0", 0, status.static_root, csrf_token="test-token")
+
+
 def test_ui_http_server_serves_agent_graphdb_context() -> None:
     from sim_agent.ui import build_ui_api_status
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -174,7 +211,7 @@ def test_ui_http_server_rejects_unsafe_paths_and_oversized_body() -> None:
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -232,7 +269,7 @@ def test_ui_http_server_agent_plan_reports_training_required_clarification() -> 
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -269,7 +306,7 @@ def test_ui_http_server_agent_plan_rejects_bad_openclaw_base_url() -> None:
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -293,7 +330,7 @@ def test_ui_http_server_executes_valid_offline_3d_run(tmp_path: Path) -> None:
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     run_id = "pytest-http-hole-run"
     out_dir = SOURCE_ROOT / "evidence" / run_id
@@ -398,11 +435,11 @@ def test_ui_artifact_links_follow_runner_artifact_contract() -> None:
     }
 
 
-def _post_json(url: str, payload: JsonMap) -> tuple[JsonMap, int]:
+def _post_json(url: str, payload: JsonMap, headers: dict[str, str] | None = None) -> tuple[JsonMap, int]:
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers or _auth_headers(),
         method="POST",
     )
     try:
@@ -412,11 +449,11 @@ def _post_json(url: str, payload: JsonMap) -> tuple[JsonMap, int]:
     return as_mapping(json.loads(response.read().decode("utf-8")), "response"), response.status
 
 
-def _post_raw(url: str, payload: str) -> tuple[JsonMap, int]:
+def _post_raw(url: str, payload: str, headers: dict[str, str] | None = None) -> tuple[JsonMap, int]:
     request = Request(
         url,
         data=payload.encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers or _auth_headers(),
         method="POST",
     )
     try:
@@ -428,3 +465,7 @@ def _post_raw(url: str, payload: str) -> tuple[JsonMap, int]:
 
 def _load_request(name: str) -> JsonMap:
     return as_mapping(json.loads((REQUEST_ROOT / name).read_text(encoding="utf-8")), name)
+
+
+def _auth_headers() -> dict[str, str]:
+    return {"Content-Type": "application/json", "X-ASA-CSRF-Token": "test-token"}

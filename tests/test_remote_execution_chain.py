@@ -100,7 +100,7 @@ def test_ui_http_writes_remote_execution_chain_when_ssh_target_is_present(
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     output_dir = tmp_path / "agent-plan"
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -205,7 +205,7 @@ def _post_json(url: str, payload: JsonMap) -> JsonMap:
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-ASA-CSRF-Token": "test-token"},
         method="POST",
     )
     response = urlopen(request, timeout=5)

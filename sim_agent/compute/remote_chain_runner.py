@@ -76,9 +76,10 @@ def _stage_ids(manifest: JsonMap) -> tuple[str, ...]:
 
 
 def _run_script(script_path: Path, timeout_s: float | None) -> subprocess.CompletedProcess[str]:
+    _normalize_bash_newlines(script_path)
     try:
         return subprocess.run(
-            ("bash", str(script_path)),
+            ("bash", script_path.name),
             cwd=script_path.parent,
             text=True,
             capture_output=True,
@@ -94,6 +95,13 @@ def _run_script(script_path: Path, timeout_s: float | None) -> subprocess.Comple
             stdout=stdout,
             stderr=stderr + "\nremote_chain_timeout",
         )
+
+
+def _normalize_bash_newlines(script_path: Path) -> None:
+    data = script_path.read_bytes()
+    normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if normalized != data:
+        script_path.write_bytes(normalized)
 
 
 def _completed_stage_ids(stdout: str, stage_ids: tuple[str, ...]) -> tuple[str, ...]:

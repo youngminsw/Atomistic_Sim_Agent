@@ -6,6 +6,8 @@ from pathlib import Path
 
 from sim_agent.agent_cli_request import AgentCliRequestInput, build_agent_cli_request, parse_range
 from sim_agent.agent_run_ledger import write_agent_run_ledger
+from sim_agent.compute import default_compute_resource
+from sim_agent.runtime_config import default_model_endpoint, load_runtime_config
 from sim_agent.schemas._parse import as_str, require
 from sim_agent.ui import agent_compute
 
@@ -51,6 +53,9 @@ class OrchestratorChatError(Exception):
 
 
 def add_chat_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    runtime = load_runtime_config()
+    endpoint = default_model_endpoint(runtime)
+    compute = default_compute_resource(runtime)
     parser = subparsers.add_parser("chat", help="Talk to the main Orchestrator and prepare a run bundle.")
     parser.add_argument("--message", "-m", required=True)
     parser.add_argument("--output-dir", default=str(SOURCE_ROOT / "evidence" / "asa-chat"))
@@ -63,13 +68,13 @@ def add_chat_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     parser.add_argument("--energy-range-eV", default="30:150")
     parser.add_argument("--polar-range-deg", default="0:55")
     parser.add_argument("--azimuth-range-deg", default="0:360")
-    parser.add_argument("--host", default="gpu-5090")
-    parser.add_argument("--environment-name", default="atomistic-sim-gpu")
-    parser.add_argument("--model-provider", default="openclaw")
-    parser.add_argument("--model-name", default="gpt-5.5")
-    parser.add_argument("--model-base-url", default="https://openclaw.local/v1")
-    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="oauth")
-    parser.add_argument("--model-api-key-env", default="OPENCLAW_OAUTH_TOKEN")
+    parser.add_argument("--host", default=compute.host_alias)
+    parser.add_argument("--environment-name", default=compute.environment_name)
+    parser.add_argument("--model-provider", default=endpoint.provider)
+    parser.add_argument("--model-name", default=endpoint.model)
+    parser.add_argument("--model-base-url", default=endpoint.base_url)
+    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default=endpoint.auth_mode)
+    parser.add_argument("--model-api-key-env", default=endpoint.api_key_env)
 
 
 def run_chat(args: argparse.Namespace) -> int:
@@ -86,7 +91,7 @@ def run_chat(args: argparse.Namespace) -> int:
 def prepare_orchestrator_chat(config: OrchestratorChatConfig) -> OrchestratorChatReport:
     agent_compute.SOURCE_ROOT = config.source_root
     request = build_agent_cli_request(
-        _request_input(config),
+        build_orchestrator_chat_request(config),
         parse_range(config.energy_range_ev, "energy_range_eV"),
         parse_range(config.polar_range_deg, "polar_range_deg"),
         parse_range(config.azimuth_range_deg, "azimuth_range_deg"),
@@ -142,7 +147,7 @@ def _config(args: argparse.Namespace) -> OrchestratorChatConfig:
     )
 
 
-def _request_input(config: OrchestratorChatConfig) -> AgentCliRequestInput:
+def build_orchestrator_chat_request(config: OrchestratorChatConfig) -> AgentCliRequestInput:
     return AgentCliRequestInput(
         goal=config.message,
         material=config.material,

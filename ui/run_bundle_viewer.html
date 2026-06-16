@@ -44,11 +44,7 @@
             </label>
             <label>Compute
               <select id="compute-target">
-                <option value="gpu-5090">gpu-5090</option>
-                <option value="blackwell-rtxpro">blackwell-rtxpro</option>
-                <option value="gpu-ada">gpu-ada</option>
-                <option value="ws-gpu">ws-gpu</option>
-                <option value="local">local</option>
+                <option value="">Load runtime config</option>
               </select>
             </label>
             <label>Steps <input id="run-steps" type="number" min="1" value="5"></label>
@@ -65,11 +61,29 @@
           <div id="controller-errors" class="controller-errors"></div>
         </section>
 
+        <section class="panel runtime-settings">
+          <h2>Runtime Config</h2>
+          <label>Workspace
+            <input id="runtime-workspace-root" type="text" value="">
+          </label>
+          <label>Evidence
+            <input id="runtime-evidence-root" type="text" value="">
+          </label>
+          <label>Compute Resources
+            <textarea id="runtime-compute-resources" rows="6">[]</textarea>
+          </label>
+          <div class="button-row">
+            <button id="runtime-config-save" type="button">Save Runtime</button>
+          </div>
+          <div id="runtime-config-status" class="controller-errors"></div>
+        </section>
+
         <section class="panel model-settings">
           <h2>Model</h2>
           <div class="control-grid">
             <label>Provider
               <select id="model-provider">
+                <option value="">Select Provider</option>
                 <option value="openclaw">Openclaw</option>
                 <option value="openai">OpenAI</option>
                 <option value="oauth_gateway">OAuth Gateway</option>
@@ -78,7 +92,7 @@
               </select>
             </label>
             <label>Model
-              <input id="model-name" type="text" value="gpt-5.5">
+              <input id="model-name" type="text" value="" placeholder="Configured runtime model">
             </label>
             <label>Reasoning
               <select id="reasoning-effort">
@@ -96,10 +110,10 @@
               </select>
             </label>
             <label>Base URL
-              <input id="model-base-url" type="text" value="https://openclaw.local/v1">
+              <input id="model-base-url" type="text" value="" placeholder="Configured runtime endpoint">
             </label>
             <label>Key Env
-              <input id="model-api-key-env" type="text" value="OPENCLAW_OAUTH_TOKEN">
+              <input id="model-api-key-env" type="text" value="" placeholder="Configured token env">
             </label>
           </div>
           <form id="model-auth-form" class="auth-form">
@@ -165,12 +179,7 @@
           <form id="agent-plan-form" class="agent-plan-form">
             <textarea id="agent-request-json" name="request" rows="7">{
   "request_id": "ui-agent-plan",
-  "llm_endpoint": {
-    "provider": "openclaw",
-    "model": "gpt-5.5",
-    "reasoning_effort": "high",
-    "base_url": "https://openclaw.local/v1"
-  },
+  "llm_endpoint": {},
   "ion_species": "Ar",
   "target_material": "Si"
 }</textarea>
@@ -240,6 +249,7 @@
 
     <script src="run_bundle_viewer.js"></script>
     <script src="run_bundle_controller.js"></script>
+    <script src="run_bundle_runtime_config.js"></script>
     <script src="run_bundle_live_model.js"></script>
     <script src="run_bundle_ops_panel.js"></script>
     <script src="run_bundle_api_client.js"></script>
