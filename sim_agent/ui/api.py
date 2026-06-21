@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, assert_never
 
+from sim_agent.provider_registry import provider_ids
 from sim_agent.knowledge import (
     GraphDBGateRequest,
     GraphDBMode,
@@ -17,6 +18,7 @@ from .controller import (
     ControllerRunRequest,
     ControllerValidation,
     build_offline_runner_command,
+    controller_compute_targets,
     validate_controller_request,
 )
 
@@ -41,6 +43,7 @@ class UiApiStatus:
     model_options: tuple[str, ...]
     auth_modes: tuple[str, ...]
     agent_roles: tuple[str, ...]
+    compute_targets: tuple[str, ...]
     graphdb_database_name: str
     graphdb_write_requires_approval: bool
 
@@ -62,9 +65,10 @@ def build_ui_api_status() -> UiApiStatus:
         route_paths=tuple(route.path for route in routes),
         offline_fixtures=("pr_hole_3d", "pr_trench_2d"),
         routes=routes,
-        model_providers=("openclaw", "openai", "oauth_gateway", "local_gateway", "anthropic_gateway"),
-        model_options=("gpt-5.5", "gpt-5.3-codex-spark"),
+        model_providers=provider_ids(),
+        model_options=("gpt-5-codex", "gpt-5.5", "gpt-5.3-codex-spark", "claude-sonnet-4.5", "gemini-3-pro-preview"),
         auth_modes=("api_key", "oauth", "gateway", "none"),
+        compute_targets=controller_compute_targets(),
         agent_roles=(
             "orchestrator",
             "research_graphdb_agent",
@@ -153,6 +157,8 @@ def _routes() -> tuple[UiApiRoute, ...]:
     return (
         UiApiRoute(method="GET", path="/", description="static controller and run-bundle viewer"),
         UiApiRoute(method="GET", path="/api/status", description="controller routes and offline fixtures"),
+        UiApiRoute(method="GET", path="/api/runtime/config", description="editable runtime config and compute resources"),
+        UiApiRoute(method="POST", path="/api/runtime/config", description="save editable runtime config and compute resources"),
         UiApiRoute(
             method="GET",
             path="/api/knowledge/agent-context",

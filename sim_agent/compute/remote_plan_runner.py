@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,14 +84,15 @@ def _run_command(
     cwd: Path,
     timeout_s: float | None,
 ) -> subprocess.CompletedProcess[str]:
+    shell_command = _shell_command(command)
     try:
         return subprocess.run(
-            command,
+            shell_command,
             cwd=cwd,
             text=True,
             capture_output=True,
             timeout=timeout_s,
-            shell=True,
+            shell=isinstance(shell_command, str),
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
@@ -102,6 +104,13 @@ def _run_command(
             stdout=stdout,
             stderr=stderr + "\nremote_plan_timeout",
         )
+
+
+def _shell_command(command: str) -> tuple[str, str, str] | str:
+    bash_path = shutil.which("bash")
+    if bash_path:
+        return (bash_path, "-lc", command)
+    return command
 
 
 def _blockers(returncode: int, completed_count: int, total_count: int) -> list[str]:

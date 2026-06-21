@@ -40,7 +40,7 @@ def test_build_lammps_execution_job_from_md_campaign_job(tmp_path: Path) -> None
     assert execution_job.job_id == "plan-valid_ar_si_pr_hole-lammps-execution"
     assert execution_job.command == (
         "python3",
-        "02.Source_code/mss_agent/scripts/run_lammps_execution_plan.py",
+        "02.Source_code/asa_runtime/scripts/run_lammps_execution_plan.py",
         "--plan",
         f"{artifact_dir}/lammps_execution_plan.json",
         "--out",
@@ -64,13 +64,13 @@ def test_build_lammps_execution_job_from_md_campaign_job(tmp_path: Path) -> None
     assert postprocess_job.job_id == "plan-valid_ar_si_pr_hole-md-postprocess"
     assert postprocess_job.command == (
         "python3",
-        "02.Source_code/mss_agent/scripts/postprocess_lammps_execution.py",
+        "02.Source_code/asa_runtime/scripts/postprocess_lammps_execution.py",
         "--execution-result",
         f"{artifact_dir}/lammps_execution_result.json",
         "--material",
         "Si",
         "--descriptor-root",
-        "02.Source_code/mss_agent/tests/fixtures/materials",
+        "02.Source_code/asa_runtime/tests/fixtures/materials",
         "--events-out",
         f"{artifact_dir}/md_events.jsonl",
         "--report-out",
@@ -145,8 +145,9 @@ def test_ui_http_includes_lammps_execution_worker_bundle(tmp_path: Path) -> None
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
-    host, port = server.server_address
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
+    host = server.server_name
+    port = server.server_port
     output_dir = tmp_path / "agent-plan"
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -220,7 +221,7 @@ def _post_json(url: str, payload: JsonMap) -> JsonMap:
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-ASA-CSRF-Token": "test-token"},
         method="POST",
     )
     response = urlopen(request, timeout=5)

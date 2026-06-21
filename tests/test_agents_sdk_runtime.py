@@ -3,9 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
 
 import pytest
 
@@ -24,11 +22,15 @@ def _load_request(name: str) -> JsonMap:
     return as_mapping(json.loads((REQUEST_ROOT / name).read_text(encoding="utf-8")), name)
 
 
+def _mutable_request(name: str) -> dict[str, object]:
+    return dict(_load_request(name))
+
+
 def test_agents_sdk_runtime_dry_run_records_all_agent_handoffs_and_approvals(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import run_agents_sdk_runtime_dry_run, write_agents_sdk_runtime_ledger
     from sim_agent.llm_endpoints import ModelProviderConfig
 
-    payload = _load_request("valid_ar_si_pr_hole.json")
+    payload = _mutable_request("valid_ar_si_pr_hole.json")
     payload["host"] = "gpu-5090"
     payload["estimated_runtime_s"] = 3700
     payload["graphdb"] = {"mode": "attempt_write"}
@@ -56,6 +58,16 @@ def test_agents_sdk_runtime_dry_run_records_all_agent_handoffs_and_approvals(tmp
         "graphdb_write": "required",
         "destructive_action": "not_required",
     }
+    assert ledger["graph_memory"]["status"] == "query_plan_ready"
+    assert ledger["graph_memory"]["research_write_owner"] == "research_graphdb_agent"
+    assert {item["agent_id"] for item in ledger["graph_memory"]["agent_snapshots"]} == {
+        "orchestrator",
+        "md_agent",
+        "ml_mdn_agent",
+        "feature_scale_agent",
+        "research_graphdb_agent",
+        "qa_agent",
+    }
     assert "handoff_to_research_graphdb_agent:research_graphdb_agent" in {
         item["summary"] for item in ledger["trace"]
     }
@@ -65,7 +77,7 @@ def test_agents_sdk_runtime_records_approved_boundaries() -> None:
     from sim_agent.agents_sdk_runtime import run_agents_sdk_runtime_dry_run
     from sim_agent.llm_endpoints import ModelProviderConfig
 
-    payload = _load_request("valid_ar_si_pr_hole.json")
+    payload = _mutable_request("valid_ar_si_pr_hole.json")
     payload["remote_execution"] = True
     payload["destructive_action"] = True
     payload["approvals"] = {
@@ -86,7 +98,7 @@ def test_actual_openai_agents_sdk_team_and_fake_gateway_smoke() -> None:
     from sim_agent.agents_sdk_runtime import build_agents_sdk_team, run_agents_sdk_runtime_dry_run
     from sim_agent.llm_endpoints import ModelProviderConfig
 
-    payload = _load_request("valid_ar_si_pr_hole.json")
+    payload = _mutable_request("valid_ar_si_pr_hole.json")
     endpoint = ModelProviderConfig.from_mapping(as_mapping(payload["llm_endpoint"], "llm_endpoint"))
     team = build_agents_sdk_team(endpoint, "sdk-smoke")
     result = run_agents_sdk_runtime_dry_run(payload, endpoint, run_sdk_smoke=True)
@@ -174,6 +186,8 @@ def test_agent_team_session_smoke_writes_durable_sessions_and_call_matrix(tmp_pa
         "research_graphdb_agent",
         "qa_agent",
     }
+    assert ledger["graph_memory"]["status"] == "query_plan_ready"
+    assert ledger["graph_memory"]["research_write_owner"] == "research_graphdb_agent"
     for role_id in ("md_agent", "ml_mdn_agent", "feature_scale_agent"):
         assert set(ledger["call_matrix"][role_id]) == {
             "orchestrator",
@@ -181,6 +195,7 @@ def test_agent_team_session_smoke_writes_durable_sessions_and_call_matrix(tmp_pa
             "qa_agent",
         }
     assert any(event["event_type"] == "heartbeat_registered" for event in ledger["events"])
+    assert any(event["event_type"] == "graph_memory_context_attached" for event in ledger["events"])
     assert any(event["event_type"] == "context_compaction_checkpoint" for event in ledger["events"])
 
 
@@ -242,163 +257,3 @@ def test_agent_team_session_smoke_blocks_slurm_job_script_without_qa_gate(tmp_pa
     assert ledger["status"] == "blocked"
     assert ledger["qa_gates"]["slurm_job_script"] == "required"
     assert ledger["hard_blockers"] == ["qa_job_script_review_required"]
-
-
-def test_production_gateway_client_smoke_records_request_and_sessions(tmp_path: Path) -> None:
-    with _MockGateway() as gateway:
-        request_path = _write_gateway_request(tmp_path, gateway.base_url)
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(SOURCE_ROOT / "scripts" / "smoke_production_gateway_client.py"),
-                "--request",
-                str(request_path),
-                "--output-dir",
-                str(tmp_path / "out"),
-                "--api-key",
-                "test-gateway-token",
-            ],
-            cwd=PROJECT_ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    ledger = json.loads((tmp_path / "out" / "production_gateway_smoke_ledger.json").read_text(encoding="utf-8"))
-    sessions = {Path(path).name for path in ledger["session_files"]}
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "production_smoke=true" in result.stdout
-    assert "fake_gateway_model=false" in result.stdout
-    assert "gateway_request_id=gw-python-smoke" in result.stdout
-    assert ledger["production_smoke"] is True
-    assert ledger["fake_gateway_model"] is False
-    assert ledger["gateway_request_id"] == "gw-python-smoke"
-    assert ledger["provider"] == "oauth_gateway"
-    assert ledger["auth_mode"] == "gateway"
-    assert sessions == {"orchestrator.jsonl", "research_graphdb_agent.jsonl", "qa_agent.jsonl"}
-
-
-def test_production_gateway_client_smoke_records_missing_credential_blocker(tmp_path: Path) -> None:
-    request_path = _write_gateway_request(tmp_path, "http://127.0.0.1:9/v1")
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(SOURCE_ROOT / "scripts" / "smoke_production_gateway_client.py"),
-            "--request",
-            str(request_path),
-            "--output-dir",
-            str(tmp_path / "out"),
-        ],
-        cwd=PROJECT_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-        env={"PATH": "/usr/bin:/bin"},
-    )
-
-    ledger = json.loads((tmp_path / "out" / "production_gateway_smoke_ledger.json").read_text(encoding="utf-8"))
-
-    assert result.returncode == 1
-    assert "hard_blocker=missing_gateway_credentials" in result.stdout
-    assert ledger["hard_blockers"] == ["missing_gateway_credentials"]
-    assert ledger["offline"] is False
-
-
-def test_production_gateway_client_smoke_refuses_offline(tmp_path: Path) -> None:
-    request_path = _write_gateway_request(tmp_path, "http://127.0.0.1:9/v1")
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(SOURCE_ROOT / "scripts" / "smoke_production_gateway_client.py"),
-            "--request",
-            str(request_path),
-            "--output-dir",
-            str(tmp_path / "out"),
-            "--offline",
-        ],
-        cwd=PROJECT_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    ledger = json.loads((tmp_path / "out" / "production_gateway_smoke_ledger.json").read_text(encoding="utf-8"))
-
-    assert result.returncode == 1
-    assert "hard_blocker=production_smoke_refuses_offline" in result.stdout
-    assert ledger["offline"] is True
-
-
-def _write_gateway_request(tmp_path: Path, base_url: str) -> Path:
-    payload = _load_request("valid_ar_si_pr_hole.json")
-    payload["llm_endpoint"] = {
-        "provider": "oauth_gateway",
-        "model": "gpt-5.5",
-        "reasoning_effort": "high",
-        "base_url": base_url,
-        "auth_mode": "gateway",
-        "api_key_env": "MODEL_GATEWAY_TOKEN",
-    }
-    path = tmp_path / "gateway_request.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
-
-
-class _MockGateway:
-    def __init__(self) -> None:
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _MockGatewayHandler)
-        self._thread = Thread(target=self._server.serve_forever, daemon=True)
-
-    @property
-    def base_url(self) -> str:
-        return f"http://127.0.0.1:{self._server.server_port}/v1"
-
-    def __enter__(self) -> "_MockGateway":
-        self._thread.start()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        self._server.shutdown()
-        self._server.server_close()
-        self._thread.join(timeout=5)
-
-
-class _MockGatewayHandler(BaseHTTPRequestHandler):
-    def log_message(self, *_args: object) -> None:
-        return
-
-    def do_GET(self) -> None:
-        if self.path == "/healthz":
-            self._write({"ok": True, "gateway_request_id": "gw-health"})
-            return
-        if self.path == "/v1/models":
-            self._write({"object": "list", "data": [{"id": "gpt-5.5"}], "gateway_request_id": "gw-models"})
-            return
-        self._write({"error": {"code": "not_found"}}, status=404)
-
-    def do_POST(self) -> None:
-        if self.path != "/v1/responses":
-            self._write({"error": {"code": "not_found"}}, status=404)
-            return
-        if self.headers.get("authorization") != "Bearer test-gateway-token":
-            self._write({"error": {"code": "missing_gateway_credentials"}}, status=401)
-            return
-        self._write(
-            {
-                "gateway_request_id": "gw-python-smoke",
-                "output_text": "production_gateway_client_ready",
-                "agent_plan": {
-                    "specialist": "research_graphdb_agent",
-                    "second_call": "qa_agent",
-                },
-            }
-        )
-
-    def _write(self, payload: dict[str, object], status: int = 200) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)

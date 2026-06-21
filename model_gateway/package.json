@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
     "test": "npm run test:node",
-    "test:node": "node node_modules/typescript/bin/tsc -p tsconfig.json && node --test \"dist/test/**/*.test.js\"",
+    "test:node": "node node_modules/typescript/bin/tsc -p tsconfig.json && node --test dist/test/*.test.js",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

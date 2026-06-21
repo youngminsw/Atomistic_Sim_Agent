@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Agentic atomistic-to-feature-scale simulation controller"
 requires-python = ">=3.12"
 dependencies = [
+  "neo4j>=6.2.0",
+  "openai-agents>=0.17.5",
   "prompt-toolkit>=3.0.52",
 ]
 

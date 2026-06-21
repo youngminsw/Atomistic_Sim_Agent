@@ -53,7 +53,7 @@ def _chain() -> RemoteExecutionChain:
         remote_setup_commands=("ssh -p 55555 swym@10.24.12.85 mkdir",),
         upload_commands=("rsync source_payload.tar.gz remote:",),
         preflight_commands=("ssh remote tar -xzf source_payload.tar.gz",),
-        execution_command=("ssh remote python3 02.Source_code/mss_agent/scripts/run.py"),
+        execution_command=("ssh remote python3 02.Source_code/asa_runtime/scripts/run.py"),
         download_commands=("rsync remote:artifact .",),
     )
     return RemoteExecutionChain(

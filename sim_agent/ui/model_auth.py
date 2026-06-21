@@ -52,6 +52,7 @@ def login_model_gateway(payload: JsonMap) -> JsonMap:
     access_token = as_str(require(payload, "access_token"), "access_token")
     refresh_token = _optional_str(payload, "refresh_token") or access_token
     auth_mode = _optional_str(payload, "auth_mode") or "oauth"
+    login_profile = _optional_str(payload, "login_profile")
     expires_in_s = _optional_int(payload, "expires_in_s", 3600)
     if not provider:
         raise ModelAuthError("provider_required")
@@ -64,7 +65,7 @@ def login_model_gateway(payload: JsonMap) -> JsonMap:
         "expires": int(time.time() * 1000) + expires_in_s * 1000,
         "authMode": auth_mode,
     }
-    _write_credentials(provider, credentials, store)
+    _write_credentials(provider, credentials, store, login_profile=login_profile)
     return {
         "ok": True,
         "provider": provider,
@@ -127,7 +128,7 @@ def model_credential_status(
 def run_model_gateway_smoke_from_controller(payload: JsonMap) -> JsonMap:
     endpoint = ModelProviderConfig.from_mapping(as_mapping(require(payload, "llm_endpoint"), "llm_endpoint"))
     request = as_mapping(payload.get("request", payload), "request")
-    token = _access_token(endpoint.provider)
+    token = access_token_for_provider(endpoint.provider)
     result = run_production_gateway_client_smoke(
         request,
         endpoint,
@@ -145,6 +146,7 @@ def _smoke_payload(result: GatewayClientSmokeResult) -> JsonMap:
         "provider": result.provider,
         "model": result.model,
         "auth_mode": result.auth_mode,
+        "gateway_policy_id": result.gateway_policy_id,
         "gateway_health_ok": result.gateway_health_ok,
         "models_count": result.models_count,
         "endpoint_status": result.endpoint_status,
@@ -154,7 +156,7 @@ def _smoke_payload(result: GatewayClientSmokeResult) -> JsonMap:
     }
 
 
-def _access_token(provider: str) -> str | None:
+def access_token_for_provider(provider: str) -> str | None:
     entry = _read_credentials(_credential_store_path()).get(provider)
     if entry is None:
         return None
@@ -167,13 +169,22 @@ def _access_token(provider: str) -> str | None:
     return None
 
 
-def _write_credentials(provider: str, credentials: JsonMap, path: Path) -> None:
+def _write_credentials(
+    provider: str,
+    credentials: JsonMap,
+    path: Path,
+    *,
+    login_profile: str | None = None,
+) -> None:
     items = _read_credentials(path)
-    items[provider] = {
+    entry: dict[str, object] = {
         "provider": provider,
         "credentials": credentials,
         "updatedAtMs": int(time.time() * 1000),
     }
+    if login_profile:
+        entry["loginProfile"] = login_profile
+    items[provider] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)

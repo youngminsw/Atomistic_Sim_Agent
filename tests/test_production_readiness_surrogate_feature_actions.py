@@ -88,7 +88,7 @@ def test_production_readiness_builds_surrogate_and_feature_commands_when_ready()
     surrogate_command = string_list(surrogate_action, "command")
     assert surrogate_command[:8] == [
         "python3",
-        "02.Source_code/mss_agent/scripts/train_empirical_mdn_surrogate.py",
+        "02.Source_code/asa_runtime/scripts/train_empirical_mdn_surrogate.py",
         "--log",
         "/tmp/run/md/log.lammps",
         "--events",
@@ -105,7 +105,7 @@ def test_production_readiness_builds_surrogate_and_feature_commands_when_ready()
     assert feature_action["status"] == "ready"
     assert string_list(feature_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/run_offline_simulation.py",
+        "02.Source_code/asa_runtime/scripts/run_offline_simulation.py",
         "--scene",
         "/tmp/run/scene.json",
         "--kernel",

@@ -17,7 +17,7 @@ class GraphDBAccessError(ValueError):
 class GraphDBConnectionConfig:
     uri: str = "bolt://youngmin-lab:7687"
     database_name: str = "atomistic_sim_agent_knowledge"
-    username_env: str = "NEO4J_USER"
+    username_env: str = "NEO4J_USERNAME"
     password_env: str = "NEO4J_PASSWORD"
 
 
@@ -119,7 +119,7 @@ class Neo4jDriverClient:
 
     def run_write(self, database_name: str, kind: str, cypher: str, parameters: dict[str, Any]) -> None:
         with self._driver.session(database=database_name) as session:
-            session.run(cypher, **parameters).consume()
+            getattr(session, "run")(cypher, **parameters).consume()
 
     def close(self) -> None:
         self._driver.close()

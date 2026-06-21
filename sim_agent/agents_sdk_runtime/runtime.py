@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 from sim_agent.llm_endpoints import ModelProviderConfig
 from sim_agent.schemas._parse import JsonMap, as_mapping
 
+from .graph_memory import runtime_graph_memory_payload
+from .roles import AGENT_ROLES
+from .sdk_bridge import agents_sdk_available, run_agents_sdk_fake_gateway_smoke
+from .session_files import ensure_runtime_session_path
+from .skill_registry import run_registered_agent_skills, skill_registry_summary
 from .types import (
-    AgentRoleDefinition,
     AgentsSdkRuntimeResult,
-    AgentsSdkTeam,
     ApprovalGate,
     ApprovalStatus,
     RuntimeMessage,
@@ -23,173 +24,26 @@ from .types import (
 AGENTS_SDK_RUNTIME_LEDGER_NAME = "agents_sdk_runtime_ledger.json"
 
 
-class AgentsSdkRuntimeError(RuntimeError):
-    pass
-
-
-AGENT_ROLES: tuple[AgentRoleDefinition, ...] = (
-    AgentRoleDefinition(
-        "md_agent",
-        "MD Agent",
-        "LAMMPS MD structure/build/run/postprocess/physics gates",
-        "handoff_to_md_agent",
-        "Plan and verify MD work. Never bypass force-field, box-size, physics, or event-quality gates.",
-    ),
-    AgentRoleDefinition(
-        "ml_mdn_agent",
-        "ML/MDN Agent",
-        "MD event dataset audit, MDN training, uncertainty, active learning",
-        "handoff_to_ml_mdn_agent",
-        "Train and gate MD-derived surrogate models before feature-scale use.",
-    ),
-    AgentRoleDefinition(
-        "feature_scale_agent",
-        "Feature Scale Agent",
-        "KMC transport and Level-Set profile evolution",
-        "handoff_to_feature_scale_agent",
-        "Convert MDN outputs and plasma distributions into profile evolution artifacts.",
-    ),
-    AgentRoleDefinition(
-        "research_graphdb_agent",
-        "Research GraphDB Agent",
-        "Literature search, source-to-graph ingestion, provenance retrieval",
-        "handoff_to_research_graphdb_agent",
-        "Build source-backed knowledge with explicit Neo4j write approval boundaries.",
-    ),
-    AgentRoleDefinition(
-        "qa_agent",
-        "QA Agent",
-        "Run evidence audit, hard blocker checks, final report",
-        "handoff_to_qa_agent",
-        "Fail runs with missing MD incidents, failed physics gates, or failed GraphDB ingest.",
-    ),
-)
-
-
-def agents_sdk_available() -> bool:
-    return importlib.util.find_spec("agents") is not None
-
-
-def build_agents_sdk_team(endpoint: ModelProviderConfig, session_id: str) -> AgentsSdkTeam:
-    try:
-        from agents import Agent, SQLiteSession, handoff
-    except ImportError as exc:
-        raise AgentsSdkRuntimeError("openai_agents_sdk_missing") from exc
-
-    specialists = {
-        role.role_id: Agent(
-            name=role.display_name,
-            handoff_description=role.boundary,
-            instructions=role.instructions,
-            model=endpoint.model,
-        )
-        for role in AGENT_ROLES
-    }
-    handoffs = [
-        handoff(
-            specialists[role.role_id],
-            tool_name_override=role.handoff_tool_name,
-            tool_description_override=role.boundary,
-        )
-        for role in AGENT_ROLES
-    ]
-    orchestrator = Agent(
-        name="Orchestrator",
-        handoff_description="Owns the simulation run and routes work to specialist agents.",
-        instructions=(
-            "Clarify missing inputs, route work to specialists, preserve approval boundaries, "
-            "and stop on hard physics/data blockers."
-        ),
-        handoffs=handoffs,
-        model=endpoint.model,
-    )
-    return AgentsSdkTeam(
-        orchestrator=orchestrator,
-        specialists=specialists,
-        session=SQLiteSession(session_id, ":memory:"),
-        handoff_tool_names=tuple(role.handoff_tool_name for role in AGENT_ROLES),
-    )
-
-
-def run_agents_sdk_fake_gateway_smoke(endpoint: ModelProviderConfig, session_id: str, user_goal: str) -> str:
-    try:
-        from agents import RunConfig, Runner, Usage
-        from agents.items import ModelResponse
-        from agents.models.interface import Model, ModelProvider
-        from openai.types.responses.response_output_message import ResponseOutputMessage
-        from openai.types.responses.response_output_text import ResponseOutputText
-    except ImportError as exc:
-        raise AgentsSdkRuntimeError("openai_agents_sdk_missing") from exc
-
-    class FakeGatewayModel(Model):
-        async def get_response(
-            self,
-            system_instructions: str | None,
-            input: Any,
-            model_settings: Any,
-            tools: list[Any],
-            output_schema: Any,
-            handoffs: list[Any],
-            tracing: Any,
-            *,
-            previous_response_id: str | None,
-            conversation_id: str | None,
-            prompt: Any,
-        ) -> Any:
-            output_text = ResponseOutputText(type="output_text", text="agents_sdk_runtime_ready", annotations=[])
-            message = ResponseOutputMessage(
-                id="msg_agents_sdk_runtime_ready",
-                type="message",
-                role="assistant",
-                content=[output_text],
-                status="completed",
-            )
-            return ModelResponse(
-                output=[message],
-                usage=Usage(requests=1, input_tokens=1, output_tokens=1, total_tokens=2),
-                response_id="resp_agents_sdk_runtime_ready",
-            )
-
-        def stream_response(self, *args: Any, **kwargs: Any) -> Any:
-            async def _empty_stream() -> Any:
-                if False:
-                    yield None
-
-            return _empty_stream()
-
-    class FakeGatewayModelProvider(ModelProvider):
-        def get_model(self, model_name: str | None) -> Any:
-            return FakeGatewayModel()
-
-    team = build_agents_sdk_team(endpoint, session_id)
-    result = Runner.run_sync(
-        team.orchestrator,
-        user_goal,
-        max_turns=1,
-        session=team.session,
-        run_config=RunConfig(
-            model_provider=FakeGatewayModelProvider(),
-            tracing_disabled=True,
-            workflow_name="Atomistic Simulation Agent SDK smoke",
-        ),
-    )
-    return str(result.final_output)
-
-
 def run_agents_sdk_runtime_dry_run(
     payload: JsonMap,
     endpoint: ModelProviderConfig,
     *,
+    agent_model_assignments: JsonMap | None = None,
     run_sdk_smoke: bool = False,
+    output_dir: Path | None = None,
 ) -> AgentsSdkRuntimeResult:
     request_id = _request_id(payload)
     session_id = f"sim-agent-sdk-{request_id}"
+    session_path = ensure_runtime_session_path(session_id, output_dir)
     sdk_available = agents_sdk_available()
     sdk_output = ""
     if run_sdk_smoke:
-        sdk_output = run_agents_sdk_fake_gateway_smoke(endpoint, session_id, _user_goal(payload))
+        sdk_output = run_agents_sdk_fake_gateway_smoke(endpoint, session_id, _user_goal(payload), session_path)
+    skill_invocations = run_registered_agent_skills(payload, output_dir=output_dir)
     messages = _message_log()
     approvals = _approval_gates(payload)
+    graph_memory = runtime_graph_memory_payload(payload, ("orchestrator",) + tuple(role.role_id for role in AGENT_ROLES))
+    model_assignments = agent_model_assignments or _default_agent_model_assignments(endpoint)
     trace = _trace_events(session_id, sdk_available, bool(sdk_output), approvals)
     return AgentsSdkRuntimeResult(
         run_id=f"agents-sdk-{request_id}",
@@ -200,10 +54,15 @@ def run_agents_sdk_runtime_dry_run(
         model=endpoint.model,
         reasoning_effort=endpoint.reasoning_effort,
         auth_mode=endpoint.auth_mode,
+        session_path=str(session_path),
         handoff_sequence=tuple(role.role_id for role in AGENT_ROLES),
+        agent_model_assignments=model_assignments,
         messages=messages,
         trace=trace,
         approval_gates=approvals,
+        graph_memory=graph_memory,
+        skill_registry=skill_registry_summary(),
+        skill_invocations=skill_invocations,
         final_output=sdk_output or "agents_sdk_runtime_dry_run_planned",
     )
 
@@ -226,7 +85,9 @@ def agents_sdk_runtime_payload(result: AgentsSdkRuntimeResult) -> JsonMap:
         "model": result.model,
         "reasoning_effort": result.reasoning_effort,
         "auth_mode": result.auth_mode,
+        "session_path": result.session_path,
         "handoff_sequence": list(result.handoff_sequence),
+        "agent_model_assignments": result.agent_model_assignments,
         "messages": [asdict(message) for message in result.messages],
         "trace": [asdict(event) for event in result.trace],
         "approval_gates": [
@@ -237,6 +98,9 @@ def agents_sdk_runtime_payload(result: AgentsSdkRuntimeResult) -> JsonMap:
             }
             for gate in result.approval_gates
         ],
+        "graph_memory": result.graph_memory,
+        "skill_registry": result.skill_registry,
+        "skill_invocations": [asdict(invocation) for invocation in result.skill_invocations],
         "final_output": result.final_output,
     }
 
@@ -249,6 +113,21 @@ def _message_log() -> tuple[RuntimeMessage, ...]:
     return tuple(messages)
 
 
+def _default_agent_model_assignments(endpoint: ModelProviderConfig) -> JsonMap:
+    return {
+        role.role_id: {
+            "provider": endpoint.provider,
+            "model": endpoint.model,
+            "reasoning_effort": endpoint.reasoning_effort,
+            "base_url": endpoint.base_url,
+            "auth_mode": endpoint.auth_mode,
+            "api_key_env": endpoint.api_key_env,
+            "source": "default",
+        }
+        for role in AGENT_ROLES
+    }
+
+
 def _trace_events(
     session_id: str,
     sdk_available: bool,
@@ -259,6 +138,7 @@ def _trace_events(
         RuntimeTraceEvent("session_created", "orchestrator", session_id),
         RuntimeTraceEvent("sdk_available", "orchestrator", str(sdk_available).lower()),
         RuntimeTraceEvent("sdk_run_completed", "orchestrator", str(sdk_run_completed).lower()),
+        RuntimeTraceEvent("skill_registry_loaded", "orchestrator", "callable_handlers"),
     ]
     events.extend(
         RuntimeTraceEvent("handoff_registered", "orchestrator", f"{role.handoff_tool_name}:{role.role_id}")

@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     match args.command:
         case None:
-            return run_tui(session_dir=Path(args.session_dir) if args.session_dir else None)
+            return run_tui(session_dir=Path(args.session_dir) if args.session_dir else None, resume=args.resume)
         case "chat":
             return run_chat(args)
         case "auth":
@@ -34,12 +34,20 @@ def _parser() -> argparse.ArgumentParser:
         epilog="Run `asa` without a command to open the interactive agent shell.",
     )
     parser.add_argument("--session-dir", help="Open the interactive shell with a durable session directory.")
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="latest",
+        help="Resume the latest interactive GlobalSession, or resume the supplied session id/path.",
+    )
     subparsers = parser.add_subparsers(dest="command")
     add_chat_parser(subparsers)
     add_auth_parser(subparsers)
     ui = subparsers.add_parser("ui", help="Start the HTML controller.")
     ui.add_argument("--host", default="127.0.0.1")
     ui.add_argument("--port", type=int, default=8779)
+    ui.add_argument("--allow-non-loopback", action="store_true")
+    ui.add_argument("--controller-token")
     ui.add_argument("--smoke", action="store_true")
     return parser
 
@@ -49,7 +57,13 @@ def _run_ui(args: argparse.Namespace) -> int:
     if args.smoke:
         _print_ui_smoke(status.static_root)
         return 0
-    server = build_ui_http_server(args.host, args.port, status.static_root)
+    server = build_ui_http_server(
+        args.host,
+        args.port,
+        status.static_root,
+        allow_non_loopback=args.allow_non_loopback,
+        csrf_token=args.controller_token,
+    )
     with server:
         print(f"ui_url=http://{args.host}:{args.port}/run_bundle_viewer.html")
         server.serve_forever()

@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
-
-from sim_agent.schemas._parse import as_mapping, as_str
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT
 UI_ROOT = SOURCE_ROOT / "ui"
+
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from sim_agent.schemas._parse import as_mapping, as_str
 
 
 def test_ui_status_payload_includes_model_auth_hud(monkeypatch, tmp_path: Path) -> None:

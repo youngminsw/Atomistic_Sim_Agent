@@ -259,7 +259,11 @@ def _repo_path(resource_url: str, repo_root: Path) -> Path:
     candidate = repo_root / decoded
     if candidate.exists() or not decoded.startswith(LEGACY_SOURCE_PREFIX):
         return candidate
-    return repo_root / decoded.removeprefix(LEGACY_SOURCE_PREFIX)
+    stripped = decoded.removeprefix(LEGACY_SOURCE_PREFIX)
+    legacy_candidate = repo_root.parent / "mss_agent" / stripped
+    if legacy_candidate.exists():
+        return legacy_candidate
+    return repo_root / stripped
 
 
 def _file_uri_path(resource_url: str) -> Path:

@@ -3,7 +3,7 @@
   "environment_name": "atomistic-sim-gpu",
   "command": [
     "python",
-    "02.Source_code/mss_agent/scripts/smoke_transport.py",
+    "02.Source_code/asa_runtime/scripts/smoke_transport.py",
     "--dry-run"
   ],
   "inputs": [

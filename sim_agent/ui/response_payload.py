@@ -21,6 +21,7 @@ def status_payload(status: UiApiStatus) -> JsonMap:
         "model_options": list(status.model_options),
         "auth_modes": list(status.auth_modes),
         "agent_roles": list(status.agent_roles),
+        "compute_targets": list(status.compute_targets),
         "model_auth": model_auth_status_payload(include_credential_store=False),
         "graphdb": {
             "database_name": status.graphdb_database_name,

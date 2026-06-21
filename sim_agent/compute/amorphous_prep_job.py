@@ -22,7 +22,7 @@ def build_amorphous_structure_prep_job(
         environment_name=environment_name,
         command=(
             "python3",
-            "02.Source_code/mss_agent/scripts/prepare_amorphous_structure_job.py",
+            "02.Source_code/asa_runtime/scripts/prepare_amorphous_structure_job.py",
             "--material",
             material_id,
             "--atom-count",

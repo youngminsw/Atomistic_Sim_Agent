@@ -24,7 +24,7 @@ def write_remote_execution_script_bundle(
 ) -> RemoteExecutionScriptBundle:
     script_text = _script_text(chain)
     script_path.parent.mkdir(parents=True, exist_ok=True)
-    script_path.write_text(script_text, encoding="utf-8")
+    _write_bash_script(script_path, script_text)
     chmod_applied = _try_set_executable(script_path)
     manifest_payload = _manifest_payload(chain, script_path, chmod_applied)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -37,6 +37,10 @@ def write_remote_execution_script_bundle(
         manifest_path=manifest_path,
         manifest_payload=manifest_payload,
     )
+
+
+def _write_bash_script(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
 
 
 def _try_set_executable(script_path: Path) -> bool:

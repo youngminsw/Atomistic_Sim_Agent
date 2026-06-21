@@ -12,17 +12,17 @@ from .types import ComputePolicyError
 
 
 SOURCE_PAYLOAD_ARCHIVE = "source_payload.tar.gz"
-SOURCE_PAYLOAD_ROOT = "02.Source_code/mss_agent"
+SOURCE_PAYLOAD_ROOT = "02.Source_code"
 SOURCE_PAYLOAD_ENTRIES = (
-    Path("scripts/prepare_amorphous_structure_job.py"),
-    Path("scripts/probe_worker_capability.py"),
-    Path("scripts/run_md_campaign_job.py"),
-    Path("scripts/run_lammps_execution_plan.py"),
-    Path("scripts/postprocess_lammps_execution.py"),
-    Path("md_agent_window/Reference/force_field_library/potentials/Si.tersoff"),
-    Path("md_agent_window/results/run_Ar_Si_3evts/Si_periodic.data"),
-    Path("sim_agent"),
-    Path("tests/fixtures/materials"),
+    Path("asa_runtime/scripts/prepare_amorphous_structure_job.py"),
+    Path("asa_runtime/scripts/probe_worker_capability.py"),
+    Path("asa_runtime/scripts/run_md_campaign_job.py"),
+    Path("asa_runtime/scripts/run_lammps_execution_plan.py"),
+    Path("asa_runtime/scripts/postprocess_lammps_execution.py"),
+    Path("mss_agent/md_agent_window/Reference/force_field_library/potentials/Si.tersoff"),
+    Path("mss_agent/md_agent_window/results/run_Ar_Si_3evts/Si_periodic.data"),
+    Path("asa_runtime/sim_agent"),
+    Path("asa_runtime/tests/fixtures/materials"),
 )
 
 
@@ -38,6 +38,12 @@ class SourcePayloadSnapshot:
     entries: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class PayloadEntryRoot:
+    actual_path: Path
+    archive_relative: Path
+
+
 _SOURCE_PAYLOAD_CACHE: dict[Path, SourcePayloadSnapshot] = {}
 _SOURCE_PAYLOAD_CACHE_LOCK = Lock()
 
@@ -45,7 +51,7 @@ _SOURCE_PAYLOAD_CACHE_LOCK = Lock()
 def stage_compute_source_payload(source_root: Path, output_dir: Path) -> SourcePayloadBundle:
     archive_path = output_dir / SOURCE_PAYLOAD_ARCHIVE
     output_dir.mkdir(parents=True, exist_ok=True)
-    copied_paths = _stage_archive(source_root.resolve(), archive_path)
+    copied_paths = _stage_archive(_source_code_root(source_root), archive_path)
     manifest = {
         "archive_path": str(archive_path),
         "archive_name": SOURCE_PAYLOAD_ARCHIVE,
@@ -74,25 +80,44 @@ def _stage_archive(source_root: Path, archive_path: Path) -> list[str]:
     return copied_paths
 
 
+def _source_code_root(source_root: Path) -> Path:
+    resolved = source_root.resolve()
+    if (resolved / "asa_runtime").is_dir() and (resolved / "mss_agent").is_dir():
+        return resolved
+    if resolved.name == "asa_runtime" and (resolved.parent / "mss_agent").is_dir():
+        return resolved.parent
+    return resolved
+
+
 def _cached_snapshot(source_root: Path) -> SourcePayloadSnapshot | None:
     with _SOURCE_PAYLOAD_CACHE_LOCK:
         return _SOURCE_PAYLOAD_CACHE.get(source_root)
 
 
 def _add_entry(tar: tarfile.TarFile, source_root: Path, relative_root: Path) -> list[str]:
-    root = source_root / relative_root
-    if not root.exists():
-        raise ComputePolicyError(f"source_payload_missing={relative_root.as_posix()}")
+    entry = _resolve_payload_entry(source_root, relative_root)
+    root = entry.actual_path
     if root.is_file():
-        archive_name = _archive_name(source_root, root)
+        archive_name = _archive_name(entry.archive_relative)
         tar.add(root, arcname=archive_name)
         return [archive_name]
     added: list[str] = []
     for path in _iter_payload_files(root):
-        archive_name = _archive_name(source_root, path)
+        archive_name = _archive_name(entry.archive_relative / path.relative_to(root))
         tar.add(path, arcname=archive_name)
         added.append(archive_name)
     return added
+
+
+def _resolve_payload_entry(source_root: Path, relative_root: Path) -> PayloadEntryRoot:
+    canonical_path = source_root / relative_root
+    if canonical_path.exists():
+        return PayloadEntryRoot(canonical_path, relative_root)
+    if relative_root.parts and relative_root.parts[0] in {"asa_runtime", "mss_agent"}:
+        flat_path = source_root / Path(*relative_root.parts[1:])
+        if flat_path.exists():
+            return PayloadEntryRoot(flat_path, relative_root)
+    raise ComputePolicyError(f"source_payload_missing={relative_root.as_posix()}")
 
 
 def _iter_payload_files(root: Path) -> tuple[Path, ...]:
@@ -106,13 +131,15 @@ def _iter_payload_files(root: Path) -> tuple[Path, ...]:
     return tuple(files)
 
 
-def _archive_name(source_root: Path, path: Path) -> str:
-    return f"{SOURCE_PAYLOAD_ROOT}/{path.relative_to(source_root).as_posix()}"
+def _archive_name(relative_path: Path) -> str:
+    return f"{SOURCE_PAYLOAD_ROOT}/{relative_path.as_posix()}"
 
 
 def _should_include(path: Path) -> bool:
     if not path.is_file():
         return False
     if "__pycache__" in path.parts:
+        return False
+    if path.name.endswith(":Zone.Identifier"):
         return False
     return path.suffix not in {".pyc", ".pyo"}

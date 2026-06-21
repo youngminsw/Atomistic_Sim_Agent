@@ -1,4 +1,12 @@
 from .graphdb_gate import GraphDBGateError, GraphDBGatePlan, GraphDBGateRequest, GraphDBMode, build_graphdb_gate_plan
+from .graph_memory import (
+    AgentGraphMemorySnapshot,
+    GraphBrainContext,
+    GraphMemoryReadClient,
+    Neo4jGraphMemoryReadClient,
+    build_graph_brain_context,
+    graph_brain_payload,
+)
 from .graph_import import (
     GraphImportBundle,
     GraphImportError,
@@ -35,11 +43,20 @@ from .research_graphdb_agent import (
     build_research_graphdb_agent_artifacts,
     research_graphdb_agent_payload,
 )
+from .memory_seed import (
+    DEFAULT_MEMORY_TERMS,
+    MemorySeedError,
+    MemorySeedSource,
+    build_memory_seed_bundle,
+    memory_sources_from_rows,
+    read_memory_seed_sources_from_neo4j,
+)
 from .types import GraphDBDryRunBundle, KnowledgeRegistryError, ProvenanceRecord, SourceKind
 
 __all__ = [
     "Citation",
     "AgentGraphContext",
+    "AgentGraphMemorySnapshot",
     "AgentGraphQuery",
     "GraphDBAccessError",
     "GraphDBConnectionConfig",
@@ -53,8 +70,13 @@ __all__ = [
     "GraphIngestReport",
     "GraphDBWriteReport",
     "GraphDBWriteRequest",
+    "GraphBrainContext",
+    "GraphMemoryReadClient",
     "KnowledgeRegistryError",
+    "MemorySeedError",
+    "MemorySeedSource",
     "Neo4jDriverClient",
+    "Neo4jGraphMemoryReadClient",
     "ProvenanceRecord",
     "ProvenanceRegistry",
     "ResearchAnswer",
@@ -64,16 +86,22 @@ __all__ = [
     "ResearchQuestion",
     "ResearchToolError",
     "SourceKind",
+    "DEFAULT_MEMORY_TERMS",
     "agent_graph_context_payload",
     "answer_research_question",
     "build_agent_graph_context",
     "build_graphdb_gate_plan",
+    "build_graph_brain_context",
+    "build_memory_seed_bundle",
     "build_research_graphdb_agent_artifacts",
     "build_source_graph_import_bundle",
     "execute_graph_import_bundle",
     "graphdb_write_report_payload",
+    "graph_brain_payload",
     "import_research_source",
     "research_graphdb_agent_payload",
     "report_payload",
+    "memory_sources_from_rows",
+    "read_memory_seed_sources_from_neo4j",
     "seeded_provenance_registry",
 ]

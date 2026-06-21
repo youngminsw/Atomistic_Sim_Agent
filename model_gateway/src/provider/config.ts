@@ -67,15 +67,15 @@ export function parseModelProviderConfig(value: unknown): ModelProviderConfig {
   const baseConfig = {
     provider,
     model: optionalString(mapping, "model", DEFAULT_MODEL),
-    reasoningEffort: parseReasoningEffort(optionalString(mapping, "reasoning_effort", DEFAULT_REASONING)),
-    baseUrl: normalizeBaseUrl(requiredString(mapping, "base_url")),
-    useCase: parseUseCase(optionalString(mapping, "use_case", DEFAULT_USE_CASE)),
-    structuredOutputs: optionalBoolean(mapping, "structured_outputs", true),
+    reasoningEffort: parseReasoningEffort(optionalStringAlias(mapping, "reasoning_effort", "reasoningEffort", DEFAULT_REASONING)),
+    baseUrl: normalizeBaseUrl(requiredStringAlias(mapping, "base_url", "baseUrl")),
+    useCase: parseUseCase(optionalStringAlias(mapping, "use_case", "useCase", DEFAULT_USE_CASE)),
+    structuredOutputs: optionalBooleanAlias(mapping, "structured_outputs", "structuredOutputs", true),
     streaming: optionalBoolean(mapping, "streaming", false),
-    apiKeyEnv: optionalString(mapping, "api_key_env", defaultApiKeyEnv(provider)),
-    authMode: parseAuthMode(optionalString(mapping, "auth_mode", defaultAuthMode(provider))),
+    apiKeyEnv: optionalStringAlias(mapping, "api_key_env", "apiKeyEnv", defaultApiKeyEnv(provider)),
+    authMode: parseAuthMode(optionalStringAlias(mapping, "auth_mode", "authMode", defaultAuthMode(provider))),
   }
-  const authRefreshCommand = optionalStringOrUndefined(mapping, "auth_refresh_command")
+  const authRefreshCommand = optionalStringOrUndefinedAlias(mapping, "auth_refresh_command", "authRefreshCommand")
   const config = authRefreshCommand === undefined ? baseConfig : { ...baseConfig, authRefreshCommand }
   enforceModelProviderPolicy(config)
   return config
@@ -185,6 +185,14 @@ function requiredString(mapping: Record<string, unknown>, field: string): string
   return value
 }
 
+function requiredStringAlias(mapping: Record<string, unknown>, snakeField: string, camelField: string): string {
+  const value = mapping[snakeField] ?? mapping[camelField]
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ModelProviderConfigError("string_required", `${snakeField} must be a non-empty string`)
+  }
+  return value
+}
+
 function optionalString(mapping: Record<string, unknown>, field: string, fallback: string): string {
   const value = mapping[field]
   if (value === undefined) {
@@ -192,6 +200,22 @@ function optionalString(mapping: Record<string, unknown>, field: string, fallbac
   }
   if (typeof value !== "string" || value.length === 0) {
     throw new ModelProviderConfigError("string_required", `${field} must be a non-empty string`)
+  }
+  return value
+}
+
+function optionalStringAlias(
+  mapping: Record<string, unknown>,
+  snakeField: string,
+  camelField: string,
+  fallback: string,
+): string {
+  const value = mapping[snakeField] ?? mapping[camelField]
+  if (value === undefined) {
+    return fallback
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ModelProviderConfigError("string_required", `${snakeField} must be a non-empty string`)
   }
   return value
 }
@@ -207,6 +231,21 @@ function optionalStringOrUndefined(mapping: Record<string, unknown>, field: stri
   return value
 }
 
+function optionalStringOrUndefinedAlias(
+  mapping: Record<string, unknown>,
+  snakeField: string,
+  camelField: string,
+): string | undefined {
+  const value = mapping[snakeField] ?? mapping[camelField]
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ModelProviderConfigError("string_required", `${snakeField} must be a non-empty string`)
+  }
+  return value
+}
+
 function optionalBoolean(mapping: Record<string, unknown>, field: string, fallback: boolean): boolean {
   const value = mapping[field]
   if (value === undefined) {
@@ -214,6 +253,22 @@ function optionalBoolean(mapping: Record<string, unknown>, field: string, fallba
   }
   if (typeof value !== "boolean") {
     throw new ModelProviderConfigError("boolean_required", `${field} must be boolean`)
+  }
+  return value
+}
+
+function optionalBooleanAlias(
+  mapping: Record<string, unknown>,
+  snakeField: string,
+  camelField: string,
+  fallback: boolean,
+): boolean {
+  const value = mapping[snakeField] ?? mapping[camelField]
+  if (value === undefined) {
+    return fallback
+  }
+  if (typeof value !== "boolean") {
+    throw new ModelProviderConfigError("boolean_required", `${snakeField} must be boolean`)
   }
   return value
 }

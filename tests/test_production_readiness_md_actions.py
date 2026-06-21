@@ -72,7 +72,7 @@ def test_production_readiness_uses_existing_amorphous_prep_worker() -> None:
     assert prep_action["requires_user_action"] == "approve_remote_or_long_compute_run"
     assert string_list(prep_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/run_remote_execution_plan.py",
+        "02.Source_code/asa_runtime/scripts/run_remote_execution_plan.py",
         "--plan",
         "/tmp/run/amorphous_structure_prep_remote_plan.json",
         "--out",
@@ -138,7 +138,7 @@ def test_production_readiness_uses_completed_amorphous_prep_worker() -> None:
     assert rerun_action["status"] == "ready"
     assert string_list(rerun_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/resume_agent_run_from_request.py",
+        "02.Source_code/asa_runtime/scripts/resume_agent_run_from_request.py",
         "--request",
         "/tmp/run/validated_request.json",
         "--lammps-structure-source",

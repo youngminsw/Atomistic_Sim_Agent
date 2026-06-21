@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Mapping
 from urllib.parse import urlparse, urlunparse
 
+from sim_agent.provider_registry import default_api_key_env, default_auth_mode, provider_ids
 from sim_agent.schemas._parse import JsonMap, as_mapping, str_field
 from sim_agent.schemas.errors import ProviderConfigPolicyError
 
@@ -13,33 +13,29 @@ from .policy import is_allowed_openclaw_base_url, normalize_openclaw_base_url
 
 PRIMARY_MODEL = "gpt-5.5"
 PRIMARY_REASONING = "high"
-SUPPORTED_PROVIDERS = frozenset(
+SUPPORTED_PROVIDERS = frozenset(provider_ids(include_legacy=True))
+DEFAULT_API_KEY_ENV_BY_PROVIDER = {
+    provider: default_api_key_env(provider) for provider in SUPPORTED_PROVIDERS
+}
+DEFAULT_API_KEY_ENV_BY_PROVIDER.update(
     {
-        "openclaw",
-        "openai",
-        "oauth_gateway",
-        "local_gateway",
-        "anthropic",
-        "anthropic_gateway",
+        "openclaw": "OPENCLAW_OAUTH_TOKEN",
+        "oauth_gateway": "MODEL_GATEWAY_TOKEN",
+        "anthropic_gateway": "MODEL_GATEWAY_TOKEN",
     }
 )
-DEFAULT_API_KEY_ENV_BY_PROVIDER = {
-    "openclaw": "OPENCLAW_OAUTH_TOKEN",
-    "openai": "OPENAI_API_KEY",
-    "oauth_gateway": "MODEL_GATEWAY_TOKEN",
-    "local_gateway": "MODEL_GATEWAY_TOKEN",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "anthropic_gateway": "MODEL_GATEWAY_TOKEN",
-}
 DEFAULT_AUTH_MODE_BY_PROVIDER = {
-    "openclaw": "oauth",
-    "openai": "api_key",
-    "oauth_gateway": "gateway",
-    "local_gateway": "gateway",
-    "anthropic": "api_key",
-    "anthropic_gateway": "gateway",
+    provider: default_auth_mode(provider) for provider in SUPPORTED_PROVIDERS
 }
-REASONING_EFFORTS = frozenset({"low", "medium", "high"})
+DEFAULT_AUTH_MODE_BY_PROVIDER.update(
+    {
+        "openclaw": "oauth",
+        "oauth_gateway": "gateway",
+        "anthropic_gateway": "gateway",
+    }
+)
+REASONING_EFFORTS = frozenset({"inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"})
+HIGH_STAKES_REASONING_EFFORTS = frozenset({"high", "xhigh", "max"})
 AUTH_MODES = frozenset({"api_key", "oauth", "gateway", "none"})
 
 
@@ -89,7 +85,7 @@ class ModelProviderConfig:
     auth_refresh_command: str | None
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> ModelProviderConfig:
+    def from_mapping(cls, value: JsonMap) -> ModelProviderConfig:
         mapping = as_mapping(value, "model_provider")
         provider = _normalize_provider_id(str_field(mapping, "provider"))
         base_url = str_field(mapping, "base_url")
@@ -218,5 +214,5 @@ def enforce_model_policy(config: ModelProviderConfig) -> None:
         ModelUseCase.PRIMARY_CONTROL,
         ModelUseCase.PHYSICS_DECISION,
         ModelUseCase.FINAL_RUN_APPROVAL,
-    } and config.reasoning_effort != PRIMARY_REASONING:
+    } and config.reasoning_effort not in HIGH_STAKES_REASONING_EFFORTS:
         raise ModelPolicyError("high_stakes_model_requires_high_reasoning")

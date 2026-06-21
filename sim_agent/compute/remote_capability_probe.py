@@ -53,6 +53,7 @@ def prepare_remote_capability_probe(
             required_lammps_packages,
         ),
         encoding="utf-8",
+        newline="\n",
     )
     chmod_applied = _try_set_executable(script_path)
     manifest = _manifest_payload(
@@ -145,7 +146,7 @@ def _probe_command(
 ) -> str:
     parts = [
         "python3",
-        "02.Source_code/mss_agent/scripts/probe_worker_capability.py",
+        "02.Source_code/asa_runtime/scripts/probe_worker_capability.py",
         "--host",
         host_alias,
         "--environment-name",

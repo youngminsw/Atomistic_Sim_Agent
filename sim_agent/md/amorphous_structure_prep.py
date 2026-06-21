@@ -100,7 +100,11 @@ def _repo_relative_path(relative: str, repo_root: Path) -> Path:
     candidate = repo_root / relative
     if candidate.exists() or not relative.startswith(LEGACY_SOURCE_PREFIX):
         return candidate
-    return repo_root / relative.removeprefix(LEGACY_SOURCE_PREFIX)
+    stripped = relative.removeprefix(LEGACY_SOURCE_PREFIX)
+    legacy_candidate = repo_root.parent / "mss_agent" / stripped
+    if legacy_candidate.exists():
+        return legacy_candidate
+    return repo_root / stripped
 
 
 def _input_script(config: AmorphousStructurePrepConfig) -> str:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import select
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, TextIO
@@ -9,6 +11,7 @@ from typing import Final, TextIO
 UP_KEY: Final = "\x1b[A"
 DOWN_KEY: Final = "\x1b[B"
 ESC_KEY: Final = "\x1b"
+CTRL_C_KEY: Final = "\x03"
 ENTER_KEYS: Final = ("\r", "\n")
 
 
@@ -28,35 +31,43 @@ def choose_option(title: str, options: Sequence[MenuOption], input_stream: TextI
     import tty
 
     selected = 0
-    output_stream.write(f"\n{title}\n")
+    rendered_lines = len(options) + 2
+    output_stream.write(f"{title}\n")
     output_stream.write("Use ↑/↓ then Enter. Esc cancels.\n")
     output_stream.flush()
+    output_stream.write("\x1b[?25l")
     _render_options(options, selected, output_stream)
     fd = input_stream.fileno()
     old_attrs = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
         while True:
-            key = _read_key(input_stream)
-            match key:
+            key = _read_key_from_fd(fd)
+            match key:  # noqa: MATCH_OK - terminal input is an open string stream.
                 case "\x1b[A":
                     selected = (selected - 1) % len(options)
                 case "\x1b[B":
                     selected = (selected + 1) % len(options)
                 case "\r" | "\n":
-                    output_stream.write("\n")
-                    output_stream.flush()
+                    _clear_menu(rendered_lines, output_stream)
                     return options[selected].value
                 case "\x1b":
-                    output_stream.write("\n")
-                    output_stream.flush()
+                    _clear_menu(rendered_lines, output_stream)
                     return None
+                case "":
+                    _clear_menu(rendered_lines, output_stream)
+                    return None
+                case "\x03":
+                    _clear_menu(rendered_lines, output_stream)
+                    raise KeyboardInterrupt
                 case _:
                     pass
             _move_up(len(options), output_stream)
             _render_options(options, selected, output_stream)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+        output_stream.write("\x1b[?25h")
+        output_stream.flush()
 
 
 def prompt_visible(label: str, default: str, input_stream: TextIO, output_stream: TextIO) -> str:
@@ -112,25 +123,77 @@ def _choose_option_by_line(
 
 
 def _render_options(options: Sequence[MenuOption], selected: int, output_stream: TextIO) -> None:
+    width = _terminal_width()
     for index, option in enumerate(options):
         marker = "❯" if index == selected else " "
-        output_stream.write(f"\x1b[2K{marker} {option.label:<18} {option.summary}\n")
+        line = f"{marker} {option.label:<18} {option.summary}"
+        output_stream.write(f"\r\x1b[2K{line[:width]}\n")
     output_stream.flush()
 
 
 def _move_up(lines: int, output_stream: TextIO) -> None:
-    output_stream.write(f"\x1b[{lines}A")
+    output_stream.write(f"\x1b[{lines}A\r")
 
 
-def _read_key(input_stream: TextIO) -> str:
-    first = input_stream.read(1)
-    if first != ESC_KEY:
-        return first
-    second = input_stream.read(1)
-    if second != "[":
+def _clear_menu(lines: int, output_stream: TextIO) -> None:
+    _move_up(lines, output_stream)
+    for index in range(lines):
+        output_stream.write("\r\x1b[2K")
+        if index < lines - 1:
+            output_stream.write("\n")
+    if lines > 1:
+        _move_up(lines - 1, output_stream)
+    output_stream.flush()
+
+
+def _read_key_from_fd(fd: int) -> str:
+    try:
+        first = os.read(fd, 1)
+    except OSError:
+        return ""
+    if not first:
+        return ""
+    if first != ESC_KEY.encode():
+        return first.decode("utf-8", errors="ignore")
+    if not _fd_ready(fd):
         return ESC_KEY
-    third = input_stream.read(1)
-    return f"{ESC_KEY}[{third}"
+    buffer = bytearray(first)
+    while _fd_ready(fd):
+        try:
+            buffer.extend(os.read(fd, 1))
+        except OSError:
+            return ESC_KEY
+        if len(buffer) >= 3 and buffer[1:2] == b"[" and buffer[-1] in b"ABCD":
+            break
+        if len(buffer) >= 8:
+            break
+    return _decode_key_bytes(bytes(buffer))
+
+
+def _decode_key_bytes(value: bytes) -> str:
+    if value == b"\x1b[A":
+        return UP_KEY
+    if value == b"\x1b[B":
+        return DOWN_KEY
+    if value == b"\x03":
+        return CTRL_C_KEY
+    if value in {b"\r", b"\n"}:
+        return value.decode("ascii")
+    if value.startswith(b"\x1b"):
+        return ESC_KEY
+    return value.decode("utf-8", errors="ignore")
+
+
+def _terminal_width() -> int:
+    return max(20, shutil.get_terminal_size(fallback=(100, 24)).columns)
+
+
+def _fd_ready(fd: int, timeout_s: float = 0.05) -> bool:
+    try:
+        readable, _writable, _error = select.select((fd,), (), (), timeout_s)
+    except (OSError, ValueError):
+        return False
+    return bool(readable)
 
 
 def _supports_posix_raw(input_stream: TextIO) -> bool:

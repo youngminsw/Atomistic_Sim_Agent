@@ -32,7 +32,7 @@ def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, mo
     gateway_thread.start()
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host = server.server_name
     port = server.server_port
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -133,7 +133,7 @@ def _post_json(url: str, payload: JsonMap) -> tuple[JsonMap, int]:
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-ASA-CSRF-Token": "test-token"},
         method="POST",
     )
     try:

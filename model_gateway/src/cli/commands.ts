@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises"
-import { createModelGatewayServer } from "../gateway/server.js"
+import { createModelGatewayServer, defaultModelGatewayUpstreamBaseUrl } from "../gateway/server.js"
 import { parseModelProviderConfig, type ModelProviderConfig } from "../provider/config.js"
 import { FileCredentialStore, type StoredCredential } from "../storage/credential-store.js"
 import { CliArgsError, hasFlag, optionalOption, parseArgs, requiredOption } from "./args.js"
@@ -121,7 +121,7 @@ async function apiSmoke(args: ReturnType<typeof parseArgs>): Promise<CliRunResul
 async function serveGateway(args: ReturnType<typeof parseArgs>): Promise<CliRunResult> {
   const config = await providerConfigFromFile(requiredOption(args, "provider-config"))
   const stored = await credentialForConfig(args, config)
-  const upstreamBaseUrl = optionalOption(args, "upstream-base-url")
+  const upstreamBaseUrl = optionalOption(args, "upstream-base-url") ?? defaultModelGatewayUpstreamBaseUrl(config)
   const baseOptions = {
     modelProvider: config,
   }

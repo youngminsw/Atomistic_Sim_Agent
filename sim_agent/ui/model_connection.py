@@ -53,7 +53,9 @@ def model_connection_status(provider: str, model: str, auth_mode: str, api_key_e
             )
         case "api_key":
             return _api_key_connection(normalized_provider, model, normalized_mode, api_key_env, store)
-        case "oauth" | "gateway":
+        case "gateway":
+            return _api_key_connection(normalized_provider, model, normalized_mode, api_key_env, store)
+        case "oauth":
             return _credential_connection(normalized_provider, model, normalized_mode, store)
         case _:
             return _connection(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .policy import require_allowed_host
+from .policy import compute_resource_for_host, require_allowed_host
 from .types import ComputePolicyError
 
 
@@ -26,7 +26,7 @@ def resolve_worker_host(
 ) -> WorkerHostConfig:
     target = require_allowed_host(host_alias)
     prefix = _env_prefix(host_alias)
-    default = _default_config(host_alias)
+    default = compute_resource_for_host(host_alias)
     resolved_target = _first_text(ssh_target, os.environ.get(f"{prefix}_SSH_TARGET"), default.ssh_target)
     resolved_port = _first_int(ssh_port, os.environ.get(f"{prefix}_SSH_PORT"), default.ssh_port)
     resolved_user = _first_text(remote_user, os.environ.get(f"{prefix}_REMOTE_USER"), default.remote_user)
@@ -37,8 +37,8 @@ def resolve_worker_host(
     )
     source = _inventory_source(ssh_target, os.environ.get(f"{prefix}_SSH_TARGET"), default.ssh_target)
     if target.uses_local_fallback:
-        return WorkerHostConfig(host_alias, resolved_env, resolved_user, None, None, source)
-    return WorkerHostConfig(host_alias, resolved_env, resolved_user, resolved_target, resolved_port, source)
+        return WorkerHostConfig(target.host_alias, resolved_env, resolved_user, None, None, source)
+    return WorkerHostConfig(target.host_alias, resolved_env, resolved_user, resolved_target, resolved_port, source)
 
 
 def require_remote_worker_host(
@@ -52,26 +52,6 @@ def require_remote_worker_host(
     if config.ssh_target is None or config.ssh_port is None:
         raise ComputePolicyError(f"ssh_target_required_for_host={host_alias}")
     return config
-
-
-def _default_config(host_alias: str) -> WorkerHostConfig:
-    if host_alias == "gpu-5090":
-        return WorkerHostConfig(
-            host_alias=host_alias,
-            environment_name="atomistic-sim-gpu",
-            remote_user="swym",
-            ssh_target="swym@10.24.12.85",
-            ssh_port=55555,
-            inventory_source="default",
-        )
-    return WorkerHostConfig(
-        host_alias=host_alias,
-        environment_name="atomistic-sim-gpu",
-        remote_user="swym",
-        ssh_target=None,
-        ssh_port=None,
-        inventory_source="default",
-    )
 
 
 def _env_prefix(host_alias: str) -> str:
@@ -99,5 +79,5 @@ def _inventory_source(explicit: str | None, env_value: str | None, default: str 
     if env_value:
         return "environment"
     if default:
-        return "default"
+        return "runtime_config"
     return "missing"

@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
+import { webcrypto } from "node:crypto"
 import { OAuthCallbackError } from "./errors.js"
 import { renderOAuthResultHtml } from "./html.js"
 import type { CallbackRenderState, CallbackResult, OAuthController, OAuthCredentials } from "./types.js"
@@ -55,7 +56,7 @@ export abstract class OAuthCallbackFlow {
 
   generateState(): string {
     const bytes = new Uint8Array(16)
-    crypto.getRandomValues(bytes)
+    webcrypto.getRandomValues(bytes)
     return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("")
   }
 

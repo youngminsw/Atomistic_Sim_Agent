@@ -7,6 +7,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final
 
+from sim_agent.agent_runtime import (
+    GlobalSessionModel,
+    GlobalSessionOpenRequest,
+    append_global_session_event,
+    open_global_session,
+)
+from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import JsonMap
 
 
@@ -19,11 +26,12 @@ SESSION_DIR_ENV: Final = "ASA_SESSION_DIR"
 
 @dataclass(frozen=True, slots=True)
 class ModelSettings:
-    provider: str = "openclaw"
-    name: str = "gpt-5.5"
-    base_url: str = "https://openclaw.local/v1"
-    auth_mode: str = "oauth"
-    api_key_env: str = "OPENCLAW_OAUTH_TOKEN"
+    provider: str = "openai-codex"
+    name: str = "gpt-5-codex"
+    reasoning_effort: str = "high"
+    base_url: str = "https://model-gateway.local/v1"
+    auth_mode: str = "gateway"
+    api_key_env: str = "MODEL_GATEWAY_TOKEN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +42,8 @@ class TuiState:
     last_run_ledger: Path | None = None
     team_ledger: Path | None = None
     runtime_ledger: Path | None = None
+    global_session_id: str = ""
+    global_session_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,16 +52,41 @@ class TuiStep:
     exit_requested: bool
 
 
-def initial_state(session_dir: Path | None = None) -> TuiState:
+def initial_state(session_dir: Path | None = None, *, resume: str | None = None) -> TuiState:
     env_dir = os.environ.get(SESSION_DIR_ENV)
     resolved = session_dir or (Path(env_dir) if env_dir else DEFAULT_OUTPUT_DIR)
+    endpoint = load_runtime_config().model_endpoint
+    model = ModelSettings(
+        provider=endpoint.provider,
+        name=endpoint.model,
+        reasoning_effort=endpoint.reasoning_effort,
+        base_url=endpoint.base_url,
+        auth_mode=endpoint.auth_mode,
+        api_key_env=endpoint.api_key_env,
+    )
+    session_result = open_global_session(
+        GlobalSessionOpenRequest(
+            requested_dir=resolved if session_dir or env_dir else None,
+            default_root=DEFAULT_OUTPUT_DIR,
+            model=_global_model(model),
+            resume=resume,
+        )
+    )
     state = TuiState(
-        session_id=f"asa-{int(time.time())}",
-        session_dir=resolved,
-        model=ModelSettings(),
+        session_id=session_result.record.session_id,
+        session_dir=session_result.record.session_dir,
+        model=model,
+        global_session_id=session_result.record.session_id,
+        global_session_path=session_result.record.paths.global_session,
     )
     persist_state(state)
-    append_event(state, "session_created", "Interactive ASA session opened")
+    match session_result.opened_as:
+        case "created":
+            append_event(state, "session_created", "Interactive ASA session opened")
+        case "resumed":
+            append_event(state, "session_resumed", "Interactive ASA session resumed")
+        case "migrated":
+            append_event(state, "session_resumed", "Legacy ASA session migrated and resumed")
     return state
 
 
@@ -63,6 +98,8 @@ def replace_model(state: TuiState, model: ModelSettings) -> TuiState:
         last_run_ledger=state.last_run_ledger,
         team_ledger=state.team_ledger,
         runtime_ledger=state.runtime_ledger,
+        global_session_id=state.global_session_id,
+        global_session_path=state.global_session_path,
     )
     persist_state(next_state)
     return next_state
@@ -76,6 +113,8 @@ def replace_run_ledger(state: TuiState, ledger: Path) -> TuiState:
         last_run_ledger=ledger,
         team_ledger=state.team_ledger,
         runtime_ledger=state.runtime_ledger,
+        global_session_id=state.global_session_id,
+        global_session_path=state.global_session_path,
     )
     persist_state(next_state)
     return next_state
@@ -89,6 +128,8 @@ def replace_team_ledger(state: TuiState, ledger: Path) -> TuiState:
         last_run_ledger=state.last_run_ledger,
         team_ledger=ledger,
         runtime_ledger=state.runtime_ledger,
+        global_session_id=state.global_session_id,
+        global_session_path=state.global_session_path,
     )
     persist_state(next_state)
     return next_state
@@ -102,6 +143,8 @@ def replace_runtime_ledger(state: TuiState, ledger: Path) -> TuiState:
         last_run_ledger=state.last_run_ledger,
         team_ledger=state.team_ledger,
         runtime_ledger=ledger,
+        global_session_id=state.global_session_id,
+        global_session_path=state.global_session_path,
     )
     persist_state(next_state)
     return next_state
@@ -125,6 +168,7 @@ def append_event(state: TuiState, event_type: str, summary: str) -> Path:
     }
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    append_global_session_event(state.session_dir, event_type, summary)
     return path
 
 
@@ -144,4 +188,17 @@ def _state_payload(state: TuiState) -> JsonMap:
         "last_run_ledger": str(state.last_run_ledger) if state.last_run_ledger else "",
         "team_ledger": str(state.team_ledger) if state.team_ledger else "",
         "runtime_ledger": str(state.runtime_ledger) if state.runtime_ledger else "",
+        "global_session_id": state.global_session_id or state.session_id,
+        "global_session_path": str(state.global_session_path) if state.global_session_path else "",
     }
+
+
+def _global_model(model: ModelSettings) -> GlobalSessionModel:
+    return GlobalSessionModel(
+        provider=model.provider,
+        name=model.name,
+        reasoning_effort=model.reasoning_effort,
+        base_url=model.base_url,
+        auth_mode=model.auth_mode,
+        api_key_env=model.api_key_env,
+    )

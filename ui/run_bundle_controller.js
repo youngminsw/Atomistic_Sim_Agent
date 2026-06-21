@@ -4,7 +4,21 @@
   if (root) root.RunBundleController = api;
   if (root && root.document) root.document.addEventListener("DOMContentLoaded", () => api.mount(root.document));
 })(typeof window !== "undefined" ? window : globalThis, function createControllerApi() {
-  const computeTargets = ["gpu-5090", "blackwell-rtxpro", "gpu-ada", "ws-gpu", "local"];
+  const computeTargets = [];
+
+  function configureComputeTargets(targets) {
+    computeTargets.splice(0, computeTargets.length, ...cleanTargets(targets));
+    return computeTargets;
+  }
+
+  function configureFromRuntimeConfig(config) {
+    const resources = config && Array.isArray(config.compute_resources) ? config.compute_resources : [];
+    configureComputeTargets(resources.map((resource) => resource && resource.host_alias));
+    if (config && config.model_endpoint && typeof config.model_endpoint === "object") {
+      globalThis.__ASA_MODEL_ENDPOINT__ = config.model_endpoint;
+    }
+    return computeTargets;
+  }
 
   function validateControllerInput(raw) {
     const normalized = normalize(raw);
@@ -31,7 +45,7 @@
       "--ions",
       String(normalized.ions),
       "--out",
-      `02.Source_code/mss_agent/evidence/${normalized.runId}`,
+      `02.Source_code/asa_runtime/evidence/${normalized.runId}`,
       "--run-id",
       normalized.runId,
     ];
@@ -79,7 +93,8 @@
     const steps = positiveInteger(raw.steps, 5);
     const ions = positiveInteger(raw.ions, 8);
     const runId = slug(text(raw.runId) || `ui-${mode}-run`);
-    const computeTarget = computeTargets.includes(raw.computeTarget) ? raw.computeTarget : "gpu-5090";
+    const rawComputeTarget = text(raw.computeTarget);
+    const computeTarget = computeTargets.includes(rawComputeTarget) ? rawComputeTarget : "";
     return {
       mode,
       featureType: text(raw.featureType) || (mode === "2d" ? "trench" : "hole"),
@@ -100,6 +115,7 @@
     if (!input.geometryPath) fields.push(input.mode === "2d" ? "image" : "scene");
     if (!input.kernelPath) fields.push("kernel");
     if (!input.eventsPath) fields.push("events");
+    if (!input.computeTarget) fields.push("compute");
     if (!input.iedfReady) fields.push("iedf");
     if (!input.iadfReady) fields.push("iadf");
     if (input.steps <= 0) fields.push("steps");
@@ -130,9 +146,16 @@
     return text(value).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "ui-run";
   }
 
+  function cleanTargets(targets) {
+    if (!Array.isArray(targets)) return [];
+    return targets.map(text).filter(Boolean);
+  }
+
   return {
     buildOfflineRunnerArgs,
     computeTargets,
+    configureComputeTargets,
+    configureFromRuntimeConfig,
     mount,
     validateControllerInput,
   };

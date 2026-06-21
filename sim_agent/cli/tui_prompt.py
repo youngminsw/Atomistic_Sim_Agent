@@ -4,6 +4,8 @@ import sys
 from dataclasses import dataclass
 from typing import Iterable, Literal, Protocol, TextIO
 
+from sim_agent.agents_sdk_runtime.runtime import AGENT_ROLES
+
 from .tui_catalog import SIMULATION_SKILLS, command_names, suggested_commands
 
 
@@ -11,7 +13,7 @@ from .tui_catalog import SIMULATION_SKILLS, command_names, suggested_commands
 class SlashCompletionRow:
     value: str
     insert_text: str
-    kind: Literal["command", "skill"]
+    kind: Literal["command", "skill", "agent"]
     meta: str
     display: str
 
@@ -36,11 +38,14 @@ class TuiPromptReader:
                 return ""
             except KeyboardInterrupt:
                 self.output_stream.write("^C\n")
-                return "\n"
+                return ""
         if self.echoes_input:
             try:
                 return input("asa> ") + "\n"
             except EOFError:
+                return ""
+            except KeyboardInterrupt:
+                self.output_stream.write("^C\n")
                 return ""
         self.output_stream.write("asa> ")
         self.output_stream.flush()
@@ -95,6 +100,39 @@ def slash_completion_rows(prefix: str) -> tuple[SlashCompletionRow, ...]:
     return tuple(rows)
 
 
+def agent_completion_rows(prefix: str) -> tuple[SlashCompletionRow, ...]:
+    token = prefix.strip().removeprefix("@")
+    rows = [
+        SlashCompletionRow(
+            value="@orchestrator",
+            insert_text="@orchestrator",
+            kind="agent",
+            meta="default chat agent; routes work, approvals, and final assembly",
+            display="@orchestrator",
+        )
+    ]
+    rows.extend(
+        SlashCompletionRow(
+            value=f"@{role.role_id}",
+            insert_text=f"@{role.role_id}",
+            kind="agent",
+            meta=role.boundary,
+            display=f"@{role.role_id}  {role.display_name}",
+        )
+        for role in AGENT_ROLES
+    )
+    return tuple(row for row in rows if row.value.removeprefix("@").startswith(token))
+
+
+def prompt_completion_rows(prefix: str) -> tuple[SlashCompletionRow, ...]:
+    token = prefix.strip()
+    if token.startswith("/"):
+        return slash_completion_rows(token)
+    if token.startswith("@"):
+        return agent_completion_rows(token)
+    return ()
+
+
 def _build_prompt_session() -> PromptSessionProtocol | None:
     try:
         from prompt_toolkit import PromptSession
@@ -115,10 +153,10 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
             complete_event: CompleteEvent,
         ) -> Iterable[Completion]:
             del complete_event
-            text = document.text_before_cursor
-            if not text.startswith("/") or " " in text:
+            text = _active_token(document.text_before_cursor)
+            if not text:
                 return
-            for row in slash_completion_rows(text):
+            for row in prompt_completion_rows(text):
                 yield Completion(
                     row.insert_text,
                     start_position=-len(text),
@@ -133,6 +171,11 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
         event.current_buffer.insert_text("/")
         event.current_buffer.start_completion(select_first=False)
 
+    @key_bindings.add("@")
+    def open_agent_menu(event: KeyPressEvent) -> None:
+        event.current_buffer.insert_text("@")
+        event.current_buffer.start_completion(select_first=False)
+
     return PromptSession(
         completer=SlashCompleter(),
         complete_while_typing=True,
@@ -140,21 +183,24 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
         key_bindings=key_bindings,
         reserve_space_for_menu=10,
         bottom_toolbar=HTML(
-            "<b>/</b> commands  "
+            "<b>/</b> palette  "
+            "<style fg='ansicyan'><b>@</b> agents</style>  "
+            "<style fg='ansiyellow'>/login</style> "
             "<style fg='ansicyan'>/hud</style> "
             "<style fg='ansicyan'>/model</style> "
-            "<style fg='ansicyan'>/run</style> "
             "<style fg='ansicyan'>/team</style> "
+            "<style fg='ansicyan'>/compact</style> "
             "<style fg='ansicyan'>/skills</style> "
-            "<style fg='ansicyan'>/runtime</style>"
+            "<style fg='ansicyan'>/runtime</style> "
+            "<style fg='ansicyan'>/setup</style>"
         ),
         style=Style.from_dict(
             {
-                "bottom-toolbar": "bg:#1f2937 #f8fafc",
-                "completion-menu": "bg:#111827 #d1d5db",
-                "completion-menu.completion.current": "bg:#2563eb #ffffff",
-                "completion-menu.meta.completion": "bg:#111827 #9ca3af",
-                "completion-menu.meta.completion.current": "bg:#2563eb #e0f2fe",
+                "bottom-toolbar": "bg:#111614 #e5ebe7",
+                "completion-menu": "bg:#111614 #d6ddd8",
+                "completion-menu.completion.current": "bg:#33413b #ffffff",
+                "completion-menu.meta.completion": "bg:#111614 #9aa8a0",
+                "completion-menu.meta.completion.current": "bg:#33413b #d8a657",
             }
         ),
     )
@@ -176,6 +222,13 @@ def _configure_readline() -> None:
 
     readline.set_completer(complete)
     readline.parse_and_bind("tab: complete")
+
+
+def _active_token(text: str) -> str:
+    parts = text.split()
+    if not parts:
+        return text
+    return parts[-1]
 
 
 def _interactive_stdio(input_stream: TextIO, output_stream: TextIO) -> bool:

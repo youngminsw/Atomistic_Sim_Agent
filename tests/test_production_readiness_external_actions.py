@@ -32,7 +32,7 @@ def test_production_readiness_requests_endpoint_and_graphdb_actions() -> None:
     assert endpoint_action["requires_user_action"] == "login_to_model_gateway_or_provide_token"
     assert string_list(endpoint_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/smoke_production_gateway_client.py",
+        "02.Source_code/asa_runtime/scripts/smoke_production_gateway_client.py",
         "--request",
         "/tmp/run/validated_request.json",
         "--output-dir",
@@ -42,7 +42,7 @@ def test_production_readiness_requests_endpoint_and_graphdb_actions() -> None:
     assert chain_action["status"] == "ready_after_user_action"
     assert string_list(chain_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/run_remote_chain.py",
+        "02.Source_code/asa_runtime/scripts/run_remote_chain.py",
         "--manifest",
         "/tmp/run/remote_chain_manifest.json",
         "--out",
@@ -74,7 +74,7 @@ def test_production_readiness_builds_graphdb_apply_command_when_bundle_exists() 
     assert graphdb_action["requires_user_action"] == "approve_empty_neo4j_database_write"
     assert string_list(graphdb_action, "command") == [
         "python3",
-        "02.Source_code/mss_agent/scripts/apply_graphdb_import_bundle.py",
+        "02.Source_code/asa_runtime/scripts/apply_graphdb_import_bundle.py",
         "--bundle-dir",
         "/tmp/run/research_graphdb",
         "--database-name",

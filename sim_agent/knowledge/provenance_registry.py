@@ -134,7 +134,7 @@ def _seed_records() -> tuple[ProvenanceRecord, ...]:
         ),
         ProvenanceRecord(
             record_id="lammps-ar-si-zbl-template",
-            source_url="repo://02.Source_code/mss_agent/sim_agent/md/input_script.py#ar-si-zbl",
+            source_url="repo://02.Source_code/asa_runtime/sim_agent/md/input_script.py#ar-si-zbl",
             title="LAMMPS Ar on Si ZBL input deck pattern",
             claim="LAMMPS Ar-on-Si impact decks should preserve generated code samples and include a ZBL close-range collision term before execution review.",
             tags=("lammps_code_sample", "md", "sputtering", "force_field"),
@@ -156,7 +156,7 @@ def _seed_records() -> tuple[ProvenanceRecord, ...]:
         ),
         ProvenanceRecord(
             record_id="slurm-job-script-qa-rule",
-            source_url="repo://02.Source_code/mss_agent/sim_agent/agents_sdk_runtime/session_runtime.py#slurm-job-script-gate",
+            source_url="repo://02.Source_code/asa_runtime/sim_agent/agents_sdk_runtime/session_runtime.py#slurm-job-script-gate",
             title="Slurm job script QA gate",
             claim="QA gate review is required before a responsible agent submits any Slurm job script to local or remote compute resources.",
             tags=("qa_rule", "slurm", "job_script", "md"),

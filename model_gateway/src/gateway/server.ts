@@ -6,6 +6,7 @@ import {
   type PythonModelProviderAdapter,
   toPythonModelProviderAdapter,
 } from "../provider/config.js"
+import { forwardOpenAICodexGatewayRequest, OPENAI_CODEX_DEFAULT_UPSTREAM } from "./openai-codex.js"
 
 export type ModelGatewayServerOptions = {
   readonly modelProvider: unknown
@@ -41,6 +42,13 @@ export function createModelGatewayServer(options: ModelGatewayServerOptions): Se
     }
     void routeRequest(context, request, response)
   })
+}
+
+export function defaultModelGatewayUpstreamBaseUrl(config: ModelProviderConfig): string | undefined {
+  if (config.provider === "openai-codex") {
+    return OPENAI_CODEX_DEFAULT_UPSTREAM
+  }
+  return undefined
 }
 
 async function routeRequest(context: HandlerContext, request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -84,8 +92,8 @@ async function handleResponses(context: HandlerContext, request: IncomingMessage
     writeGatewayError(response, 400, "gateway_bad_json", context.requestId)
     return
   }
-  if (context.options.upstreamBaseUrl !== undefined) {
-    await forwardToUpstream(context, response, bodyText, credential)
+  if (shouldForwardToUpstream(context)) {
+    await forwardToUpstream(context, response, bodyText, body, credential)
     return
   }
   writeJson(response, 200, {
@@ -103,8 +111,13 @@ async function forwardToUpstream(
   context: HandlerContext,
   response: ServerResponse,
   bodyText: string,
+  body: unknown,
   credential: string | undefined,
 ): Promise<void> {
+  if (context.config.provider === "openai-codex") {
+    await forwardToOpenAICodex(context, response, body, credential)
+    return
+  }
   const fetchImpl = context.options.fetchImpl ?? fetch
   const target = `${context.options.upstreamBaseUrl?.replace(/\/+$/, "")}/responses`
   const headers: Record<string, string> = {
@@ -117,7 +130,7 @@ async function forwardToUpstream(
   try {
     const upstream = await fetchImpl(target, { method: "POST", headers, body: bodyText })
     const upstreamText = await upstream.text()
-    const upstreamBody = parseJson(upstreamText)
+    const upstreamBody = upstreamJsonBody(upstream, upstreamText)
     if (upstreamBody !== undefined && typeof upstreamBody === "object" && !Array.isArray(upstreamBody)) {
       writeJson(response, upstream.status, {
         ...upstreamBody,
@@ -136,6 +149,48 @@ async function forwardToUpstream(
   } catch (error) {
     writeGatewayError(response, 502, "upstream_endpoint_error", context.requestId, error)
   }
+}
+
+function shouldForwardToUpstream(context: HandlerContext): boolean {
+  return context.options.upstreamBaseUrl !== undefined || context.config.provider === "openai-codex"
+}
+
+async function forwardToOpenAICodex(
+  context: HandlerContext,
+  response: ServerResponse,
+  body: unknown,
+  credential: string | undefined,
+): Promise<void> {
+  if (credential === undefined) {
+    writeGatewayError(response, 401, "missing_gateway_credentials", context.requestId)
+    return
+  }
+  try {
+    const upstream = await forwardOpenAICodexGatewayRequest({
+      config: context.config,
+      upstreamBaseUrl: context.options.upstreamBaseUrl,
+      credential,
+      body,
+      fetchImpl: context.options.fetchImpl,
+    })
+    writeJson(response, upstream.status, {
+      ...upstream.body,
+      gateway_request_id: context.requestId,
+      gateway_provider: context.config.provider,
+      gateway_model: context.config.model,
+    })
+  } catch (error) {
+    writeGatewayError(response, 502, "upstream_endpoint_error", context.requestId, error)
+  }
+}
+
+function upstreamJsonBody(response: Response, text: string): Record<string, unknown> | undefined {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.includes("text/event-stream")) {
+    return undefined
+  }
+  const parsed = parseJson(text)
+  return objectValue(parsed)
 }
 
 function bearerToken(request: IncomingMessage): string | undefined {
@@ -161,6 +216,13 @@ function parseJson(value: string): unknown | undefined {
   } catch {
     return undefined
   }
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined
+  }
+  return value as Record<string, unknown>
 }
 
 function writeGatewayError(

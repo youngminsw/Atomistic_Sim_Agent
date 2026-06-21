@@ -6,7 +6,7 @@ from pathlib import Path
 from sim_agent.schemas._parse import JsonMap, as_mapping
 
 
-SCRIPT_ROOT = "02.Source_code/mss_agent/scripts"
+SCRIPT_ROOT = "02.Source_code/asa_runtime/scripts"
 
 
 def read_json(path: Path, field: str) -> JsonMap:

@@ -17,7 +17,12 @@ if str(SOURCE_ROOT) not in sys.path:
 def test_compute_policy_remote_gpu_priority_then_local_fallback() -> None:
     from sim_agent.compute import allowed_compute_hosts, select_compute_target
 
-    assert allowed_compute_hosts() == ("gpu-5090", "blackwell-rtxpro", "gpu-ada", "ws-gpu", "local")
+    hosts = allowed_compute_hosts()
+    assert hosts[:3] == ("gpu-5090", "blackwell-rtxpro", "gpu-ada")
+    assert "4090-gpu-ws" in hosts
+    assert "ws-gpu" in hosts
+    assert "local-rtx4060" in hosts
+    assert "ws-24core" in hosts
 
     target = select_compute_target(("ws-24core", "gpu-ada", "gpu-5090"))
 
@@ -31,7 +36,7 @@ def test_compute_policy_falls_back_to_local_when_remote_gpu_is_unavailable() -> 
 
     target = select_compute_target(("ws-24core", "orca"), allow_local_fallback=True)
 
-    assert target.host_alias == "local"
+    assert target.host_alias == "local-rtx4060"
     assert target.remote is False
     assert target.uses_local_fallback is True
 
@@ -52,7 +57,7 @@ def test_worker_inventory_resolves_5090_default_connection() -> None:
     assert host.remote_user == "swym"
     assert host.ssh_target == "swym@10.24.12.85"
     assert host.ssh_port == 55555
-    assert host.inventory_source == "default"
+    assert host.inventory_source == "runtime_config"
 
 
 def test_worker_bundle_uses_user_scoped_paths_and_conda_environment() -> None:
@@ -72,7 +77,7 @@ def test_worker_bundle_uses_user_scoped_paths_and_conda_environment() -> None:
         "nvidia-smi",
         (
             "cd /home/swym/atomistic_sim_agent/runs/tiny_gpu_job && "
-            "python3 02.Source_code/mss_agent/scripts/probe_worker_capability.py "
+            "python3 02.Source_code/asa_runtime/scripts/probe_worker_capability.py "
             "--host gpu-5090 --environment-name atomistic-sim-gpu "
             "--artifact-root /home/swym/atomistic_sim_agent/runs/tiny_gpu_job "
             "--out worker_capability.json --requires-cuda"
@@ -113,7 +118,7 @@ def test_cpu_md_job_can_run_on_allowed_gpu_host_without_cuda_preflight() -> None
         "conda env list | grep atomistic-sim-gpu",
         (
             "cd /home/swym/atomistic_sim_agent/runs/tiny_md_cpu_job && "
-            "python3 02.Source_code/mss_agent/scripts/probe_worker_capability.py "
+            "python3 02.Source_code/asa_runtime/scripts/probe_worker_capability.py "
             "--host ws-gpu --environment-name atomistic-sim-gpu "
             "--artifact-root /home/swym/atomistic_sim_agent/runs/tiny_md_cpu_job "
             "--out worker_capability.json --requires-lammps "
@@ -141,8 +146,8 @@ def test_compute_policy_cli_reports_allowed_hosts_only() -> None:
     assert "host=blackwell-rtxpro" in result.stdout
     assert "host=gpu-ada" in result.stdout
     assert "host=ws-gpu" in result.stdout
-    assert "host=local" in result.stdout
-    assert "host=ws-24core" not in result.stdout
+    assert "host=local-rtx4060" in result.stdout
+    assert "host=ws-24core" in result.stdout
 
 
 def test_cpu_only_alias_is_rejected_by_worker_bundle_cli() -> None:
@@ -163,7 +168,7 @@ def test_cpu_only_alias_is_rejected_by_worker_bundle_cli() -> None:
     )
 
     assert result.returncode == 1
-    assert "host_not_allowed=ws-24core" in result.stdout
+    assert "host_role_not_allowed=ws-24core:requires_gpu" in result.stdout
 
 
 def test_worker_bundle_cli_prints_preflight_and_transfer_plan() -> None:

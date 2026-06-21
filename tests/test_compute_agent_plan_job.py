@@ -46,13 +46,13 @@ def test_build_md_campaign_job_from_agent_plan_artifacts(tmp_path: Path) -> None
     assert job.job_id == "plan-valid_ar_si_pr_hole-md-campaign"
     assert job.command == (
         "python3",
-        "02.Source_code/mss_agent/scripts/run_md_campaign_job.py",
+        "02.Source_code/asa_runtime/scripts/run_md_campaign_job.py",
         "--plan",
         "md_campaign_plan.json",
         "--request",
         "validated_request.json",
         "--descriptor-root",
-        "02.Source_code/mss_agent/tests/fixtures/materials",
+        "02.Source_code/asa_runtime/tests/fixtures/materials",
         "--out",
         "artifacts/plan-valid_ar_si_pr_hole-md-campaign/manifest.json",
         "--contract-out",

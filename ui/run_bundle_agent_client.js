@@ -20,11 +20,16 @@
       pushMessage(documentRef, log, "agent", `Blocked: ${parsed.error}`);
       return Promise.resolve({ error: parsed.error });
     }
-    const body = JSON.stringify(applyModelSettings(documentRef, JSON.parse(parsed.body)));
+    const configured = applyModelSettings(documentRef, JSON.parse(parsed.body));
+    if (configured.error) {
+      pushMessage(documentRef, log, "agent", `Blocked: ${configured.error}`);
+      return Promise.resolve({ error: configured.error });
+    }
+    const body = JSON.stringify(configured.payload);
     pushMessage(documentRef, log, "user", "Plan request");
     return fetcher("/api/agent/plan", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
       body,
     })
       .then((response) => response.json().then((body) => ({ ok: response.ok, body })))
@@ -73,18 +78,42 @@
 
   function applyModelSettings(documentRef, payload) {
     const endpoint = payload.llm_endpoint && typeof payload.llm_endpoint === "object" ? payload.llm_endpoint : {};
+    const merged = {
+      ...runtimeEndpoint(),
+      ...endpoint,
+      ...formEndpoint(documentRef),
+    };
+    const error = endpointError(merged);
+    if (error) return { error };
     return {
+      payload: {
       ...payload,
-      llm_endpoint: {
-        ...endpoint,
-        provider: text(value(documentRef, "model-provider")) || text(endpoint.provider) || "openclaw",
-        model: text(value(documentRef, "model-name")) || text(endpoint.model) || "gpt-5.5",
-        reasoning_effort: text(value(documentRef, "reasoning-effort")) || text(endpoint.reasoning_effort) || "high",
-        base_url: text(value(documentRef, "model-base-url")) || text(endpoint.base_url) || "https://openclaw.local/v1",
-        auth_mode: text(value(documentRef, "auth-mode")) || text(endpoint.auth_mode) || "oauth",
-        api_key_env: text(value(documentRef, "model-api-key-env")) || text(endpoint.api_key_env) || "OPENCLAW_OAUTH_TOKEN",
+      llm_endpoint: merged,
       },
     };
+  }
+
+  function formEndpoint(documentRef) {
+    return compact({
+      provider: text(value(documentRef, "model-provider")),
+      model: text(value(documentRef, "model-name")),
+      reasoning_effort: text(value(documentRef, "reasoning-effort")),
+      base_url: text(value(documentRef, "model-base-url")),
+      auth_mode: text(value(documentRef, "auth-mode")),
+      api_key_env: text(value(documentRef, "model-api-key-env")),
+    });
+  }
+
+  function runtimeEndpoint() {
+    const endpoint = globalThis.__ASA_MODEL_ENDPOINT__;
+    return endpoint && typeof endpoint === "object" ? endpoint : {};
+  }
+
+  function endpointError(endpoint) {
+    const required = ["provider", "model", "reasoning_effort", "base_url", "auth_mode"];
+    const missing = required.filter((field) => !text(endpoint[field]));
+    if (text(endpoint.auth_mode) !== "none" && !text(endpoint.api_key_env)) missing.push("api_key_env");
+    return missing.length > 0 ? `model_endpoint_not_configured:${missing.join(",")}` : "";
   }
 
   function missingFields(body) {
@@ -105,6 +134,15 @@
   function value(documentRef, id) {
     const node = documentRef.getElementById(id);
     return node ? node.value : "";
+  }
+
+  function csrfHeaders(headers) {
+    const token = globalThis.__ASA_CONTROLLER_TOKEN__;
+    return token ? { ...headers, "X-ASA-CSRF-Token": token } : headers;
+  }
+
+  function compact(value) {
+    return Object.fromEntries(Object.entries(value).filter((entry) => text(entry[1])));
   }
 
   function number(value) {

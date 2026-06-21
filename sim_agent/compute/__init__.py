@@ -13,7 +13,7 @@ from .capability import (
     validate_worker_capability,
     worker_capability_requirements_payload,
 )
-from .policy import allowed_compute_hosts, require_allowed_host, select_compute_target
+from .policy import allowed_compute_hosts, compute_resource_for_host, default_compute_resource, require_allowed_host, select_compute_target
 from .worker_inventory import WorkerHostConfig, require_remote_worker_host, resolve_worker_host
 from .remote_plan import (
     build_remote_execution_chain,
@@ -79,6 +79,8 @@ __all__ = [
     "build_worker_bundle",
     "build_md_campaign_job_from_plan_dir",
     "campaign_job_manifest_payload",
+    "compute_resource_for_host",
+    "default_compute_resource",
     "job_bundle_payload",
     "load_job_bundle",
     "load_worker_bundle",

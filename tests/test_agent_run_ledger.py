@@ -27,8 +27,8 @@ def test_agent_cli_writes_planned_run_ledger(tmp_path: Path) -> None:
     assert "agent_run_ledger_path=" in result.stdout
     assert ledger["request_id"] == "cli_ar_si_amorphous_hole"
     assert ledger["overall_status"] == "md_action_required"
-    assert ledger["model_provider"]["provider"] == "openclaw"
-    assert ledger["model_provider"]["model"] == "gpt-5.5"
+    assert ledger["model_provider"]["provider"] == "oauth_gateway"
+    assert ledger["model_provider"]["model"] == "gpt-5-codex"
     assert "agent_plan" in ledger["pipeline_stages"]
     assert ledger["artifact_paths"]["md_campaign_plan_path"].endswith("md_campaign_plan.json")
     assert ledger["artifact_paths"]["amorphous_structure_prep_manifest_path"].endswith(

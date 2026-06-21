@@ -158,3 +158,36 @@ def test_research_graphdb_agent_cli_exports_bundle_context_and_query_answer(tmp_
     assert (tmp_path / "agent_graph_context.json").exists()
     assert (tmp_path / "research_answer.json").exists()
     assert (tmp_path / "retrieval_context.md").exists()
+
+
+def test_memory_seed_rows_become_graphdb_import_bundle(tmp_path: Path) -> None:
+    from sim_agent.knowledge.memory_seed import build_memory_seed_bundle, memory_sources_from_rows
+
+    sources = memory_sources_from_rows(
+        (
+            {
+                "title": "LAMMPS logs and trajectories as MD evidence",
+                "summary": "Use LAMMPS logs and trajectories as the only MD evidence for final claims.",
+                "confidence": 0.91,
+                "source_path": "/tmp/cluster-discovery.md",
+            },
+            {
+                "title": "Level Set etching note",
+                "summary": "Level Set profile evolution should consume local etching velocity fields.",
+                "confidence": 0.86,
+                "page_url": "https://example.test/level-set",
+            },
+        )
+    )
+    bundle = build_memory_seed_bundle(
+        tmp_path,
+        database_name="asa_seed_test",
+        sync_run_id="memory-seed-test",
+        memory_sources=sources,
+    )
+
+    assert len(sources) == 2
+    assert bundle.report.accepted is True
+    assert bundle.report.database_name == "asa_seed_test"
+    assert bundle.report.source_count == 11
+    assert '"lammps"' in bundle.claims_path.read_text(encoding="utf-8")

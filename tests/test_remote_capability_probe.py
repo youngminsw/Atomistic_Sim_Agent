@@ -63,7 +63,7 @@ def test_prepare_remote_capability_probe_cli_writes_probe_bundle(tmp_path: Path)
     assert manifest["expected_output"] == "worker_capability.json"
     with tarfile.open(payload_path, "r:gz") as archive:
         names = set(archive.getnames())
-    assert "02.Source_code/mss_agent/scripts/probe_worker_capability.py" in names
+    assert "02.Source_code/asa_runtime/scripts/probe_worker_capability.py" in names
 
 
 def test_prepare_remote_capability_probe_cli_uses_5090_inventory_default(
@@ -97,4 +97,4 @@ def test_prepare_remote_capability_probe_cli_uses_5090_inventory_default(
     assert manifest["ssh_target"] == "swym@10.24.12.85"
     assert manifest["ssh_port"] == 55555
     assert manifest["remote_user"] == "swym"
-    assert manifest["inventory_source"] == "default"
+    assert manifest["inventory_source"] == "runtime_config"

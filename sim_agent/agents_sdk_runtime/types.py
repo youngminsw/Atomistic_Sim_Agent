@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from sim_agent.schemas._parse import JsonMap
+
 
 class ApprovalStatus(StrEnum):
     NOT_REQUIRED = "not_required"
@@ -42,6 +44,18 @@ class ApprovalGate:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillInvocationResult:
+    agent_id: str
+    skill_id: str
+    status: str
+    execution_status: str
+    domain_adapter: str
+    artifact_ref: str
+    contract: JsonMap
+    result: JsonMap
+
+
+@dataclass(frozen=True, slots=True)
 class AgentsSdkTeam:
     orchestrator: Any
     specialists: dict[str, Any]
@@ -59,8 +73,13 @@ class AgentsSdkRuntimeResult:
     model: str
     reasoning_effort: str
     auth_mode: str
+    session_path: str
     handoff_sequence: tuple[str, ...]
+    agent_model_assignments: JsonMap
     messages: tuple[RuntimeMessage, ...]
     trace: tuple[RuntimeTraceEvent, ...]
     approval_gates: tuple[ApprovalGate, ...]
+    graph_memory: JsonMap
+    skill_registry: JsonMap
+    skill_invocations: tuple[SkillInvocationResult, ...]
     final_output: str

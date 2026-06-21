@@ -29,7 +29,7 @@ def test_validate_worker_capability_accepts_lammps_gpu_manifest() -> None:
         environment_name="atomistic-sim-gpu",
         remote_run_dir="/home/swym/atomistic_sim_agent/runs/lammps-job",
         requires_cuda=True,
-        command=("python3", "02.Source_code/mss_agent/scripts/run_lammps_execution_plan.py"),
+        command=("python3", "02.Source_code/asa_runtime/scripts/run_lammps_execution_plan.py"),
     )
 
     # When
@@ -56,7 +56,7 @@ def test_validate_worker_capability_rejects_missing_lammps_package() -> None:
         environment_name="atomistic-sim-gpu",
         remote_run_dir="/home/swym/atomistic_sim_agent/runs/lammps-job",
         requires_cuda=False,
-        command=("python3", "02.Source_code/mss_agent/scripts/run_lammps_execution_plan.py"),
+        command=("python3", "02.Source_code/asa_runtime/scripts/run_lammps_execution_plan.py"),
     )
 
     # When

@@ -61,3 +61,4 @@ md_agent_window/Reference/source_code/Monte Carlo simulation/*.png
 *.tmp
 *.bak
 *.swp
+*:Zone.Identifier

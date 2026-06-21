@@ -1,12 +1,13 @@
 # Neo4j Simulation Agent Design
 
 Generated: 2026-06-10
+Updated: 2026-06-18
 
 ## Purpose
 
 This document defines the gated Neo4j design for the Atomistic Simulation Agent knowledge layer. The graph is a derived index for provenance-backed simulation knowledge. It is not a source of truth and must not rewrite original files, papers, run artifacts, model checkpoints, or user data.
 
-No code in the current implementation connects to Neo4j, creates a database, runs migrations, or writes data. The only supported mode is dry-run planning until the user explicitly approves DB work with `user_db_approval=true`.
+The current implementation supports a gated GraphDB brain: dry-run import bundle export, saved `/setup graphdb` connection configuration, `/memory` query-plan display, `/memory live` read-only Neo4j health/context checks, and an explicit approved import executor. Automatic writes remain disabled; live writes require a separate approved import command and a write report.
 
 ## Database Boundary
 
@@ -14,8 +15,9 @@ No code in the current implementation connects to Neo4j, creates a database, run
 - Database role: empty demo knowledge database for this project only.
 - Empty database requirement: the selected demo database name must not already exist unless the user explicitly chooses a conflict-resolution path later.
 - Write gate: `user_db_approval=true` is required before any future create, migration, import, or write command can be considered.
-- Current runtime mode: `neo4j_write_enabled=false`
-- Smoke query for a future approved connection: `RETURN 1 AS ok`
+- Default runtime mode: `neo4j_write_enabled=false`
+- Read-only live check: `/memory live`
+- Smoke query for an approved connection: `RETURN 1 AS ok`
 - Existing DBs are treated as protected. This project must not write into another running DB by default.
 
 ## Graph Layers
@@ -117,7 +119,7 @@ The gate must compare the proposed database name against existing database names
 
 - Dry run: build and print the schema, constraints, conflict checks, rollback plan, and export artifact names.
 - Attempt write without approval: reject with `user_db_approval_required`.
-- Attempt write with approval: future work may convert the plan into an import, but the current implementation still keeps `neo4j_write_enabled=false`.
+- Attempt write with approval: run the explicit import executor against the selected database; automatic runtime writes stay disabled.
 
 ## Agent Retrieval Rules
 

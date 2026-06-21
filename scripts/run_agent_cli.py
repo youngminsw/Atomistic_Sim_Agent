@@ -121,12 +121,12 @@ def _parser() -> argparse.ArgumentParser:
         "--lammps-structure-preparation",
         default="user_supplied_relaxed_structure",
     )
-    parser.add_argument("--model-provider", default="openclaw")
-    parser.add_argument("--model-name", default="gpt-5.5")
+    parser.add_argument("--model-provider", default="oauth_gateway")
+    parser.add_argument("--model-name", default="gpt-5-codex")
     parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default="high")
-    parser.add_argument("--model-base-url", default="https://openclaw.local/v1")
-    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="oauth")
-    parser.add_argument("--model-api-key-env", default="OPENCLAW_OAUTH_TOKEN")
+    parser.add_argument("--model-base-url", default="https://model-gateway.local/v1")
+    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="gateway")
+    parser.add_argument("--model-api-key-env", default="MODEL_GATEWAY_TOKEN")
     parser.add_argument("--host", required=True)
     parser.add_argument("--environment-name", required=True)
     parser.add_argument("--remote-user", default="swym")

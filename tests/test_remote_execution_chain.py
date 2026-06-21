@@ -100,7 +100,7 @@ def test_ui_http_writes_remote_execution_chain_when_ssh_target_is_present(
     from sim_agent.ui.server import build_ui_http_server
 
     status = build_ui_api_status()
-    server = build_ui_http_server("127.0.0.1", 0, status.static_root)
+    server = build_ui_http_server("127.0.0.1", 0, status.static_root, csrf_token="test-token")
     host, port = server.server_address
     output_dir = tmp_path / "agent-plan"
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -151,11 +151,11 @@ def test_ui_http_writes_remote_execution_chain_when_ssh_target_is_present(
     assert source_payload_path.exists()
     with tarfile.open(source_payload_path, "r:gz") as archive:
         names = set(archive.getnames())
-    assert "02.Source_code/mss_agent/scripts/run_md_campaign_job.py" in names
-    assert "02.Source_code/mss_agent/scripts/probe_worker_capability.py" in names
-    assert "02.Source_code/mss_agent/sim_agent/__init__.py" in names
+    assert "02.Source_code/asa_runtime/scripts/run_md_campaign_job.py" in names
+    assert "02.Source_code/asa_runtime/scripts/probe_worker_capability.py" in names
+    assert "02.Source_code/asa_runtime/sim_agent/__init__.py" in names
     assert (
-        "02.Source_code/mss_agent/tests/fixtures/materials/si_amorphous_descriptor.json"
+        "02.Source_code/asa_runtime/tests/fixtures/materials/si_amorphous_descriptor.json"
         in names
     )
 
@@ -205,7 +205,7 @@ def _post_json(url: str, payload: JsonMap) -> JsonMap:
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-ASA-CSRF-Token": "test-token"},
         method="POST",
     )
     response = urlopen(request, timeout=5)

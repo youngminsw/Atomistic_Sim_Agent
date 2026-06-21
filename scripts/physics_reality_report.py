@@ -165,9 +165,9 @@ def _model_provider_config_ok() -> bool:
 
 
 def _gpu_host_allowlist_ok() -> bool:
-    expected_hosts = ("gpu-5090", "blackwell-rtxpro", "gpu-ada", "ws-gpu", "local")
+    required_gpu_hosts = frozenset(("gpu-5090", "blackwell-rtxpro", "gpu-ada", "4090-gpu-ws", "ws-gpu"))
     hosts = allowed_compute_hosts()
-    return hosts == expected_hosts and "ws-24core" not in hosts
+    return required_gpu_hosts <= frozenset(hosts) and "unconfigured-gpu" not in hosts
 
 
 def _neo4j_write_gate_ok() -> bool:

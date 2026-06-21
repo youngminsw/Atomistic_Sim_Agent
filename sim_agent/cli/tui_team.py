@@ -4,7 +4,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
+from sim_agent.agent_runtime import (
+    AutoCompactionPolicy,
+    default_worker_adapter_config,
+    load_agent_registry,
+    resolve_subagent_preset,
+    worker_adapter_status,
+)
 from sim_agent.agents_sdk_runtime.runtime import AGENT_ROLES
+from sim_agent.agents_sdk_runtime.skill_registry import skill_registry_summary
 from sim_agent.agents_sdk_runtime.session_contract import agent_team_session_contract
 from sim_agent.agents_sdk_runtime.session_runtime import (
     AGENT_TEAM_SESSION_LEDGER_NAME,
@@ -13,11 +21,14 @@ from sim_agent.agents_sdk_runtime.session_runtime import (
     TEAM_HEARTBEAT_INTERVAL_S,
     run_agent_team_session_smoke,
 )
-from sim_agent.llm_endpoints import ModelProviderConfig
+from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, ProviderConfigPolicyError
+from sim_agent.schemas._parse import as_mapping, as_sequence, as_str
 
+from .tui_agent_activity import build_agent_activity_summary
 from .tui_catalog import SIMULATION_SKILLS
 from .tui_parse import parse_options
 from .tui_render import AgentStatusRow, write_agent_workboard
+from .tui_semantic import write_semantic_line
 from .tui_state import TuiState, append_event, replace_team_ledger
 
 SHORT_BOUNDARIES: dict[str, str] = {
@@ -29,15 +40,40 @@ SHORT_BOUNDARIES: dict[str, str] = {
 }
 
 
-def handle_agents(output_stream: TextIO) -> None:
-    write_agent_workboard("Agent Workboard", _roster_rows(), output_stream)
-    output_stream.write("agent_roster=true\n")
-    output_stream.write("agent=orchestrator boundary=routes work, approvals, and final run assembly\n")
+def handle_agents(state: TuiState, output_stream: TextIO) -> None:
+    summary = build_agent_activity_summary(state, heartbeat_s=TEAM_HEARTBEAT_INTERVAL_S)
+    write_agent_workboard("Agent Workboard", summary.rows, output_stream)
+    registry = load_agent_registry(state.session_dir)
+    write_agent_workboard("Persistent Domain Agents", _persistent_agent_rows(summary.rows), output_stream)
+    write_agent_workboard("Global Bounded Subagent Presets", _bounded_subagent_rows(), output_stream)
+    write_semantic_line(output_stream, "agent_roster=true")
+    write_semantic_line(output_stream, f"agent_activity_mode={summary.mode}")
+    write_semantic_line(output_stream, f"active_agent={summary.active_agent}")
+    write_semantic_line(output_stream, "agent_session_mode=persistent")
+    write_semantic_line(output_stream, f"agent_registry_path={registry.registry_path}")
+    compact_policy = AutoCompactionPolicy()
+    write_semantic_line(output_stream, "auto_compaction_policy=manual_replay_gate")
+    write_semantic_line(output_stream, f"auto_compaction_new_message_threshold={compact_policy.new_message_threshold}")
+    worker = worker_adapter_status(default_worker_adapter_config())
+    write_semantic_line(
+        output_stream,
+        f"worker_adapter={worker.kind} default_runtime_attached={str(worker.default_runtime_attached).lower()}",
+    )
+    write_semantic_line(output_stream, "agent=orchestrator boundary=routes work, approvals, and final run assembly")
+    for handle in registry.handles.values():
+        write_semantic_line(
+            output_stream,
+            f"agent_session={handle.agent_id} session_id={handle.agent_session_id} "
+            f"path={handle.session_dir}"
+        )
+    row_by_agent = {row.agent_id: row for row in summary.rows}
     for role in AGENT_ROLES:
-        output_stream.write(f"agent={role.role_id} boundary={SHORT_BOUNDARIES[role.role_id]}\n")
-        output_stream.write(
-            f"agent_activity={role.role_id} ready "
-            f"summary=role-local harness initialized heartbeat {TEAM_HEARTBEAT_INTERVAL_S}s\n"
+        row = row_by_agent[role.role_id]
+        write_semantic_line(output_stream, f"agent={role.role_id} boundary={SHORT_BOUNDARIES[role.role_id]}")
+        write_semantic_line(
+            output_stream,
+            f"agent_activity={role.role_id} {row.status} "
+            f"summary={row.activity} heartbeat {TEAM_HEARTBEAT_INTERVAL_S}s"
         )
 
 
@@ -45,6 +81,15 @@ def handle_skills(output_stream: TextIO) -> None:
     output_stream.write("skill_catalog=true\n")
     for name, summary in SIMULATION_SKILLS:
         output_stream.write(f"skill={name} summary={summary}\n")
+    registry = skill_registry_summary()
+    output_stream.write(f"skill_registry_dispatch={as_str(registry['dispatch_mode'], 'dispatch_mode')}\n")
+    for item in as_sequence(registry["skills"], "skills"):
+        contract = as_mapping(item, "skill_contract")
+        output_stream.write(
+            f"skill_impl={as_str(contract['agent_id'], 'agent_id')}:"
+            f"{as_str(contract['skill_id'], 'skill_id')} "
+            f"adapter={as_str(contract['domain_adapter'], 'domain_adapter')}\n"
+        )
 
 
 def handle_harness(output_stream: TextIO) -> None:
@@ -64,16 +109,21 @@ def handle_harness(output_stream: TextIO) -> None:
 
 def handle_team(args: Sequence[str], state: TuiState, output_stream: TextIO) -> TuiState:
     parsed = parse_options(args)
-    endpoint = ModelProviderConfig.from_mapping(
-        {
-            "provider": state.model.provider,
-            "model": state.model.name,
-            "reasoning_effort": "high",
-            "base_url": state.model.base_url,
-            "auth_mode": state.model.auth_mode,
-            "api_key_env": state.model.api_key_env,
-        }
-    )
+    try:
+        endpoint = ModelProviderConfig.from_mapping(
+            {
+                "provider": state.model.provider,
+                "model": state.model.name,
+                "reasoning_effort": state.model.reasoning_effort,
+                "base_url": state.model.base_url,
+                "auth_mode": state.model.auth_mode,
+                "api_key_env": state.model.api_key_env,
+            }
+        )
+    except (ModelPolicyError, ProviderConfigPolicyError) as exc:
+        output_stream.write(f"team_error={exc}\n")
+        append_event(state, "team_blocked", str(exc))
+        return state
     output_dir = Path(parsed.options.get("output_dir", str(state.session_dir / "team")))
     result = run_agent_team_session_smoke(
         {"request_id": state.session_id},
@@ -112,6 +162,31 @@ def _roster_rows() -> tuple[AgentStatusRow, ...]:
         AgentStatusRow(role.role_id, "ready", "role-local harness initialized", heartbeat_s=TEAM_HEARTBEAT_INTERVAL_S)
         for role in AGENT_ROLES
     )
+    return tuple(rows)
+
+
+def _persistent_agent_rows(rows: Sequence[AgentStatusRow]) -> tuple[AgentStatusRow, ...]:
+    row_by_agent = {row.agent_id: row for row in rows}
+    persistent_rows = [
+        AgentStatusRow("orchestrator", "persistent", "persistent session · routes work and final assembly")
+    ]
+    persistent_rows.extend(
+        AgentStatusRow(
+            role.role_id,
+            row_by_agent[role.role_id].status,
+            f"persistent session · {SHORT_BOUNDARIES[role.role_id]}",
+            heartbeat_s=TEAM_HEARTBEAT_INTERVAL_S,
+        )
+        for role in AGENT_ROLES
+    )
+    return tuple(persistent_rows)
+
+
+def _bounded_subagent_rows() -> tuple[AgentStatusRow, ...]:
+    rows: list[AgentStatusRow] = []
+    for name in ("planner", "architect", "critic", "executor"):
+        preset = resolve_subagent_preset(name)
+        rows.append(AgentStatusRow(preset.name, "preset", f"clean-room bounded · {preset.scope_notes}"))
     return tuple(rows)
 
 

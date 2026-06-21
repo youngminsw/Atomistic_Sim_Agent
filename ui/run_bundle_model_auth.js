@@ -33,17 +33,17 @@
 
   function submitLogin(documentRef, fetcher, event) {
     event.preventDefault();
-    const provider = value(documentRef, "model-provider") || "oauth_gateway";
-    const authMode = value(documentRef, "auth-mode") || "oauth";
+    const provider = value(documentRef, "model-provider");
+    const authMode = value(documentRef, "auth-mode");
     const accessToken = value(documentRef, "model-access-token");
     const refreshToken = value(documentRef, "model-refresh-token");
     return fetcher("/api/model/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         provider,
         auth_mode: authMode,
-        api_key_env: value(documentRef, "model-api-key-env") || "MODEL_GATEWAY_TOKEN",
+        api_key_env: value(documentRef, "model-api-key-env"),
         access_token: accessToken,
         refresh_token: refreshToken,
         expires_in_s: 3600,
@@ -61,16 +61,22 @@
   function submitSmoke(documentRef, fetcher) {
     const request = parseRequest(value(documentRef, "agent-request-json"));
     const endpoint = {
-      provider: value(documentRef, "model-provider") || "oauth_gateway",
-      model: value(documentRef, "model-name") || "gpt-5.5",
-      reasoning_effort: value(documentRef, "reasoning-effort") || "high",
-      base_url: value(documentRef, "model-base-url"),
-      auth_mode: value(documentRef, "auth-mode") || "gateway",
-      api_key_env: value(documentRef, "model-api-key-env") || "MODEL_GATEWAY_TOKEN",
+      ...runtimeEndpoint(),
+      provider: value(documentRef, "model-provider") || text(runtimeEndpoint().provider),
+      model: value(documentRef, "model-name") || text(runtimeEndpoint().model),
+      reasoning_effort: value(documentRef, "reasoning-effort") || text(runtimeEndpoint().reasoning_effort),
+      base_url: value(documentRef, "model-base-url") || text(runtimeEndpoint().base_url),
+      auth_mode: value(documentRef, "auth-mode") || text(runtimeEndpoint().auth_mode),
+      api_key_env: value(documentRef, "model-api-key-env") || text(runtimeEndpoint().api_key_env),
     };
+    const error = endpointError(endpoint);
+    if (error) {
+      renderStatus(documentRef, { error });
+      return Promise.resolve({ error });
+    }
     return fetcher("/api/model/gateway/smoke", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ llm_endpoint: endpoint, request }),
     })
       .then((response) => response.json().then((body) => ({ ok: response.ok, body })))
@@ -126,6 +132,23 @@
   function clearSecret(documentRef, id) {
     const node = documentRef.getElementById(id);
     if (node) node.value = "";
+  }
+
+  function runtimeEndpoint() {
+    const endpoint = globalThis.__ASA_MODEL_ENDPOINT__;
+    return endpoint && typeof endpoint === "object" ? endpoint : {};
+  }
+
+  function endpointError(endpoint) {
+    const required = ["provider", "model", "reasoning_effort", "base_url", "auth_mode"];
+    const missing = required.filter((field) => !text(endpoint[field]));
+    if (text(endpoint.auth_mode) !== "none" && !text(endpoint.api_key_env)) missing.push("api_key_env");
+    return missing.length > 0 ? `model_endpoint_not_configured:${missing.join(",")}` : "";
+  }
+
+  function csrfHeaders(headers) {
+    const token = globalThis.__ASA_CONTROLLER_TOKEN__;
+    return token ? { ...headers, "X-ASA-CSRF-Token": token } : headers;
   }
 
   function value(documentRef, id) {

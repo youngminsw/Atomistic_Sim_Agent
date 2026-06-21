@@ -58,7 +58,9 @@ def test_controller_js_blocks_missing_recipe_and_builds_runner_args() -> None:
             "const missing = controller.validateControllerInput({ mode: '3d', geometryPath: 'scene.json', kernelPath: 'kernel.json', eventsPath: 'events.jsonl', steps: 5, ions: 8, runId: 'ui-run', iedfReady: false, iadfReady: true });",
             "if (missing.canRun) throw new Error('missing recipe allowed');",
             "if (!missing.missingFields.includes('iedf')) throw new Error('missing iedf not reported');",
-            "const valid = controller.validateControllerInput({ mode: '2d', geometryPath: 'mask.png', kernelPath: 'kernel.json', eventsPath: 'events.jsonl', steps: 4, ions: 6, runId: 'ui-run-2d', iedfReady: true, iadfReady: true });",
+            "if (!missing.missingFields.includes('compute')) throw new Error('missing compute not reported');",
+            "controller.configureComputeTargets(['controller-gpu']);",
+            "const valid = controller.validateControllerInput({ mode: '2d', geometryPath: 'mask.png', kernelPath: 'kernel.json', eventsPath: 'events.jsonl', computeTarget: 'controller-gpu', steps: 4, ions: 6, runId: 'ui-run-2d', iedfReady: true, iadfReady: true });",
             "if (!valid.canRun) throw new Error('valid request rejected');",
             "const args = controller.buildOfflineRunnerArgs(valid.normalized);",
             "if (!args.includes('--image')) throw new Error('2d image flag missing');",
@@ -108,7 +110,7 @@ def test_ui_api_builds_remote_first_offline_command_and_blocks_missing_recipe() 
     assert missing.missing_fields == ("iedf",)
     assert valid.can_run is True
     assert valid.compute_target == "gpu-5090"
-    assert command[:2] == ("python", "02.Source_code/mss_agent/scripts/run_offline_simulation.py")
+    assert command[:2] == ("python", "02.Source_code/asa_runtime/scripts/run_offline_simulation.py")
     assert "--scene" in command
     assert "--kernel" in command
 
@@ -263,10 +265,10 @@ def test_agent_client_posts_request_json_and_renders_clarification() -> None:
             "nodes['agent-request-json'].value = JSON.stringify({",
             "  request_id: 'ui-plan',",
             "  llm_endpoint: {",
-            "    provider: 'openclaw',",
-            "    model: 'gpt-5.5',",
+            "    provider: 'oauth_gateway',",
+            "    model: 'gpt-5-codex',",
             "    reasoning_effort: 'high',",
-            "    base_url: 'https://openclaw.local/v1',",
+            "    base_url: 'https://model-gateway.local/v1',",
             "  },",
             "});",
             "const documentRef = {",

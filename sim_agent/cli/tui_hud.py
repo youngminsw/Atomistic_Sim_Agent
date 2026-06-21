@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from sim_agent.runtime_config import active_profile_status, load_runtime_config
 from sim_agent.ui.model_connection import model_connection_status
 
 from .tui_state import TuiState
@@ -17,7 +18,8 @@ class TuiHudStatus:
     connection_label: str
     friendly_message: str
     action_hint: str
-    credential_store: Path
+    active_profile: str
+    profile_customized: bool
     session_id: str
     session_dir: Path
     last_run_ledger: Path | None
@@ -26,6 +28,8 @@ class TuiHudStatus:
 
 
 def build_hud_status(state: TuiState) -> TuiHudStatus:
+    runtime_config = load_runtime_config()
+    active = active_profile_status(runtime_config)
     connection = model_connection_status(
         state.model.provider,
         state.model.name,
@@ -40,7 +44,8 @@ def build_hud_status(state: TuiState) -> TuiHudStatus:
         connection_label=connection.connection_label,
         friendly_message=connection.friendly_message,
         action_hint=connection.action_hint,
-        credential_store=connection.credential_store,
+        active_profile=active.name or "none",
+        profile_customized=active.customized,
         session_id=state.session_id,
         session_dir=state.session_dir,
         last_run_ledger=state.last_run_ledger,

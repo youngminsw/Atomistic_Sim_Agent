@@ -29,12 +29,12 @@ class AgentCliRequestInput:
     md_run_length_ps: float
     lammps_structure_source: str | None
     lammps_structure_preparation: str
-    model_provider: str = "openclaw"
-    model_name: str = "gpt-5.5"
+    model_provider: str = "openai-codex"
+    model_name: str = "gpt-5-codex"
     reasoning_effort: str = "high"
-    model_base_url: str = "https://openclaw.local/v1"
-    model_auth_mode: str = "oauth"
-    model_api_key_env: str = "OPENCLAW_OAUTH_TOKEN"
+    model_base_url: str = "https://model-gateway.local/v1"
+    model_auth_mode: str = "gateway"
+    model_api_key_env: str = "MODEL_GATEWAY_TOKEN"
 
 
 def parse_range(raw: str, field: str) -> tuple[float, float]:
