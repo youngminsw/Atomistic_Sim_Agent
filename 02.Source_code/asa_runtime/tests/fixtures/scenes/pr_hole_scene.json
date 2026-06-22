@@ -1,0 +1,13 @@
+{
+  "scene_id": "pr_hole_scene",
+  "mode": "3d",
+  "feature_type": "hole",
+  "geometry_source": {
+    "kind": "mesh",
+    "path": "tests/fixtures/geometry/pr_hole.stl",
+    "units": "nm"
+  },
+  "pr_selectivity": 20.0,
+  "target_material": "Si",
+  "mask_material": "PR"
+}

@@ -1,0 +1,8 @@
+{
+  "provider": "openclaw",
+  "model": "gpt-5.5",
+  "reasoning_effort": "high",
+  "base_url": "https://openclaw.local/v1",
+  "api_key_env": "OPENCLAW_OAUTH_TOKEN",
+  "auth_refresh_command": "openclaw auth token --print"
+}

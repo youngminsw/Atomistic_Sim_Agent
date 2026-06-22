@@ -1,0 +1,9 @@
+{
+  "provider": "openclaw",
+  "model": "gpt-5.3-codex-spark",
+  "reasoning_effort": "low",
+  "base_url": "https://openclaw.local/v1",
+  "use_case": "low_risk_extraction",
+  "structured_outputs": true,
+  "streaming": false
+}

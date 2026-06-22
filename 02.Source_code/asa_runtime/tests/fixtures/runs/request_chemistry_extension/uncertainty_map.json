@@ -1,0 +1,23 @@
+{
+  "run_id": "request-chemistry-extension",
+  "expert": {
+    "expert_id": "Ar_on_Si",
+    "material_id": "Si",
+    "ion_species": "Ar",
+    "force_field_protocol_id": "Si_Tersoff_ZBL_physical_v001",
+    "physics_scope": "physical_bombardment_no_chemistry"
+  },
+  "samples": [
+    {
+      "sample_id": "chem-001",
+      "material_id": "Si",
+      "ion_species": "Ar",
+      "energy_eV": 600.0,
+      "polar_deg": 45.0,
+      "azimuth_deg": 90.0,
+      "uncertainty_score": 0.88,
+      "snapshot_id": "snap-chemistry",
+      "chemistry_requested": true
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_audit_runtime_spines_writes_gap_matrix(tmp_path: Path) -> None:
+    out_path = tmp_path / "runtime-spines.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SOURCE_ROOT / "scripts" / "audit_runtime_spines.py"),
+            "--root",
+            str(SOURCE_ROOT),
+            "--out",
+            str(out_path),
+        ],
+        cwd=SOURCE_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "runtime_spine_audit_path=" in result.stdout
+    assert payload["status"] == "gap_contract_recorded"
+    assert payload["summary"]["total_spines"] == 8
+    assert payload["summary"]["gap_open"] == 8
+    assert payload["spines"]["agent_loop"]["detectors"]["one_shot_choose_tools"] is True
+
+
+def test_audit_plan_completion_reports_named_todo(tmp_path: Path) -> None:
+    out_path = tmp_path / "plan.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SOURCE_ROOT / "scripts" / "audit_plan_completion.py"),
+            "--root",
+            str(SOURCE_ROOT),
+            "--todo",
+            "1",
+            "--out",
+            str(out_path),
+        ],
+        cwd=SOURCE_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert payload["todo_id"] == "1"
+    assert payload["todo_found"] is True
+    assert "Freeze the eight-spine runtime contract" in payload["todo_line"]
+
+
+def test_audit_scope_fidelity_allows_todo_one_paths(tmp_path: Path) -> None:
+    out_path = tmp_path / "scope.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SOURCE_ROOT / "scripts" / "audit_scope_fidelity.py"),
+            "--root",
+            str(SOURCE_ROOT),
+            "--out",
+            str(out_path),
+        ],
+        cwd=SOURCE_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert payload["status"] in {"clean", "scope_review_required"}
+    assert "02.Source_code/mss_agent" in payload["forbidden_path_fragments"]

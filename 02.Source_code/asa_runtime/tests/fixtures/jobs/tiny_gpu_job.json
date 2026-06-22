@@ -1,0 +1,16 @@
+{
+  "job_id": "tiny_gpu_job",
+  "environment_name": "atomistic-sim-gpu",
+  "command": [
+    "python",
+    "02.Source_code/asa_runtime/scripts/smoke_transport.py",
+    "--dry-run"
+  ],
+  "inputs": [
+    "tests/fixtures/kernels/offline_ar_si_kernel.json"
+  ],
+  "outputs": [
+    "artifacts/tiny_gpu_job/manifest.json"
+  ],
+  "requires_cuda": true
+}

@@ -1,0 +1,10 @@
+{
+  "request_id": "no_artifacts_complete_request",
+  "llm_endpoint": {
+    "provider": "openclaw",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "base_url": "https://openclaw.local/v1"
+  },
+  "requested_state": "complete_without_artifacts"
+}

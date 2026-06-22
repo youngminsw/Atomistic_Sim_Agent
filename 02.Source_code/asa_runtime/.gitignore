@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local workflow/runtime state.
+.omo/
+.omx/
+evidence/
+model_gateway/dist/
+model_gateway/node_modules/
+
+# Windows alternate data stream markers copied into WSL as plain files.
+*:Zone.Identifier

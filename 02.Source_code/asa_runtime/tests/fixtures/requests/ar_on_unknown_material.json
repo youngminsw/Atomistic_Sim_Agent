@@ -1,0 +1,12 @@
+{
+  "request_id": "ar_on_unknown_material",
+  "llm_endpoint": {
+    "provider": "openclaw",
+    "model": "gpt-5.5",
+    "reasoning_effort": "high",
+    "base_url": "https://openclaw.local/v1"
+  },
+  "ion_species": "Ar",
+  "target_material": "UnobtaniumFixture",
+  "expected_planner_result": "model_training_required"
+}
