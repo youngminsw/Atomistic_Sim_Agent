@@ -28,8 +28,13 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand("/harness", "/harness", "show agent call matrix, QA gates, heartbeat, and recovery policy"),
     SlashCommand(
         "/workflow",
-        "/workflow <name> [--output-dir PATH]",
+        "/workflow <name> [--gate-id ID] [--owner-agent AGENT] [--target-agent AGENT] [--output-dir PATH]",
         "start a resumable workflow harness for deep-interview, ralplan, ultrawork, ultraqa, or ultragoal",
+    ),
+    SlashCommand(
+        "/workflow-response",
+        "/workflow-response <gate-id> <value> [--workflow-id NAME] [--responder-agent AGENT]",
+        "answer a pending workflow gate and update the workflow gate ledger",
     ),
     SlashCommand("/deep-interview", "/deep-interview [--output-dir PATH]", "shortcut for the ambiguity-gated interview harness"),
     SlashCommand("/ralplan", "/ralplan [--output-dir PATH]", "shortcut for the RALPlan workflow harness"),

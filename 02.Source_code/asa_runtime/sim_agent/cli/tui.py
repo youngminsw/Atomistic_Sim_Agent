@@ -26,7 +26,7 @@ from .tui_state import TuiState, TuiStep, append_event, initial_state
 from .tui_team import handle_agents, handle_contract, handle_harness, handle_skills, handle_team
 from .tui_tools import handle_tools
 from .tui_wizard import handle_wizard
-from .tui_workflow import handle_workflow, write_workflow_catalog
+from .tui_workflow import handle_workflow, handle_workflow_response, write_workflow_catalog
 
 
 def run_tui(
@@ -136,6 +136,8 @@ def _handle_line(
                 write_workflow_catalog(output_stream)
                 return TuiStep(state=state, exit_requested=False)
             return TuiStep(state=handle_workflow(parsed.args, state, output_stream), exit_requested=False)
+        case "/workflow-response":
+            return TuiStep(state=handle_workflow_response(parsed.args, state, output_stream), exit_requested=False)
         case "/deep-interview" | "/ralplan" | "/ultrawork" | "/ultraqa" | "/ultragoal":
             workflow_id = parsed.command.removeprefix("/")
             return TuiStep(state=handle_workflow((workflow_id, *parsed.args), state, output_stream), exit_requested=False)
