@@ -195,8 +195,9 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
             if not isinstance(value, str) or value not in gate.allowed_values:
                 return _gate_response_for_gate(gate, "blocked", ("workflow_gate_invalid_enum_value",), "")
         case WorkflowGateKind.RESPONSE_SCHEMA:
-            if value is None:
-                return _gate_response_for_gate(gate, "blocked", ("workflow_gate_malformed_response",), "")
+            blocker = _response_schema_blocker(value, gate.response_schema or {})
+            if blocker:
+                return _gate_response_for_gate(gate, "blocked", (blocker,), "")
         case unreachable:
             assert_never(unreachable)
     answered_gate = _answered_gate(gate)
@@ -402,6 +403,52 @@ def _allowed_values(payload: JsonMap) -> tuple[str, ...]:
     if not isinstance(values, list | tuple):
         return ()
     return tuple(item for item in values if isinstance(item, str) and item)
+
+
+def _response_schema_blocker(value: object, schema: JsonMap) -> str:
+    schema_type = schema.get("type")
+    if schema_type is not None and not _matches_schema_type(value, schema_type):
+        return "workflow_gate_response_schema_mismatch"
+    required = schema.get("required")
+    if isinstance(required, list):
+        if not isinstance(value, dict):
+            return "workflow_gate_response_schema_mismatch"
+        for field in required:
+            if isinstance(field, str) and field not in value:
+                return "workflow_gate_response_schema_mismatch"
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and isinstance(value, dict):
+        for field, field_schema in properties.items():
+            if not isinstance(field, str) or field not in value or not isinstance(field_schema, dict):
+                continue
+            blocker = _response_schema_blocker(value[field], field_schema)
+            if blocker:
+                return blocker
+    return ""
+
+
+def _matches_schema_type(value: object, schema_type: object) -> bool:
+    if isinstance(schema_type, list):
+        return any(_matches_schema_type(value, item) for item in schema_type)
+    if not isinstance(schema_type, str):
+        return True
+    match schema_type:
+        case "object":
+            return isinstance(value, dict)
+        case "array":
+            return isinstance(value, list)
+        case "string":
+            return isinstance(value, str)
+        case "number":
+            return isinstance(value, int | float) and not isinstance(value, bool)
+        case "integer":
+            return isinstance(value, int) and not isinstance(value, bool)
+        case "boolean":
+            return isinstance(value, bool)
+        case "null":
+            return value is None
+        case _:
+            return True
 
 
 def _required_text(payload: JsonMap, field: str) -> str:
