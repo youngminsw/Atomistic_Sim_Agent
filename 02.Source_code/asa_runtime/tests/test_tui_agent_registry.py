@@ -67,7 +67,7 @@ def test_agents_command_exposes_durable_agent_session_paths(tmp_path: Path) -> N
     assert "agent_session=md_agent" in result.stdout
     assert "agent_session=qa_agent" in result.stdout
     assert "agent_session_mode=persistent" in result.stdout
-    assert "auto_compaction_policy=manual_replay_gate" in result.stdout
+    assert "auto_compaction_policy=auto_generated_rewrite_active" in result.stdout
     assert "worker_adapter=disabled default_runtime_attached=false" in result.stdout
 
 

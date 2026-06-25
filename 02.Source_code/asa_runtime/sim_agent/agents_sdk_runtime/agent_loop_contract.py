@@ -46,6 +46,10 @@ class AsaAgentSession:
     workflow_policy: str = ""
     project_guidance: str = ""
     compact_summary: str = ""
+    caller_context: str = ""
+    raw_message_count: int = 0
+    provider_context_blocker: str = ""
+    compaction_metadata: JsonMap = field(default_factory=dict)
     workflow_state: JsonMap = field(default_factory=dict)
     skills: tuple[str, ...] = ()
     ledger_facts: list[JsonMap] = field(default_factory=list)

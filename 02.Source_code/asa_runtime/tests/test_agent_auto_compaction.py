@@ -14,7 +14,7 @@ from sim_agent.agent_runtime import (
 from sim_agent.cli.tui_state import initial_state
 
 
-def test_auto_compaction_requires_manual_replay_gate(tmp_path: Path) -> None:
+def test_auto_compaction_activates_generated_summary_without_manual_replay(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
     append_agent_message(state.session_dir, "md_agent", "user", "first")
 
@@ -24,10 +24,12 @@ def test_auto_compaction_requires_manual_replay_gate(tmp_path: Path) -> None:
         AutoCompactionPolicy(new_message_threshold=1),
     )
 
-    errors = _jsonl(state.session_dir / "agent_sessions" / "md_agent" / "compact_errors.jsonl")
-    assert result.status == "blocked"
-    assert result.blocker == "manual_replay_required"
-    assert errors[-1]["blocker"] == "manual_replay_required"
+    summary = json.loads((state.session_dir / "agent_sessions" / "md_agent" / "compact_summary.json").read_text(encoding="utf-8"))
+    assert result.status == "succeeded"
+    assert result.compact_status == "auto_compacted"
+    assert summary["schema_version"] == "asa_agent_compact_summary_v3"
+    assert summary["summary_source"] == "auto_generated"
+    assert summary["manual_replay_status"] == "passed"
 
 
 def test_auto_compaction_runs_after_manual_replay_and_new_messages(tmp_path: Path) -> None:
@@ -54,7 +56,8 @@ def test_auto_compaction_runs_after_manual_replay_and_new_messages(tmp_path: Pat
     assert result.compact_status == "auto_compacted"
     assert summary["compact_mode"] == "auto"
     assert summary["compact_id"] == "auto-qa_agent-3"
-    assert summary["message_count"] == 3
+    assert summary["raw_message_count"] == 3
+    assert summary["summary_source"] == "auto_generated"
     assert compactions[-1]["compact_id"] == "auto-qa_agent-3"
 
 
@@ -98,7 +101,7 @@ def test_agent_message_append_auto_compacts_after_default_threshold(tmp_path: Pa
     )
     assert summary["compact_mode"] == "auto"
     assert summary["compact_id"] == "auto-research_agent-33"
-    assert summary["message_count"] == 33
+    assert summary["raw_message_count"] == 33
 
 
 def _jsonl(path: Path) -> list[dict[str, object]]:

@@ -3,21 +3,36 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal, assert_never
+from typing import Final, assert_never
 
 from sim_agent.schemas._parse import JsonMap
 
 from .agent_registry import load_agent_registry
 from .agent_session_io import append_agent_event
+from .compaction_policy import (
+    COMPACT_LEDGER_NAME,
+    COMPACT_SCHEMA_VERSION,
+    COMPACT_SUMMARY_NAME,
+    MIN_RETAINED_MESSAGES,
+    MIN_RETAINED_TURNS,
+    RETAINED_TAIL_POLICY,
+    CompactionMode,
+    CompactionPreparation,
+    CompactionSummarySource,
+    LedgerCounts,
+    activation_blocker,
+    int_value,
+    ledger_counts,
+    prepare_compaction,
+    replay_blocker,
+    str_value,
+    summary_poison_blocker,
+)
 from .compaction_store import append_jsonl, atomic_write_json, read_json, read_jsonl
 from .global_session_store import backup_legacy_json
 
 
-COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v2"
-COMPACT_SUMMARY_NAME: Final = "compact_summary.json"
-COMPACT_LEDGER_NAME: Final = "compactions.jsonl"
 AUTO_COMPACT_NEW_MESSAGE_THRESHOLD: Final = 32
-CompactionMode = Literal["manual", "auto"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +41,7 @@ class CompactionRequest:
     compact_id: str
     summary: str
     compact_mode: CompactionMode = "manual"
+    summary_source: CompactionSummarySource = "manual_supplied"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,20 +71,19 @@ class AutoCompactionResult:
     blocker: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class LedgerCounts:
-    message_count: int
-    event_count: int
-    last_message_sequence: int
-    last_event_sequence: int
-
-
 def compact_agent_session(session_dir: Path, request: CompactionRequest) -> CompactionResult:
     handle = load_agent_registry(session_dir).handles[request.agent_id]
-    counts = _ledger_counts(handle.messages_path, handle.events_path)
+    counts = ledger_counts(handle.messages_path, handle.events_path)
     if counts is None:
         return _blocked(handle.session_dir, request, "corrupt_ledger")
-    payload = _summary_payload(request, handle.agent_session_id, counts)
+    messages = read_jsonl(handle.messages_path)
+    events = read_jsonl(handle.events_path)
+    if messages is None or events is None:
+        return _blocked(handle.session_dir, request, "corrupt_ledger")
+    preparation = prepare_compaction(tuple(messages), tuple(events), 24)
+    if preparation is None:
+        return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
+    payload = _summary_payload(request, handle.agent_session_id, counts, preparation)
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
     backup_legacy_json(summary_path, COMPACT_SCHEMA_VERSION)
     atomic_write_json(summary_path, payload)
@@ -85,16 +100,25 @@ def replay_agent_compaction(session_dir: Path, agent_id: str) -> CompactionResul
         return _blocked(handle.session_dir, CompactionRequest(agent_id, "", ""), "compact_summary_missing")
     if payload == {}:
         return _blocked(handle.session_dir, CompactionRequest(agent_id, "", ""), "corrupt_summary")
-    request = CompactionRequest(agent_id, _str_value(payload, "compact_id"), _str_value(payload, "summary"))
-    poison_blocker = _summary_poison_blocker(payload)
+    request = CompactionRequest(agent_id, str_value(payload, "compact_id"), str_value(payload, "summary"))
+    poison_blocker = summary_poison_blocker(payload)
     if poison_blocker is not None:
         return _blocked(handle.session_dir, request, poison_blocker)
-    counts = _ledger_counts(handle.messages_path, handle.events_path)
+    counts = ledger_counts(handle.messages_path, handle.events_path)
     if counts is None:
         return _blocked(handle.session_dir, request, "corrupt_ledger")
-    replay_blocker = _replay_blocker(handle.messages_path, handle.events_path, counts, payload)
-    if replay_blocker is not None:
-        return _blocked(handle.session_dir, request, replay_blocker)
+    blocker = replay_blocker(handle.messages_path, handle.events_path, counts, payload)
+    if blocker is not None:
+        return _blocked(handle.session_dir, request, blocker)
+    if str_value(payload, "schema_version") != COMPACT_SCHEMA_VERSION:
+        messages = read_jsonl(handle.messages_path)
+        events = read_jsonl(handle.events_path)
+        if messages is None or events is None:
+            return _blocked(handle.session_dir, request, "corrupt_ledger")
+        preparation = prepare_compaction(tuple(messages), tuple(events), 24)
+        if preparation is None:
+            return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
+        payload = _summary_payload(request, handle.agent_session_id, counts, preparation)
     _mark_replay_passed(summary_path, payload, counts)
     return CompactionResult("succeeded", "replayed", agent_id, request.compact_id, summary_path)
 
@@ -105,14 +129,10 @@ def auto_compact_agent_session(
     policy: AutoCompactionPolicy = AutoCompactionPolicy(),
 ) -> AutoCompactionResult:
     handle = load_agent_registry(session_dir).handles[agent_id]
-    counts = _ledger_counts(handle.messages_path, handle.events_path)
+    counts = ledger_counts(handle.messages_path, handle.events_path)
     compact_id = f"auto-{agent_id}-{counts.message_count if counts is not None else 0}"
     if counts is None:
-        blocked = _blocked(
-            handle.session_dir,
-            CompactionRequest(agent_id=agent_id, compact_id=compact_id, summary="", compact_mode="auto"),
-            "corrupt_ledger",
-        )
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_ledger")
         return _auto_result(blocked, 0, 0)
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
     summary = read_json(summary_path)
@@ -127,79 +147,56 @@ def auto_compact_agent_session(
                 counts.message_count,
                 summary_path,
             )
-        blocked = _blocked(
-            handle.session_dir,
-            CompactionRequest(agent_id=agent_id, compact_id=compact_id, summary="", compact_mode="auto"),
-            "manual_replay_required",
-        )
-        return _auto_result(blocked, counts.message_count, counts.message_count)
+        request = _auto_request(agent_id, compact_id, counts)
+        compacted = compact_agent_session(session_dir, request)
+        return _auto_result(compacted, counts.message_count, counts.message_count, compact_status="auto_compacted")
     if summary == {}:
-        blocked = _blocked(
-            handle.session_dir,
-            CompactionRequest(agent_id=agent_id, compact_id=compact_id, summary="", compact_mode="auto"),
-            "corrupt_summary",
-        )
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_summary")
         return _auto_result(blocked, counts.message_count, 0)
-    new_message_count = max(0, counts.message_count - _int_value(summary, "message_count"))
+    existing_blocker = activation_blocker(summary, handle.messages_path, handle.events_path)
+    if existing_blocker is not None:
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), existing_blocker)
+        return _auto_result(blocked, counts.message_count, 0)
+    new_message_count = max(0, counts.message_count - int_value(summary, "raw_message_count", int_value(summary, "message_count")))
     if new_message_count < policy.new_message_threshold:
         return AutoCompactionResult("skipped", "below_threshold", agent_id, compact_id, counts.message_count, new_message_count, summary_path)
-    if _str_value(summary, "manual_replay_status") != "passed":
-        blocked = _blocked(
-            handle.session_dir,
-            CompactionRequest(agent_id=agent_id, compact_id=compact_id, summary="", compact_mode="auto"),
-            "manual_replay_required",
-        )
-        return _auto_result(blocked, counts.message_count, new_message_count)
-    replayed = replay_agent_compaction(session_dir, agent_id)
-    if replayed.status != "succeeded":
-        return AutoCompactionResult(
-            "blocked",
-            "blocked",
-            agent_id,
-            compact_id,
-            counts.message_count,
-            new_message_count,
-            summary_path,
-            replayed.blocker or "manual_replay_required",
-        )
-    request = CompactionRequest(
-        agent_id=agent_id,
-        compact_id=compact_id,
-        summary=(
-            f"Auto compacted {agent_id} after {new_message_count} new messages; "
-            f"session now has {counts.message_count} messages and {counts.event_count} events."
-        ),
-        compact_mode="auto",
-    )
+    request = _auto_request(agent_id, compact_id, counts)
     compacted = compact_agent_session(session_dir, request)
     return _auto_result(compacted, counts.message_count, new_message_count, compact_status="auto_compacted")
 
 
-def _ledger_counts(messages_path: Path, events_path: Path) -> LedgerCounts | None:
-    messages = read_jsonl(messages_path)
-    events = read_jsonl(events_path)
-    if messages is None or events is None:
-        return None
-    return LedgerCounts(
-        message_count=len(messages),
-        event_count=len(events),
-        last_message_sequence=_last_sequence(messages),
-        last_event_sequence=_last_sequence(events),
-    )
-
-
-def _summary_payload(request: CompactionRequest, agent_session_id: str, counts: LedgerCounts) -> JsonMap:
+def _summary_payload(
+    request: CompactionRequest,
+    agent_session_id: str,
+    counts: LedgerCounts,
+    preparation: CompactionPreparation,
+) -> JsonMap:
     return {
         "schema_version": COMPACT_SCHEMA_VERSION,
         "compact_id": request.compact_id,
         "agent_id": request.agent_id,
         "agent_session_id": agent_session_id,
         "compact_mode": request.compact_mode,
+        "summary_source": request.summary_source,
+        "manual_replay_status": "passed" if request.compact_mode == "auto" else "required",
         "summary": request.summary,
         "message_count": counts.message_count,
         "event_count": counts.event_count,
+        "raw_message_count": preparation.raw_message_count,
+        "recent_message_count": preparation.recent_message_count,
+        "compacted_message_count": preparation.compacted_message_count,
+        "raw_event_count": preparation.raw_event_count,
+        "compacted_event_count": preparation.compacted_event_count,
+        "first_kept_message_sequence": preparation.first_kept_message_sequence,
+        "summary_cutoff_message_sequence": preparation.summary_cutoff_message_sequence,
+        "first_kept_event_sequence": preparation.first_kept_event_sequence,
+        "summary_cutoff_event_sequence": preparation.summary_cutoff_event_sequence,
         "last_message_sequence": counts.last_message_sequence,
         "last_event_sequence": counts.last_event_sequence,
+        "retained_tail_policy": RETAINED_TAIL_POLICY,
+        "min_retained_messages": MIN_RETAINED_MESSAGES,
+        "min_retained_turns": MIN_RETAINED_TURNS,
+        "turn_boundary_preserved": preparation.turn_boundary_preserved,
         "created_at": time.time(),
     }
 
@@ -236,67 +233,9 @@ def _auto_result(
     )
 
 
-def _replay_blocker(messages_path: Path, events_path: Path, counts: LedgerCounts, payload: JsonMap) -> str | None:
-    message_count = _int_value(payload, "message_count")
-    event_count = _int_value(payload, "event_count")
-    if _has_orphan_tool_result(messages_path, events_path, message_count, event_count):
-        return "orphan_tool_result"
-    if (
-        counts.message_count < message_count
-        or counts.event_count < event_count
-        or _boundary_sequence_mismatch(messages_path, message_count, _int_value(payload, "last_message_sequence"))
-        or _boundary_sequence_mismatch(events_path, event_count, _int_value(payload, "last_event_sequence"))
-    ):
-        return "stale_compact_cursor"
-    return None
-
-
-def _summary_poison_blocker(payload: JsonMap) -> str | None:
-    summary = _str_value(payload, "summary").lower()
-    poison_markers = (
-        "ignore previous instructions",
-        "ignore all previous",
-        "<system",
-        "</system",
-        '"role":"system"',
-        '"role": "system"',
-        "role=system",
-        "developer message",
-        "system prompt override",
-        "function_call_output",
-    )
-    if any(marker in summary for marker in poison_markers):
-        return "compact_summary_poisoned"
-    return None
-
-
-def _has_orphan_tool_result(messages_path: Path, events_path: Path, message_count: int, event_count: int) -> bool:
-    messages = read_jsonl(messages_path)
-    events = read_jsonl(events_path)
-    if messages is None or events is None:
-        return False
-    for record in messages[:message_count]:
-        if record.get("role") in {"tool", "function"} or record.get("type") in {"tool_result", "function_call_output"}:
-            return True
-    pending_tool_selections = 0
-    for record in events[:event_count]:
-        event_type = record.get("event_type")
-        if event_type == "model_tool_selected":
-            pending_tool_selections += 1
-        elif event_type == "tool_result_appended":
-            if pending_tool_selections <= 0:
-                return True
-            pending_tool_selections -= 1
-    return False
-
-
-def _boundary_sequence_mismatch(path: Path, record_count: int, expected_sequence: int) -> bool:
-    records = read_jsonl(path)
-    if records is None or len(records) < record_count:
-        return True
-    if record_count == 0:
-        return expected_sequence != 0
-    return _last_sequence(records[:record_count]) != expected_sequence
+def _auto_request(agent_id: str, compact_id: str, counts: LedgerCounts | None = None) -> CompactionRequest:
+    summary = "" if counts is None else f"Auto compacted {agent_id}; session has {counts.message_count} messages and {counts.event_count} events."
+    return CompactionRequest(agent_id, compact_id, summary, compact_mode="auto", summary_source="auto_generated")
 
 
 def _mark_replay_passed(path: Path, payload: JsonMap, counts: LedgerCounts) -> None:
@@ -322,20 +261,3 @@ def _completed_event_type(mode: CompactionMode) -> str:
             return "auto_compaction_completed"
         case unreachable:
             assert_never(unreachable)
-
-
-def _last_sequence(records: list[JsonMap]) -> int:
-    if not records:
-        return 0
-    value = records[-1].get("sequence")
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def _str_value(payload: JsonMap, field: str) -> str:
-    value = payload.get(field)
-    return value if isinstance(value, str) else ""
-
-
-def _int_value(payload: JsonMap, field: str) -> int:
-    value = payload.get(field)
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0

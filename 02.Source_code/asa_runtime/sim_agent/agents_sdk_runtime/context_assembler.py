@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from sim_agent.agent_runtime.compaction_policy import ProviderContextCompactionBlocked, int_value
 from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop import AsaAgentSession
@@ -13,6 +14,7 @@ from .prompt_layers import PromptLayer, PromptLayerKind, prompt_layer
 
 
 ProviderRole = Literal["user", "assistant"]
+JsonTextValue = str | int | float | bool | None | JsonMap | list[JsonMap]
 MAX_CONTEXT_MESSAGES: Final = 24
 MAX_TOOL_HISTORY: Final = 8
 
@@ -50,6 +52,8 @@ class ProviderPromptContext:
 
 
 def assemble_provider_context(session: AsaAgentSession) -> ProviderPromptContext:
+    if session.provider_context_blocker:
+        raise ProviderContextCompactionBlocked(session.provider_context_blocker)
     messages = _conversation_messages(session)
     return ProviderPromptContext(
         layers=_prompt_layers(session),
@@ -84,6 +88,8 @@ def _prompt_layers(session: AsaAgentSession) -> tuple[PromptLayer, ...]:
         _append_layer(layers, "project_guidance", "Project guidance", session.project_guidance, "asa.project")
     if session.compact_summary:
         _append_layer(layers, "compact_summary", "Compact summary", session.compact_summary, "asa.compaction")
+    if session.caller_context:
+        _append_layer(layers, "caller_context", "Bounded caller context", session.caller_context, "asa.subagent.caller_context")
     skill_contexts = _skill_contexts(session)
     if session.skills or skill_contexts:
         _append_layer(layers, "skills", "Active skill/workflow surfaces", _skills_text(session.skills, skill_contexts), "asa.skills")
@@ -128,7 +134,7 @@ def _skills_text(skills: tuple[str, ...], skill_contexts: tuple[str, ...]) -> st
 
 def _skill_contexts(session: AsaAgentSession) -> tuple[str, ...]:
     contexts: list[str] = []
-    for record in session.messages:
+    for record in _provider_visible_records(session):
         context = skill_context_body(record.get("content")) if record.get("role") == "system" else ""
         if context:
             contexts.append(context)
@@ -137,7 +143,7 @@ def _skill_contexts(session: AsaAgentSession) -> tuple[str, ...]:
 
 def _conversation_messages(session: AsaAgentSession) -> tuple[JsonMap, ...]:
     parsed_messages: list[JsonMap] = []
-    for record in session.messages:
+    for record in _provider_visible_records(session):
         message = _message_from_record(record)
         if message is not None:
             parsed_messages.append(message)
@@ -145,6 +151,20 @@ def _conversation_messages(session: AsaAgentSession) -> tuple[JsonMap, ...]:
     if not messages or _content_text(messages[-1].get("content")) != session.user_goal:
         messages = (*messages, {"role": "user", "content": session.user_goal})
     return messages[-MAX_CONTEXT_MESSAGES:]
+
+
+def _provider_visible_records(session: AsaAgentSession) -> tuple[JsonMap, ...]:
+    first_kept = int_value(session.compaction_metadata, "first_kept_message_sequence")
+    if first_kept <= 0:
+        return tuple(session.messages)
+    visible: list[JsonMap] = []
+    for record in session.messages:
+        sequence = record.get("sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            raise ProviderContextCompactionBlocked("missing_compaction_message_sequence")
+        if sequence >= first_kept:
+            visible.append(record)
+    return tuple(visible)
 
 
 def _message_from_record(record: JsonMap) -> JsonMap | None:
@@ -176,7 +196,7 @@ def _tool_history_text(history: list[JsonMap]) -> str:
     return "\n".join(lines) if lines else "- none"
 
 
-def _content_text(value: object) -> str:
+def _content_text(value: JsonTextValue) -> str:
     if isinstance(value, str):
         return value
     if value is None:
@@ -184,7 +204,7 @@ def _content_text(value: object) -> str:
     return _json_text(value)
 
 
-def _json_text(value: object) -> str:
+def _json_text(value: JsonTextValue | list[JsonTextValue]) -> str:
     try:
         return json.dumps(value, ensure_ascii=True, sort_keys=True)
     except (TypeError, ValueError):

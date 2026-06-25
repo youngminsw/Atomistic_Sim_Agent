@@ -153,7 +153,7 @@ def test_tui_compact_manual_summary_and_replay_gate(tmp_path: Path) -> None:
     assert "compact_agent=md_agent" in result.stdout
     assert "compact_status=compacted" in result.stdout
     assert "compact_replay_status=replayed" in result.stdout
-    assert "compact_summary_status=ready" in result.stdout
+    assert "compact_summary_status=rewrite_active" in result.stdout
     assert summary["compact_mode"] == "manual"
     assert summary["manual_replay_status"] == "passed"
     assert "prepare Ar on Si campaign" in summary["summary"]

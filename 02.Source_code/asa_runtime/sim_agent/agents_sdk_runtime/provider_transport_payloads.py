@@ -3,7 +3,7 @@ from __future__ import annotations
 from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop import AsaAgentSession
-from .context_assembler import assemble_provider_context
+from .context_assembler import ProviderPromptContext, assemble_provider_context
 
 SUBAGENT_PRESET_ENUM = ["planner", "architect", "critic", "executor", "verifier"]
 SUBAGENT_CONTROL_ACTION_ENUM = ["list", "progress", "await", "cancel", "pause", "resume", "steer", "restart"]
@@ -18,7 +18,7 @@ def openai_responses_payload(session: AsaAgentSession, tool_schemas: tuple[JsonM
         "tools": [_openai_responses_tool_schema(schema) for schema in tool_schemas],
         "tool_choice": "auto",
         "reasoning": {"effort": session.endpoint.reasoning_effort},
-        "metadata": _metadata(session),
+        "metadata": _metadata(session, context),
     }
 
 
@@ -37,7 +37,7 @@ def openai_chat_payload(session: AsaAgentSession, tool_schemas: tuple[JsonMap, .
         "messages": context.openai_chat_messages(),
         "tools": [_openai_chat_tool_schema(schema) for schema in tool_schemas],
         "tool_choice": "auto",
-        "metadata": _metadata(session),
+        "metadata": _metadata(session, context),
     }
 
 
@@ -50,7 +50,7 @@ def anthropic_messages_payload(session: AsaAgentSession, tool_schemas: tuple[Jso
         "messages": context.anthropic_messages(),
         "tools": [_anthropic_tool_schema(schema) for schema in tool_schemas],
         "tool_choice": {"type": "auto"},
-        "metadata": _metadata(session),
+        "metadata": _metadata(session, context),
     }
 
 
@@ -65,14 +65,38 @@ def gemini_generate_content_payload(session: AsaAgentSession, tool_schemas: tupl
     }
 
 
-def _metadata(session: AsaAgentSession) -> JsonMap:
-    return {
+def _metadata(session: AsaAgentSession, context: ProviderPromptContext) -> JsonMap:
+    payload = {
         "run_id": session.run_id,
         "session_id": session.session_id,
         "agent_id": session.agent_id,
         "provider": session.endpoint.provider,
         "use_case": session.endpoint.use_case.value,
     }
+    payload.update(_compaction_metadata(session, context))
+    return payload
+
+
+def _compaction_metadata(session: AsaAgentSession, context: ProviderPromptContext) -> JsonMap:
+    if not session.compaction_metadata:
+        return {
+            "raw_message_count": str(session.raw_message_count or len(session.messages)),
+            "provider_visible_message_count": str(len(context.messages)),
+            "provider_messages_rewritten": "false",
+        }
+    fields = {
+        "compact_id",
+        "compact_mode",
+        "summary_source",
+        "first_kept_message_sequence",
+        "summary_cutoff_message_sequence",
+        "raw_message_count",
+        "provider_visible_message_count",
+    }
+    payload = {field: str(session.compaction_metadata.get(field, "")) for field in fields}
+    payload["provider_visible_message_count"] = str(len(context.messages))
+    payload["provider_messages_rewritten"] = "true"
+    return payload
 
 
 def _openai_responses_tool_schema(schema: JsonMap) -> JsonMap:

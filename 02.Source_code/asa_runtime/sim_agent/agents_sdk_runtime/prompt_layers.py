@@ -13,6 +13,7 @@ PromptLayerKind = Literal[
     "subagent_role",
     "project_guidance",
     "compact_summary",
+    "caller_context",
     "skills",
     "workflow_state",
     "ledger_facts",

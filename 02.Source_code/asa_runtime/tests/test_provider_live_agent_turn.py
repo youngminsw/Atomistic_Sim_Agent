@@ -76,6 +76,9 @@ def test_live_agent_turn_injects_only_validated_compact_summary(tmp_path: Path) 
             )
         ).record
         append_agent_message(record.session_dir, "orchestrator", "user", "Old context before compaction")
+        for index in range(29):
+            role = "assistant" if index % 2 else "user"
+            append_agent_message(record.session_dir, "orchestrator", role, f"Retained setup context {index}")
         compact_agent_session(
             record.session_dir,
             CompactionRequest(
@@ -86,17 +89,66 @@ def test_live_agent_turn_injects_only_validated_compact_summary(tmp_path: Path) 
         )
 
         first = run_live_agent_turn(record.session_dir, "orchestrator", "Before replay")
-        body_before_replay = dict(gateway.request_body)
         replayed = replay_agent_compaction(record.session_dir, "orchestrator")
         second = run_live_agent_turn(record.session_dir, "orchestrator", "After replay")
         body_after_replay = gateway.request_body
 
-    assert first.status == "succeeded"
+    assert first.status == "blocked"
+    assert first.blockers == ("manual_replay_required",)
     assert replayed.status == "succeeded"
     assert second.status == "succeeded"
-    assert "Validated compact summary should reach the provider." not in body_before_replay["instructions"]
     assert "Validated compact summary should reach the provider." in body_after_replay["instructions"]
+    assert "Old context before compaction" not in repr(body_after_replay)
     assert body_after_replay["input"][-1] == {"role": "user", "content": "After replay"}
+
+
+def test_domain_agent_resume_request_rewrites_compacted_context(tmp_path: Path) -> None:
+    with _LiveTurnGateway() as gateway:
+        record = open_global_session(
+            GlobalSessionOpenRequest(
+                requested_dir=tmp_path / "session",
+                default_root=tmp_path,
+                model=_model(gateway.base_url, auth_mode="gateway"),
+            )
+        ).record
+
+        for agent_id in ("md_agent", "research_agent"):
+            old_marker = f"{agent_id}_OLD_RAW_SHOULD_NOT_LEAK"
+            tail_marker = f"{agent_id}_TAIL_CONTEXT_28"
+            latest_marker = f"{agent_id}_LATEST_USER_TURN"
+            summary = f"{agent_id} compact summary should replace older provider context."
+            append_agent_message(record.session_dir, agent_id, "user", old_marker)
+            for index in range(29):
+                role = "assistant" if index % 2 else "user"
+                append_agent_message(record.session_dir, agent_id, role, f"{agent_id}_TAIL_CONTEXT_{index}")
+            compact_agent_session(
+                record.session_dir,
+                CompactionRequest(
+                    agent_id=agent_id,
+                    compact_id=f"compact-{agent_id}-001",
+                    summary=summary,
+                ),
+            )
+            replayed = replay_agent_compaction(record.session_dir, agent_id)
+            resumed = open_global_session(
+                GlobalSessionOpenRequest(
+                    requested_dir=record.session_dir,
+                    default_root=tmp_path,
+                    model=_model(gateway.base_url, auth_mode="gateway"),
+                    resume=str(record.session_dir),
+                )
+            )
+
+            result = run_live_agent_turn(resumed.record.session_dir, agent_id, latest_marker)
+            body = gateway.request_body
+            messages_path = record.paths.agent_sessions / agent_id / "messages.jsonl"
+            assert replayed.status == "succeeded"
+            assert result.status == "succeeded"
+            assert old_marker in messages_path.read_text(encoding="utf-8")
+            assert old_marker not in repr(body)
+            assert summary in body["instructions"]
+            assert tail_marker in repr(body["input"])
+            assert body["input"][-1] == {"role": "user", "content": latest_marker}
 
 
 def test_live_agent_turn_keeps_static_model_only_for_explicit_static_session(tmp_path: Path) -> None:

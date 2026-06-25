@@ -28,11 +28,34 @@ def test_manual_compaction_writes_summary_and_replays_cursor(tmp_path: Path) -> 
     compactions = _jsonl(state.session_dir / "agent_sessions" / "md_agent" / "compactions.jsonl")
     assert compacted.status == "succeeded"
     assert replayed.status == "succeeded"
-    assert summary["schema_version"] == "asa_agent_compact_summary_v2"
+    assert summary["schema_version"] == "asa_agent_compact_summary_v3"
     assert summary["compact_id"] == "compact-md-001"
-    assert summary["message_count"] == 2
+    assert summary["raw_message_count"] == 2
+    assert summary["first_kept_message_sequence"] == 1
+    assert summary["summary_cutoff_message_sequence"] == 0
+    assert summary["retained_tail_policy"] == "max_context_messages_with_minimum_turns"
+    assert summary["turn_boundary_preserved"] is True
     assert summary["summary"] == "MD context summary"
     assert compactions[-1]["compact_id"] == "compact-md-001"
+
+
+def test_compaction_preparation_keeps_recent_tail_cursor(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+    for index in range(30):
+        role = "user" if index % 2 == 0 else "assistant"
+        append_agent_message(state.session_dir, "md_agent", role, f"message-{index + 1}")
+
+    compacted = compact_agent_session(
+        state.session_dir,
+        CompactionRequest(agent_id="md_agent", compact_id="compact-md-tail", summary="MD tail summary"),
+    )
+
+    summary = json.loads((state.session_dir / "agent_sessions" / "md_agent" / "compact_summary.json").read_text(encoding="utf-8"))
+    assert compacted.status == "succeeded"
+    assert summary["first_kept_message_sequence"] == 7
+    assert summary["summary_cutoff_message_sequence"] == 6
+    assert summary["raw_message_count"] == 30
+    assert summary["recent_message_count"] == 24
 
 
 def test_manual_compaction_blocks_corrupt_agent_ledger(tmp_path: Path) -> None:

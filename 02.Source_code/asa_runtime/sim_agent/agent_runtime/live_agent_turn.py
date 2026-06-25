@@ -9,8 +9,8 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_registry import AgentSessionHandle, load_agent_registry
 from .agent_session_io import append_agent_event, append_agent_message
-from .compaction import COMPACT_SUMMARY_NAME
-from .compaction_store import read_json, read_jsonl
+from .compaction_policy import ProviderContextCompactionBlocked
+from .compaction_store import read_jsonl
 from .live_agent_context import (
     live_turn_handle_with_model_override,
     live_turn_ledger_facts,
@@ -27,6 +27,7 @@ from .message_bus import (
     reply_agent_message,
     send_agent_message,
 )
+from .provider_context_projection import ProviderVisibleAgentContext, provider_visible_agent_context
 
 if TYPE_CHECKING:
     from sim_agent.agents_sdk_runtime import AsaAgentSession, StaticToolChoiceModel, ToolChoiceModel
@@ -150,8 +151,20 @@ def _agent_loop_session(handle: AgentSessionHandle, user_goal: str) -> AsaAgentS
     from sim_agent.agent_harness.tools import tool_registry_for_agent
     from sim_agent.agents_sdk_runtime import AsaAgentSession
 
+    provider_blocker = ""
+    try:
+        provider_context = provider_visible_agent_context(handle)
+    except ProviderContextCompactionBlocked as exc:
+        raw_messages = _chat_messages(handle)
+        provider_blocker = str(exc)
+        provider_context = ProviderVisibleAgentContext(
+            messages=tuple(raw_messages),
+            compact_summary="",
+            compaction=None,
+            raw_message_count=len(raw_messages),
+        )
     return AsaAgentSession(
-        run_id=_safe_run_id(handle.agent_id),
+        run_id=f"direct-{handle.agent_id}-turn",
         session_id=handle.agent_session_id,
         agent_id=handle.agent_id,
         user_goal=user_goal,
@@ -162,11 +175,14 @@ def _agent_loop_session(handle: AgentSessionHandle, user_goal: str) -> AsaAgentS
         role_prompt_kind="domain_role",
         workflow_policy=live_turn_workflow_policy(),
         project_guidance=live_turn_project_guidance(handle),
-        compact_summary=_compact_summary(handle),
+        compact_summary=provider_context.compact_summary,
         workflow_state=live_turn_workflow_state(handle),
         skills=live_turn_skill_names(handle.agent_id),
         ledger_facts=live_turn_ledger_facts(handle),
-        messages=_chat_messages(handle),
+        messages=list(provider_context.messages),
+        raw_message_count=provider_context.raw_message_count,
+        provider_context_blocker=provider_blocker,
+        compaction_metadata=provider_context.compaction.to_json() if provider_context.compaction is not None else {},
     )
 
 
@@ -239,35 +255,18 @@ def _chat_messages(handle: AgentSessionHandle) -> list[JsonMap]:
         role = record.get("role")
         content = record.get("content")
         if role in {"user", "assistant", "system"} and isinstance(content, str):
-            messages.append({"role": role, "content": content})
+            message = {"role": role, "content": content}
+            sequence = record.get("sequence")
+            if isinstance(sequence, int) and not isinstance(sequence, bool):
+                message["sequence"] = sequence
+            messages.append(message)
     return messages
-
-
-def _compact_summary(handle: AgentSessionHandle) -> str:
-    payload = read_json(handle.session_dir / COMPACT_SUMMARY_NAME)
-    if not payload:
-        return ""
-    if not _compact_summary_is_validated(payload):
-        return ""
-    summary = payload.get("summary")
-    return summary if isinstance(summary, str) else ""
-
-
-def _compact_summary_is_validated(payload: JsonMap) -> bool:
-    compact_mode = payload.get("compact_mode")
-    if compact_mode == "auto":
-        return True
-    return payload.get("manual_replay_status") == "passed"
 
 
 def _assistant_message(status: str, blockers: tuple[str, ...]) -> str:
     if blockers:
         return f"agent loop blocked: {', '.join(blockers)}"
     return f"agent loop completed with status {status}"
-
-
-def _safe_run_id(agent_id: str) -> str:
-    return f"direct-{agent_id}-turn"
 
 
 def _blocked_dispatch(

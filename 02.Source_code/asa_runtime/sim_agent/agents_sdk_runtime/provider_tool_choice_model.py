@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from sim_agent.schemas._parse import JsonMap
+from sim_agent.agent_runtime.compaction_policy import ProviderContextCompactionBlocked
 from sim_agent.ui.model_auth import access_token_for_provider
 
 from .agent_loop import AsaAgentSession, ModelSelectedToolCall, ModelToolChoiceBlocked, ModelTurnResult
@@ -57,7 +58,7 @@ class ProviderToolChoiceModel:
         safe_tool_schemas = tuple(schema for schema in model_visible_tools if schema.get("name") in allowed_tools)
         try:
             request = provider_transport_request(session, safe_tool_schemas)
-        except ProviderTransportPolicyError as exc:
+        except (ProviderTransportPolicyError, ProviderContextCompactionBlocked) as exc:
             raise ModelToolChoiceBlocked(str(exc)) from exc
         _write_prompt_manifest(session, request.protocol, request.url, safe_tool_schemas)
         token = _token(session, self.api_key)
@@ -110,6 +111,10 @@ def _write_prompt_manifest(
         "layer_kinds": list(context.layer_kinds()),
         "layers": context.layers_json(),
         "messages": context.openai_responses_input(),
+        "raw_message_count": session.raw_message_count or len(session.messages),
+        "provider_visible_message_count": len(context.messages),
+        "provider_messages_rewritten": bool(session.compaction_metadata),
+        "compaction": dict(session.compaction_metadata),
         "tool_names": [_tool_schema_name(schema) for schema in tool_schemas],
     }
     path = session.output_dir / "prompt_assembly_manifest.json"

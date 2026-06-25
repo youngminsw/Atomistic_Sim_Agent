@@ -12,6 +12,7 @@ from sim_agent.agent_runtime import (
     replay_agent_compaction,
 )
 from sim_agent.agent_runtime.compaction import COMPACT_SUMMARY_NAME
+from sim_agent.agent_runtime.compaction_policy import COMPACT_SCHEMA_VERSION, activation_blocker
 from sim_agent.agent_runtime.compaction_store import read_json, read_jsonl
 from sim_agent.agent_runtime.agent_registry import AgentRegistry, AgentSessionHandle
 from sim_agent.schemas._parse import JsonMap
@@ -58,7 +59,12 @@ def _handle_manual_compaction(
     summary = _manual_summary(handle, args[1:])
     compacted = compact_agent_session(
         state.session_dir,
-        CompactionRequest(agent_id=handle.agent_id, compact_id=compact_id, summary=summary),
+        CompactionRequest(
+            agent_id=handle.agent_id,
+            compact_id=compact_id,
+            summary=summary,
+            summary_source="manual_supplied" if len(args) > 1 else "manual_generated",
+        ),
     )
     output_stream.write("manual_compaction=true\n")
     output_stream.write(f"compact_agent={handle.agent_id}\n")
@@ -129,11 +135,13 @@ def _write_compaction_status(registry: AgentRegistry, output_stream: TextIO) -> 
                 CompactStatusRow(handle.agent_id, "corrupt", message_count, "blocked", "-"),
             )
             continue
-        replay_status = _field(summary, "manual_replay_status", "required")
+        blocker = activation_blocker(summary, handle.messages_path, handle.events_path)
+        replay_status = _field(summary, "manual_replay_status", "passed" if blocker is None else "blocked")
         compact_id = _field(summary, "compact_id", "-")
+        summary_status = "rewrite_active" if summary.get("schema_version") == COMPACT_SCHEMA_VERSION and blocker is None else "blocked"
         _write_agent_status(
             output_stream,
-            CompactStatusRow(handle.agent_id, "ready", message_count, replay_status, compact_id),
+            CompactStatusRow(handle.agent_id, summary_status, message_count, replay_status, compact_id),
         )
 
 

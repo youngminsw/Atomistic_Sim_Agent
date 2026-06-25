@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sim_agent.agent_runtime import load_agent_registry
+from sim_agent.agent_runtime import (
+    CompactionRequest,
+    append_agent_message,
+    compact_agent_session,
+    load_agent_registry,
+    replay_agent_compaction,
+)
 from sim_agent.agent_runtime.agent_registry import AgentSessionHandle
 from sim_agent.agent_runtime.agent_specs import resolve_subagent_preset
 from sim_agent.agent_runtime.global_session_types import GlobalSessionModel
@@ -248,6 +254,35 @@ def test_subagent_preset_role_is_assembled_as_role_layer_not_user_goal(tmp_path:
     assert "Role:" not in user_turn
     assert "Scope:" not in user_turn
     assert "Task: Review code and evidence." in user_turn
+
+
+def test_subagent_caller_context_uses_compacted_provider_visible_tail(tmp_path: Path) -> None:
+    state = initial_state(tmp_path / "session")
+    append_agent_message(state.session_dir, "md_agent", "user", "SUBAGENT_OLD_RAW_SHOULD_NOT_LEAK")
+    for index in range(29):
+        role = "assistant" if index % 2 else "user"
+        append_agent_message(state.session_dir, "md_agent", role, f"SUBAGENT_TAIL_CONTEXT_{index}")
+    compact_agent_session(
+        state.session_dir,
+        CompactionRequest(
+            agent_id="md_agent",
+            compact_id="compact-md-subagent",
+            summary="Subagent caller compact summary.",
+        ),
+    )
+    replayed = replay_agent_compaction(state.session_dir, "md_agent")
+    handle = load_agent_registry(state.session_dir).handles["md_agent"]
+    preset = resolve_subagent_preset("critic")
+    session = _subagent_agent_session(handle, preset, "review-compact", "Review compacted caller context.", 1, tmp_path / "child")
+
+    context = assemble_provider_context(session)
+
+    assert replayed.status == "succeeded"
+    assert "caller_context" in context.layer_kinds()
+    assert "Subagent caller compact summary." in context.instructions
+    assert "SUBAGENT_TAIL_CONTEXT_28" in context.instructions
+    assert "SUBAGENT_OLD_RAW_SHOULD_NOT_LEAK" not in context.instructions
+    assert "Review compacted caller context." in context.openai_responses_input()[-1]["content"]
 
 
 def test_provider_context_promotes_only_marked_skill_system_messages(tmp_path: Path) -> None:
