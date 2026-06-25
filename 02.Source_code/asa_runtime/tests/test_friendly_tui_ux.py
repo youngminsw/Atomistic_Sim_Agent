@@ -81,7 +81,7 @@ def test_tui_memory_shows_graphdb_brain_query_plan(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "graph_memory=true" in result.stdout
     assert "graph_memory_status=query_plan_ready" in result.stdout
-    assert "research_write_owner=research_graphdb_agent" in result.stdout
+    assert "research_write_owner=research_agent" in result.stdout
     assert "agent_brain=md_agent:query_planned:evidence=0" in result.stdout
     assert "agent_brain=qa_agent:query_planned:evidence=0" in result.stdout
     assert "live_check_hint=/memory live" in result.stdout

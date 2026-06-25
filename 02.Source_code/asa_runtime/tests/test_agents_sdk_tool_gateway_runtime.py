@@ -51,8 +51,16 @@ def test_fake_local_gateway_dispatches_attached_runtime_tools_and_sessions(tmp_p
     assert {Path(path).name for path in result.session_files} == {"orchestrator.jsonl", "tool_runtime.jsonl"}
     assert ledger["attached_tools"] == [
         "bash_process",
+        "shell_command",
         "artifact_write",
+        "file_read",
+        "file_write",
+        "file_search",
+        "file_edit",
         "graphdb_dry_run",
+        "mcp_list_tools",
+        "mcp_call_tool",
+        "custom_tool_register",
         "agent_message",
         "handoff_task",
         "subagent_task",
@@ -71,8 +79,16 @@ def test_fake_local_gateway_dispatches_attached_runtime_tools_and_sessions(tmp_p
     assert ledger["model_selected_tools"] == ["bash_process", "graphdb_dry_run"]
     assert {schema["name"] for schema in ledger["model_visible_tools"]} >= {
         "bash_process",
+        "shell_command",
         "artifact_write",
+        "file_read",
+        "file_write",
+        "file_search",
+        "file_edit",
         "graphdb_dry_run",
+        "mcp_list_tools",
+        "mcp_call_tool",
+        "custom_tool_register",
         "validate_simulation_request",
     }
     assert {event["event_type"] for event in ledger["loop_trace"]} >= {
@@ -151,11 +167,11 @@ def test_tui_runtime_tool_gateway_uses_stored_oauth_token(tmp_path: Path, monkey
     from sim_agent.cli import tui_runtime
     from sim_agent.cli.tui_runtime import handle_runtime
     from sim_agent.cli.tui_state import initial_state
-    from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway
+    from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_provider
 
     captured: dict[str, str | None] = {}
     monkeypatch.setenv(CREDENTIAL_STORE_ENV, str(tmp_path / "credentials.json"))
-    login_model_gateway(
+    login_model_provider(
         {
             "provider": "openai-codex",
             "access_token": "stored-oauth-token",

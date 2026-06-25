@@ -61,8 +61,21 @@ def test_direct_openai_endpoint_is_accepted_when_explicitly_configured() -> None
 
     request = schemas.SimulationRequest.from_mapping(payload)
 
+    assert request.model_provider.provider == "openai"
+    assert request.model_provider.base_url == "https://api.openai.com/v1"
     assert request.llm_endpoint.provider == "openai"
     assert request.llm_endpoint.base_url == "https://api.openai.com/v1"
+
+
+def test_model_provider_key_is_the_canonical_request_shape() -> None:
+    schemas = _schema_api()
+    payload = _load_fixture("direct_openai_valid.json")
+    payload["model_provider"] = payload.pop("llm_endpoint")
+
+    request = schemas.SimulationRequest.from_mapping(payload)
+
+    assert request.model_provider.provider == "openai"
+    assert request.model_provider.base_url == "https://api.openai.com/v1"
 
 
 def test_openclaw_provider_with_non_openclaw_base_url_is_rejected() -> None:

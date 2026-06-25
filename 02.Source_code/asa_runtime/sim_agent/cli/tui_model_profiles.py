@@ -11,6 +11,7 @@ from sim_agent.llm_endpoints.model_profiles import (
     find_model_profile,
     list_model_profiles,
 )
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV, provider_by_id
 from sim_agent.runtime_config import (
     ActiveModelProfileRuntimeConfig,
     AgentModelRuntimeConfig,
@@ -135,13 +136,17 @@ def _config_from_profile(profile: ModelProfile, runtime_config: RuntimeConfig) -
 def _endpoint_from_assignment(assignment: ModelProfileAssignment) -> ModelEndpointRuntimeConfig:
     entry = find_model_catalog_entry(assignment.reference)
     if entry is None:
+        spec = provider_by_id(assignment.provider)
+        base_url = spec.default_base_url if spec is not None else OPENAI_CODEX_BASE_URL
+        auth_mode = spec.default_auth_mode if spec is not None else "oauth"
+        api_key_env = spec.default_api_key_env if spec is not None else OPENAI_CODEX_TOKEN_ENV
         return ModelEndpointRuntimeConfig(
             provider=assignment.provider,
             model=assignment.model,
             reasoning_effort=assignment.reasoning_effort,
-            base_url="https://model-gateway.local/v1",
-            auth_mode="oauth",
-            api_key_env="MODEL_GATEWAY_TOKEN",
+            base_url=base_url,
+            auth_mode=auth_mode,
+            api_key_env=api_key_env,
         )
     return ModelEndpointRuntimeConfig(
         provider=entry.provider,

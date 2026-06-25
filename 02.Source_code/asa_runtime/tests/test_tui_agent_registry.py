@@ -17,9 +17,9 @@ PROJECT_ROOT = SOURCE_ROOT
 EXPECTED_AGENT_IDS = (
     "orchestrator",
     "md_agent",
-    "ml_mdn_agent",
+    "ml_agent",
     "feature_scale_agent",
-    "research_graphdb_agent",
+    "research_agent",
     "qa_agent",
 )
 

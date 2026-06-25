@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -10,7 +11,7 @@ from typing import Final
 from sim_agent.schemas._parse import JsonMap
 from sim_agent.schemas.errors import SchemaValidationError
 
-from .agent_registry import load_agent_registry
+from .agent_registry import AgentSessionHandle, load_agent_registry
 from .agent_specs import SubagentPresetSpec, resolve_subagent_preset
 from .agent_session_io import append_agent_event
 from .subagent_loop import SubagentLoopRun, run_subagent_agent_loop
@@ -22,7 +23,9 @@ SUBAGENT_RUNNING_LOCK_NAME: Final = "subagent_running.lock"
 SUBAGENT_CONTROL_LEDGER_NAME: Final = "subagent_controls.jsonl"
 SUBAGENT_CONTROL_STATE_NAME: Final = "subagent_control_state.json"
 SAFE_SUBAGENT_ID_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
-SUBAGENT_CONTROL_ACTIONS: Final = frozenset({"list", "progress", "await", "cancel", "pause", "resume", "steer"})
+SUBAGENT_CONTROL_ACTIONS: Final = frozenset(
+    {"list", "progress", "await", "cancel", "pause", "resume", "steer", "restart"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +123,7 @@ def run_bounded_subagent(session_dir: Path, request: SubagentTaskRequest) -> Sub
         loop_run = run_subagent_agent_loop(handle, preset, request.task_id, request.task, request.depth, subagent_dir)
     finally:
         running_lock.unlink(missing_ok=True)
-    payload = _run_payload(request, preset, subagent_dir, loop_run)
+    payload = _run_payload(request, preset, handle, subagent_dir, loop_run)
     _write_json(subagent_dir / SUBAGENT_RUN_LEDGER_NAME, payload)
     _append_jsonl(subagent_dir / "messages.jsonl", _message_payload("user", request.task))
     _append_jsonl(subagent_dir / "messages.jsonl", _message_payload("assistant", f"{preset.name} bounded run {loop_run.status}"))
@@ -173,12 +176,18 @@ def control_bounded_subagent(session_dir: Path, request: SubagentControlRequest)
     subagent_dir, ledger = located
     if request.action in {"progress", "await"}:
         output = _control_snapshot(request, subagent_dir, ledger)
+        if _subagent_lost_process(subagent_dir):
+            return SubagentControlResult("blocked", output, "subagent_lost_process")
         if request.action == "await" and (subagent_dir / SUBAGENT_RUNNING_LOCK_NAME).is_file():
             return SubagentControlResult("blocked", output, "subagent_still_running")
         return SubagentControlResult("succeeded", output)
+    if request.action == "restart":
+        return _restart_lost_subagent(session_dir, request, subagent_dir)
     if request.action in {"cancel", "pause", "resume", "steer"}:
         if not (subagent_dir / SUBAGENT_RUNNING_LOCK_NAME).is_file():
             return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, ledger, "subagent_already_terminal"), "subagent_already_terminal")
+        if _subagent_lost_process(subagent_dir):
+            return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, ledger, "subagent_lost_process"), "subagent_lost_process")
         _append_control_event(subagent_dir, request)
         if request.action in {"pause", "resume", "cancel"}:
             _write_control_state(subagent_dir, request)
@@ -233,6 +242,7 @@ def _blocked_task(session_dir: Path, request: SubagentTaskRequest, blocker: str)
 def _run_payload(
     request: SubagentTaskRequest,
     preset: SubagentPresetSpec,
+    handle: AgentSessionHandle,
     subagent_dir: Path,
     loop_run: SubagentLoopRun,
 ) -> JsonMap:
@@ -242,6 +252,11 @@ def _run_payload(
         "caller_agent": request.caller_agent,
         "preset": preset.name,
         "subagent_id": request.task_id,
+        "owner": {
+            "caller_agent": request.caller_agent,
+            "caller_agent_session_id": handle.agent_session_id,
+            "caller_agent_session_dir": str(handle.session_dir),
+        },
         "task": request.task,
         "depth": request.depth,
         "status": loop_run.status,
@@ -256,10 +271,17 @@ def _run_payload(
         "session_dir": str(subagent_dir),
         "tool_names": list(preset.tool_names),
         "preset_spec": asdict(preset),
+        "role_prompt_layer": {
+            "kind": "subagent_role",
+            "caller_agent": request.caller_agent,
+            "preset": preset.name,
+            "role_prompt": preset.role_prompt,
+            "scope_notes": preset.scope_notes,
+        },
         "lifecycle": {
             "state": "completed" if loop_run.status == "succeeded" else "blocked",
             "running": False,
-            "controllable": True,
+            "controllable": False,
         },
     }
 
@@ -276,6 +298,8 @@ def _running_lock_payload(request: SubagentTaskRequest) -> JsonMap:
         "preset": request.preset,
         "subagent_id": request.task_id,
         "depth": request.depth,
+        "task": request.task,
+        "owner_pid": os.getpid(),
     }
 
 
@@ -356,7 +380,8 @@ def _control_snapshot(
     blocker: str | None = None,
 ) -> JsonMap:
     running = (subagent_dir / SUBAGENT_RUNNING_LOCK_NAME).is_file()
-    state = _control_state(subagent_dir, running)
+    lost_process = _subagent_lost_process(subagent_dir)
+    state = _control_state(subagent_dir, running, lost_process)
     output = {
         "action": request.action,
         "caller_agent": request.caller_agent,
@@ -365,6 +390,8 @@ def _control_snapshot(
         "status": ledger.get("status", "running"),
         "state": state,
         "running": running,
+        "controllable": running,
+        "lost_process": lost_process,
         "session_dir": str(subagent_dir),
         "artifact_ref": _artifact_ref(SubagentLocator(request.caller_agent, request.preset, request.subagent_id)),
         "control_events": _control_events(subagent_dir),
@@ -385,6 +412,7 @@ def _job_summary(subagent_dir: Path, payload: JsonMap) -> JsonMap:
         "status": payload.get("status", ""),
         "state": _control_state(subagent_dir, False),
         "running": False,
+        "controllable": False,
         "session_dir": str(subagent_dir),
         "artifact_ref": _artifact_ref(SubagentLocator(caller_agent, preset, subagent_id)),
     }
@@ -394,13 +422,16 @@ def _running_job_summary(subagent_dir: Path, lock: JsonMap) -> JsonMap:
     caller_agent = str(lock.get("caller_agent", ""))
     preset = str(lock.get("preset", ""))
     subagent_id = str(lock.get("subagent_id", ""))
+    lost_process = _lock_owner_lost(lock)
     return {
         "caller_agent": caller_agent,
         "preset": preset,
         "subagent_id": subagent_id,
         "status": "running",
-        "state": _control_state(subagent_dir, True),
+        "state": _control_state(subagent_dir, True, lost_process),
         "running": True,
+        "controllable": True,
+        "lost_process": lost_process,
         "session_dir": str(subagent_dir),
         "artifact_ref": _artifact_ref(SubagentLocator(caller_agent, preset, subagent_id)),
     }
@@ -435,13 +466,78 @@ def _write_control_state(subagent_dir: Path, request: SubagentControlRequest) ->
     )
 
 
-def _control_state(subagent_dir: Path, running: bool) -> str:
+def _restart_lost_subagent(session_dir: Path, request: SubagentControlRequest, subagent_dir: Path) -> SubagentControlResult:
+    lock_path = subagent_dir / SUBAGENT_RUNNING_LOCK_NAME
+    lock = _read_json(lock_path)
+    if not isinstance(lock, dict):
+        return SubagentControlResult("blocked", _control_error(request, "unknown_subagent"), "unknown_subagent")
+    if not _lock_owner_lost(lock):
+        return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, lock, "subagent_still_running"), "subagent_still_running")
+    task = str(lock.get("task") or request.content or "")
+    if not task:
+        return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, lock, "restart_task_missing"), "restart_task_missing")
+    depth = lock.get("depth", 1)
+    if not isinstance(depth, int) or isinstance(depth, bool):
+        depth = 1
+    archive_dir = subagent_dir.with_name(f"{subagent_dir.name}.lost-{time.time_ns()}")
+    subagent_dir.rename(archive_dir)
+    restarted = run_bounded_subagent(
+        session_dir,
+        SubagentTaskRequest(
+            caller_agent=request.caller_agent,
+            preset=request.preset,
+            task_id=request.subagent_id,
+            task=task,
+            depth=depth,
+        ),
+    )
+    output = restarted.to_json()
+    output["action"] = "restart"
+    output["restarted_from"] = str(archive_dir)
+    output["previous_blocker"] = "subagent_lost_process"
+    _append_jsonl(
+        subagent_dir / SUBAGENT_CONTROL_LEDGER_NAME,
+        {
+            "schema_version": "asa_subagent_control_event_v1",
+            "at": time.time(),
+            "action": "restart",
+            "caller_agent": request.caller_agent,
+            "preset": request.preset,
+            "subagent_id": request.subagent_id,
+            "content": request.content,
+            "restarted_from": str(archive_dir),
+        },
+    )
+    return SubagentControlResult(restarted.status, output, restarted.blocker)
+
+
+def _control_state(subagent_dir: Path, running: bool, lost_process: bool = False) -> str:
+    if lost_process:
+        return "lost_process"
     payload = _read_json(subagent_dir / SUBAGENT_CONTROL_STATE_NAME)
     if isinstance(payload, dict):
         state = payload.get("state")
         if isinstance(state, str) and state:
             return state
     return "running" if running else "completed"
+
+
+def _subagent_lost_process(subagent_dir: Path) -> bool:
+    lock = _read_json(subagent_dir / SUBAGENT_RUNNING_LOCK_NAME)
+    return _lock_owner_lost(lock) if isinstance(lock, dict) else False
+
+
+def _lock_owner_lost(lock: JsonMap) -> bool:
+    owner_pid = lock.get("owner_pid")
+    if not isinstance(owner_pid, int) or isinstance(owner_pid, bool) or owner_pid <= 0:
+        return False
+    try:
+        os.kill(owner_pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
 
 
 def _control_events(subagent_dir: Path) -> list[JsonMap]:

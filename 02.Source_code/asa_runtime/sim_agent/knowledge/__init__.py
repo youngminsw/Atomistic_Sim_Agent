@@ -7,6 +7,14 @@ from .graph_memory import (
     build_graph_brain_context,
     graph_brain_payload,
 )
+from .mcp_manager import (
+    MCPConfig,
+    MCPListToolsResult,
+    MCPServerConfig,
+    MCPToolDescriptor,
+    list_mcp_tools,
+    mcp_list_tools_payload,
+)
 from .graph_import import (
     GraphImportBundle,
     GraphImportError,
@@ -38,10 +46,10 @@ from .research_tools import (
     answer_research_question,
     import_research_source,
 )
-from .research_graphdb_agent import (
-    ResearchGraphDBAgentResult,
-    build_research_graphdb_agent_artifacts,
-    research_graphdb_agent_payload,
+from .research_agent import (
+    ResearchAgentResult,
+    build_research_agent_artifacts,
+    research_agent_payload,
 )
 from .memory_seed import (
     DEFAULT_MEMORY_TERMS,
@@ -73,6 +81,10 @@ __all__ = [
     "GraphBrainContext",
     "GraphMemoryReadClient",
     "KnowledgeRegistryError",
+    "MCPConfig",
+    "MCPListToolsResult",
+    "MCPServerConfig",
+    "MCPToolDescriptor",
     "MemorySeedError",
     "MemorySeedSource",
     "Neo4jDriverClient",
@@ -80,7 +92,7 @@ __all__ = [
     "ProvenanceRecord",
     "ProvenanceRegistry",
     "ResearchAnswer",
-    "ResearchGraphDBAgentResult",
+    "ResearchAgentResult",
     "ResearchImportRequest",
     "ResearchImportResult",
     "ResearchQuestion",
@@ -93,13 +105,15 @@ __all__ = [
     "build_graphdb_gate_plan",
     "build_graph_brain_context",
     "build_memory_seed_bundle",
-    "build_research_graphdb_agent_artifacts",
+    "build_research_agent_artifacts",
     "build_source_graph_import_bundle",
     "execute_graph_import_bundle",
     "graphdb_write_report_payload",
     "graph_brain_payload",
     "import_research_source",
-    "research_graphdb_agent_payload",
+    "list_mcp_tools",
+    "mcp_list_tools_payload",
+    "research_agent_payload",
     "report_payload",
     "memory_sources_from_rows",
     "read_memory_seed_sources_from_neo4j",

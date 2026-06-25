@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlparse, urlunparse
 
-from sim_agent.provider_registry import default_api_key_env, default_auth_mode, provider_ids
+from sim_agent.provider_registry import LEGACY_MODEL_GATEWAY_TOKEN_ENV, default_api_key_env, default_auth_mode, provider_ids
 from sim_agent.schemas._parse import JsonMap, as_mapping, str_field
 from sim_agent.schemas.errors import ProviderConfigPolicyError
 
@@ -20,8 +20,8 @@ DEFAULT_API_KEY_ENV_BY_PROVIDER = {
 DEFAULT_API_KEY_ENV_BY_PROVIDER.update(
     {
         "openclaw": "OPENCLAW_OAUTH_TOKEN",
-        "oauth_gateway": "MODEL_GATEWAY_TOKEN",
-        "anthropic_gateway": "MODEL_GATEWAY_TOKEN",
+        "oauth_gateway": LEGACY_MODEL_GATEWAY_TOKEN_ENV,
+        "anthropic_gateway": LEGACY_MODEL_GATEWAY_TOKEN_ENV,
     }
 )
 DEFAULT_AUTH_MODE_BY_PROVIDER = {
@@ -37,7 +37,7 @@ DEFAULT_AUTH_MODE_BY_PROVIDER.update(
 REASONING_EFFORTS = frozenset({"inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"})
 HIGH_STAKES_REASONING_EFFORTS = frozenset({"high", "xhigh", "max"})
 AUTH_MODES = frozenset({"api_key", "oauth", "gateway", "none"})
-API_PROTOCOLS = frozenset({"openai_compatible", "responses", "chat_completions", "anthropic_messages", "gemini"})
+API_PROTOCOLS = frozenset({"anthropic_messages", "chat_completions", "custom_gateway", "gemini", "gemini_generate_content", "ollama_openai_compatible", "openai_chat_completions", "openai_codex_responses", "openai_compatible", "openai_responses", "responses"})
 THINKING_MODES = frozenset({"auto", "enabled", "disabled"})
 CREDENTIAL_SOURCES = frozenset({"api_key_env", "oauth_token", "gateway_token", "none"})
 

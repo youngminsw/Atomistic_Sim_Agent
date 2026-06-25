@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from typing import Final
 
 from sim_agent.provider_registry import (
-    GATEWAY_BASE_URL,
+    LEGACY_PROVIDER_GATEWAY_BASE_URL,
     LOCAL_GATEWAY_BASE_URL,
-    MODEL_GATEWAY_TOKEN_ENV,
     default_api_key_env,
     default_auth_mode,
     provider_by_id,
@@ -87,7 +86,7 @@ def _local(model: str, reasoning_effort: str, role_hint: str) -> ModelCatalogEnt
 def _base_url(provider: str) -> str:
     spec = provider_by_id(provider)
     if spec is None:
-        return GATEWAY_BASE_URL
+        return LEGACY_PROVIDER_GATEWAY_BASE_URL
     return spec.default_base_url
 
 

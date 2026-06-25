@@ -19,7 +19,11 @@ atomistic-sim-agent = "sim_agent.cli.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sim_agent"]
-artifacts = ["ui/**"]
+artifacts = [
+  "ui/**",
+  "sim_agent/agents_sdk_runtime/default_skills/**",
+  "sim_agent/agents_sdk_runtime/prompts/**",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [

@@ -32,8 +32,17 @@ def test_audit_runtime_spines_writes_gap_matrix(tmp_path: Path) -> None:
     assert "runtime_spine_audit_path=" in result.stdout
     assert payload["status"] == "gap_contract_recorded"
     assert payload["summary"]["total_spines"] == 8
-    assert payload["summary"]["gap_open"] == 8
-    assert payload["spines"]["agent_loop"]["detectors"]["one_shot_choose_tools"] is True
+    assert payload["summary"]["gap_open"] == 0
+    assert payload["summary"]["required_detector_failure_count"] == 0
+    assert payload["summary"]["required_detector_failures"] == {}
+    assert payload["spines"]["agent_session"]["detectors"]["agent_session_contract_defined"] is True
+    assert payload["spines"]["agent_session"]["detectors"]["mutable_session_history"] is True
+    agent_loop_detectors = payload["spines"]["agent_loop"]["detectors"]
+    assert "one_shot_choose_tools" not in agent_loop_detectors
+    assert agent_loop_detectors["required_model_turn_bridge"] is True
+    assert agent_loop_detectors["required_tool_results_appended"] is True
+    assert agent_loop_detectors["required_tool_result_continuation_gate"] is True
+    assert agent_loop_detectors["required_model_tool_events"] is True
 
 
 def test_audit_plan_completion_reports_named_todo(tmp_path: Path) -> None:

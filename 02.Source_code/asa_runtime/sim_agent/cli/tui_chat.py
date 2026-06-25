@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Final, Literal, TextIO
 
 from sim_agent.agents_sdk_runtime.runtime import AGENT_ROLES
-from sim_agent.schemas._parse import JsonMap, as_mapping, as_str
+from sim_agent.schemas._parse import as_mapping, as_str
 from sim_agent.schemas.errors import SchemaValidationError
 
+from .tui_activity_render import write_activity_rail
 from .tui_chat_render import write_chat_deck
 from .tui_direct_agent import DirectAgentChatRequest, run_direct_agent_chat
 from .tui_paths import display_path
@@ -81,6 +82,20 @@ def handle_chat_message(
     output_stream: TextIO,
     run_handler: RunHandler,
 ) -> TuiState:
+    unknown_agent = _unknown_agent_target(args)
+    if unknown_agent:
+        message = _clean_text(" ".join(args))
+        append_chat_message(state, "user", message, "orchestrator")
+        append_event(state, "agent_direct_route_blocked", f"{unknown_agent}:unknown_agent")
+        write_semantic_lines(
+            output_stream,
+            (
+                f"agent_direct_route_blocked={unknown_agent}",
+                "agent_direct_route_blocker=unknown_agent",
+            ),
+        )
+        write_chat_window(state, output_stream)
+        return state
     chat_input = _targeted_input(args)
     if not chat_input.message:
         write_semantic_line(output_stream, "chat_error=missing_message")
@@ -177,6 +192,16 @@ def _targeted_input(args: Sequence[str]) -> TargetedChatInput:
     return TargetedChatInput("orchestrator", _clean_text(" ".join(args)), tuple(args), False)
 
 
+def _unknown_agent_target(args: Sequence[str]) -> str:
+    if not args:
+        return ""
+    first = args[0]
+    if not first.startswith("@"):
+        return ""
+    target = first.removeprefix("@")
+    return "" if target in AGENT_TARGETS else target
+
+
 def _handle_direct_agent_message(
     chat_input: TargetedChatInput,
     state: TuiState,
@@ -200,8 +225,10 @@ def _handle_direct_agent_message(
             f"agent_loop_status={result.turn_status}",
             f"agent_loop_model={result.model_id}",
             f"agent_loop_tools={','.join(result.selected_tools)}",
+            f"agent_loop_blockers={','.join(result.blockers)}",
         ),
     )
+    write_activity_rail(result, output_stream)
     append_chat_message(
         state,
         "assistant",

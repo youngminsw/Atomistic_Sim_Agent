@@ -151,7 +151,7 @@ def _seed_records() -> tuple[ProvenanceRecord, ...]:
             tags=("potential_library", "force_field", "md"),
             confidence=0.8,
             extracted_on="2026-06-12",
-            used_by=("md_agent", "research_graphdb_agent", "knowledge"),
+            used_by=("md_agent", "research_agent", "knowledge"),
             source_kind=SourceKind.POTENTIAL,
         ),
         ProvenanceRecord(

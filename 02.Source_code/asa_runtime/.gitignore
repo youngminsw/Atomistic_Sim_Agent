@@ -6,6 +6,12 @@ __pycache__/
 .omo/
 .omx/
 evidence/
+.asa/*
+!.asa/
+!.asa/AGENTS.md
+!.asa/SKILLS.md
+!.asa/skills/
+!.asa/skills/**
 model_gateway/dist/
 model_gateway/node_modules/
 

@@ -8,6 +8,11 @@ from typing import Any, Protocol
 
 from .graphdb_gate import GraphDBGatePlan
 
+try:
+    from neo4j.exceptions import Neo4jError as _Neo4jError
+except ImportError:
+    _Neo4jError = RuntimeError
+
 
 class GraphDBAccessError(ValueError):
     pass
@@ -102,20 +107,26 @@ class Neo4jDriverClient:
         self._driver = GraphDatabase.driver(config.uri, auth=(username, password))
 
     def verify_connectivity(self) -> None:
-        self._driver.verify_connectivity()
+        try:
+            self._driver.verify_connectivity()
+        except (_Neo4jError, OSError, RuntimeError) as exc:
+            raise GraphDBAccessError(f"connectivity_failed:{type(exc).__name__}") from exc
 
     def list_databases(self) -> tuple[str, ...]:
         try:
             with self._driver.session(database="system") as session:
                 records = session.run("SHOW DATABASES YIELD name RETURN name")
                 return tuple(str(record["name"]) for record in records)
-        except Exception:
-            return ()
+        except (_Neo4jError, OSError, RuntimeError, KeyError) as exc:
+            raise GraphDBAccessError(f"database_list_failed:{type(exc).__name__}") from exc
 
     def count_nodes(self, database_name: str) -> int:
-        with self._driver.session(database=database_name) as session:
-            record = session.run("MATCH (n) RETURN count(n) AS count").single()
-            return int(record["count"]) if record is not None else 0
+        try:
+            with self._driver.session(database=database_name) as session:
+                record = session.run("MATCH (n) RETURN count(n) AS count").single()
+                return int(record["count"]) if record is not None else 0
+        except (_Neo4jError, OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            raise GraphDBAccessError(f"node_count_failed:{type(exc).__name__}") from exc
 
     def run_write(self, database_name: str, kind: str, cypher: str, parameters: dict[str, Any]) -> None:
         with self._driver.session(database=database_name) as session:
@@ -238,7 +249,7 @@ def _role_queries() -> tuple[AgentGraphQuery, ...]:
             {},
         ),
         AgentGraphQuery(
-            "research_graphdb_agent",
+            "research_agent",
             "retrieve literature-backed claims by topic tags",
             "MATCH (source:SimAgentSourceItem)-[:SUPPORTS_CLAIM]->(claim:PhysicsClaim) "
             "WHERE any(tag IN claim.tags WHERE tag IN $tags) "
@@ -254,7 +265,7 @@ def _role_queries() -> tuple[AgentGraphQuery, ...]:
             {},
         ),
         AgentGraphQuery(
-            "ml_mdn_agent",
+            "ml_agent",
             "retrieve surrogate, mdn, and uncertainty evidence before model acceptance",
             "MATCH (source:SimAgentSourceItem)-[:SUPPORTS_CLAIM]->(claim:PhysicsClaim) "
             "WHERE any(tag IN claim.tags WHERE tag IN ['surrogate','mdn','uncertainty']) "
@@ -316,12 +327,15 @@ def _preflight_blockers(
         graph_client = Neo4jDriverClient(GraphDBConnectionConfig(database_name=request.database_name))
         created_client = True
     try:
-        graph_client.verify_connectivity()
-        database_names = graph_client.list_databases()
-        if database_names and request.database_name not in database_names:
-            blockers.append("database_not_found")
-        if request.require_empty_database and graph_client.count_nodes(request.database_name) > 0:
-            blockers.append("database_not_empty")
+        try:
+            graph_client.verify_connectivity()
+            database_names = graph_client.list_databases()
+            if database_names and request.database_name not in database_names:
+                blockers.append("database_not_found")
+            if request.require_empty_database and graph_client.count_nodes(request.database_name) > 0:
+                blockers.append("database_not_empty")
+        except GraphDBAccessError as exc:
+            blockers.append(str(exc))
     finally:
         if created_client and hasattr(graph_client, "close"):
             graph_client.close()  # type: ignore[attr-defined]

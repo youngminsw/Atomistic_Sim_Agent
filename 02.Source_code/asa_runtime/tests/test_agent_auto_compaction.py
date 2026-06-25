@@ -60,21 +60,21 @@ def test_auto_compaction_runs_after_manual_replay_and_new_messages(tmp_path: Pat
 
 def test_auto_compaction_blocks_when_manual_summary_was_not_replayed(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
-    append_agent_message(state.session_dir, "ml_mdn_agent", "user", "seed")
+    append_agent_message(state.session_dir, "ml_agent", "user", "seed")
     compact_agent_session(
         state.session_dir,
-        CompactionRequest(agent_id="ml_mdn_agent", compact_id="manual-mdn-001", summary="manual mdn summary"),
+        CompactionRequest(agent_id="ml_agent", compact_id="manual-mdn-001", summary="manual mdn summary"),
     )
-    append_agent_message(state.session_dir, "ml_mdn_agent", "assistant", "candidate")
+    append_agent_message(state.session_dir, "ml_agent", "assistant", "candidate")
 
     result = auto_compact_agent_session(
         state.session_dir,
-        "ml_mdn_agent",
+        "ml_agent",
         AutoCompactionPolicy(new_message_threshold=1),
     )
 
-    errors = _jsonl(state.session_dir / "agent_sessions" / "ml_mdn_agent" / "compact_errors.jsonl")
-    summary = json.loads((state.session_dir / "agent_sessions" / "ml_mdn_agent" / "compact_summary.json").read_text(encoding="utf-8"))
+    errors = _jsonl(state.session_dir / "agent_sessions" / "ml_agent" / "compact_errors.jsonl")
+    summary = json.loads((state.session_dir / "agent_sessions" / "ml_agent" / "compact_summary.json").read_text(encoding="utf-8"))
     assert result.status == "blocked"
     assert result.blocker == "manual_replay_required"
     assert errors[-1]["blocker"] == "manual_replay_required"
@@ -83,21 +83,21 @@ def test_auto_compaction_blocks_when_manual_summary_was_not_replayed(tmp_path: P
 
 def test_agent_message_append_auto_compacts_after_default_threshold(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
-    append_agent_message(state.session_dir, "research_graphdb_agent", "user", "seed")
+    append_agent_message(state.session_dir, "research_agent", "user", "seed")
     compact_agent_session(
         state.session_dir,
-        CompactionRequest(agent_id="research_graphdb_agent", compact_id="manual-rg-001", summary="source seed"),
+        CompactionRequest(agent_id="research_agent", compact_id="manual-rg-001", summary="source seed"),
     )
-    replay_agent_compaction(state.session_dir, "research_graphdb_agent")
+    replay_agent_compaction(state.session_dir, "research_agent")
 
     for index in range(AutoCompactionPolicy().new_message_threshold):
-        append_agent_message(state.session_dir, "research_graphdb_agent", "user", f"source update {index}")
+        append_agent_message(state.session_dir, "research_agent", "user", f"source update {index}")
 
     summary = json.loads(
-        (state.session_dir / "agent_sessions" / "research_graphdb_agent" / "compact_summary.json").read_text(encoding="utf-8")
+        (state.session_dir / "agent_sessions" / "research_agent" / "compact_summary.json").read_text(encoding="utf-8")
     )
     assert summary["compact_mode"] == "auto"
-    assert summary["compact_id"] == "auto-research_graphdb_agent-33"
+    assert summary["compact_id"] == "auto-research_agent-33"
     assert summary["message_count"] == 33
 
 

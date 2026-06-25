@@ -12,6 +12,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from sim_agent.agents_sdk_runtime.gateway_client import run_production_gateway_client_smoke
 from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, ProviderConfigPolicyError
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.schemas._parse import as_mapping
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -27,7 +28,7 @@ def main() -> int:
 
     try:
         payload = as_mapping(json.loads(Path(args.request).read_text(encoding="utf-8")), "simulation_request")
-        endpoint = ModelProviderConfig.from_mapping(as_mapping(payload.get("llm_endpoint"), "llm_endpoint"))
+        endpoint = ModelProviderConfig.from_mapping(model_provider_payload(payload))
         result = run_production_gateway_client_smoke(
             payload,
             endpoint,

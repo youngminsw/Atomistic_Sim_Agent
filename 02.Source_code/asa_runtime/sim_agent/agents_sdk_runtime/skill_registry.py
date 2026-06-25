@@ -9,10 +9,10 @@ from sim_agent.schemas._parse import JsonMap
 from .domain_adapters import (
     feature_scale_skill_adapter,
     md_skill_adapter,
-    ml_mdn_skill_adapter,
+    ml_skill_adapter,
     orchestrator_skill_adapter,
     qa_skill_adapter,
-    research_graphdb_skill_adapter,
+    research_skill_adapter,
 )
 from .invocation_artifacts import write_skill_invocation_artifact
 from .types import SkillInvocationResult
@@ -50,7 +50,7 @@ def agent_skill_contracts() -> tuple[AgentSkillContract, ...]:
             ("md_campaign_manifest.json", "md_physics_gate_report.json"),
         ),
         AgentSkillContract(
-            "ml_mdn_agent",
+            "ml_agent",
             "train_and_gate_mdn_surrogate",
             "ml_surrogate.training_gate",
             "Train or reject MD-derived MDN surrogates through quantitative gates.",
@@ -66,9 +66,9 @@ def agent_skill_contracts() -> tuple[AgentSkillContract, ...]:
             ("profile_timeline.json", "click_diagnostics.json"),
         ),
         AgentSkillContract(
-            "research_graphdb_agent",
+            "research_agent",
             "research_and_ingest_graphdb_catalog",
-            "knowledge.research_graphdb_agent",
+            "knowledge.research_agent",
             "Map source literature and code samples into the project Neo4j catalog with provenance.",
             ("research_question", "graphdb_mode"),
             ("source_catalog.json", "graph_import_plan.json"),
@@ -122,9 +122,9 @@ def _handlers() -> dict[str, SkillHandler]:
     return {
         "orchestrate_simulation_run": _orchestrator_handler,
         "prepare_and_verify_lammps_md": _md_handler,
-        "train_and_gate_mdn_surrogate": _ml_mdn_handler,
+        "train_and_gate_mdn_surrogate": _ml_handler,
         "run_feature_scale_level_set": _feature_scale_handler,
-        "research_and_ingest_graphdb_catalog": _research_graphdb_handler,
+        "research_and_ingest_graphdb_catalog": _research_handler,
         "qa_physics_and_runtime_evidence": _qa_handler,
     }
 
@@ -147,11 +147,11 @@ def _md_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocati
     )
 
 
-def _ml_mdn_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocationResult:
+def _ml_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocationResult:
     return _adapter_result(
         payload,
         contract,
-        adapter_output=ml_mdn_skill_adapter(payload),
+        adapter_output=ml_skill_adapter(payload),
         next_action="train_mdn_or_request_active_learning_md",
     )
 
@@ -165,11 +165,11 @@ def _feature_scale_handler(payload: JsonMap, contract: AgentSkillContract) -> Sk
     )
 
 
-def _research_graphdb_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocationResult:
+def _research_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocationResult:
     return _adapter_result(
         payload,
         contract,
-        adapter_output=research_graphdb_skill_adapter(payload),
+        adapter_output=research_skill_adapter(payload),
         next_action="ingest_after_user_approved_empty_database",
     )
 

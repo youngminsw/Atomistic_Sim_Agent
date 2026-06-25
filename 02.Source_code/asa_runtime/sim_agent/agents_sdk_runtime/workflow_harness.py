@@ -21,6 +21,7 @@ class WorkflowDefinition:
     states: tuple[str, ...]
     current_state: str
     verification_gate: str
+    required_evidence: tuple[str, ...]
     hook: str
     loop_policy: str
 
@@ -41,6 +42,9 @@ class WorkflowHarnessResult:
     status: str
     current_state: str
     verification_gate: str
+    gate_status: str
+    evidence_keys: tuple[str, ...]
+    missing_evidence: tuple[str, ...]
     resumable: bool
     ledger_ref: str
     blockers: tuple[str, ...]
@@ -54,6 +58,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "question_round", "ambiguity_gate", "handoff_ready"),
         "handoff_ready",
         "ambiguity_gate_clear",
+        ("question_answer", "ambiguity_score"),
         "UserPromptSubmit",
         "ask_one_round_then_checkpoint",
     ),
@@ -63,6 +68,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "requirements_loaded", "consensus_plan", "verification_plan_ready"),
         "verification_plan_ready",
         "plan_has_acceptance_tests",
+        ("prd_path", "test_spec_path"),
         "SlashCommand",
         "plan_review_checkpoint",
     ),
@@ -72,6 +78,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "task_decomposition", "parallel_lanes_ready", "merge_ready"),
         "merge_ready",
         "lane_outputs_have_evidence",
+        ("lane_outputs",),
         "SlashCommand",
         "parallel_lanes_with_merge_gate",
     ),
@@ -81,6 +88,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "hostile_scenarios", "adversarial_checks", "fix_or_report_ready"),
         "fix_or_report_ready",
         "adversarial_scenarios_recorded",
+        ("adversarial_scenarios",),
         "PostToolUse",
         "qa_loop_until_blockers_clear",
     ),
@@ -90,6 +98,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "goals_loaded", "active_story_resumed", "checkpoint_ready"),
         "checkpoint_ready",
         "codex_snapshot_reconciled_or_blocked",
+        ("codex_goal_snapshot",),
         "GoalState",
         "story_checkpoint_after_verification",
     ),
@@ -106,12 +115,48 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         return _blocked_result(workflow_id, output_dir, "unknown_workflow")
     workflow_dir = output_dir / workflow.workflow_id
     ledger_ref = f"{workflow.workflow_id}/{WORKFLOW_HARNESS_LEDGER_NAME}"
+    evidence_keys = _evidence_keys(payload)
+    missing = tuple(key for key in workflow.required_evidence if key not in evidence_keys)
+    if missing:
+        events = (
+            _event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:missing_evidence={','.join(missing)}",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status="blocked",
+            evidence_keys=evidence_keys,
+            missing_evidence=missing,
+            resumable=True,
+            ledger_ref=ledger_ref,
+            blockers=("workflow_gate_missing_evidence",),
+            events=events,
+        )
+        workflow_dir.mkdir(parents=True, exist_ok=True)
+        (workflow_dir / WORKFLOW_HARNESS_LEDGER_NAME).write_text(
+            json.dumps(_ledger_payload(result, workflow, payload), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return result
     events = tuple(_event(workflow, state, state == workflow.current_state) for state in workflow.states)
     result = WorkflowHarnessResult(
         workflow_id=workflow.workflow_id,
         status="ready",
         current_state=workflow.current_state,
         verification_gate=workflow.verification_gate,
+        gate_status="passed",
+        evidence_keys=evidence_keys,
+        missing_evidence=(),
         resumable=True,
         ledger_ref=ledger_ref,
         blockers=(),
@@ -133,6 +178,9 @@ def _blocked_result(workflow_id: str, output_dir: Path, blocker: str) -> Workflo
         status="blocked",
         current_state="blocked",
         verification_gate="workflow_known",
+        gate_status="blocked",
+        evidence_keys=(),
+        missing_evidence=(),
         resumable=True,
         ledger_ref=ledger_ref,
         blockers=(blocker,),
@@ -182,6 +230,10 @@ def _ledger_payload(result: WorkflowHarnessResult, workflow: WorkflowDefinition,
         "status": result.status,
         "current_state": result.current_state,
         "verification_gate": result.verification_gate,
+        "gate_status": result.gate_status,
+        "required_evidence": list(workflow.required_evidence),
+        "evidence_keys": list(result.evidence_keys),
+        "missing_evidence": list(result.missing_evidence),
         "hook": workflow.hook,
         "loop_policy": workflow.loop_policy,
         "resumable": result.resumable,
@@ -197,6 +249,10 @@ def _blocked_payload(result: WorkflowHarnessResult) -> JsonMap:
         "status": result.status,
         "current_state": result.current_state,
         "verification_gate": result.verification_gate,
+        "gate_status": result.gate_status,
+        "required_evidence": [],
+        "evidence_keys": list(result.evidence_keys),
+        "missing_evidence": list(result.missing_evidence),
         "resumable": result.resumable,
         "blockers": list(result.blockers),
         "events": [_event_payload(event) for event in result.events],
@@ -219,3 +275,33 @@ def _request_id(payload: JsonMap) -> str:
     if isinstance(value, str) and value:
         return value
     return "anonymous"
+
+
+def _evidence_keys(payload: JsonMap) -> tuple[str, ...]:
+    evidence = payload.get("evidence")
+    if isinstance(evidence, dict):
+        return tuple(sorted(key for key, value in evidence.items() if isinstance(key, str) and _evidence_value_present(value)))
+    evidence_ledger = payload.get("evidence_ledger")
+    if isinstance(evidence_ledger, list | tuple):
+        keys: set[str] = set()
+        for item in evidence_ledger:
+            if isinstance(item, str) and item:
+                keys.add(item)
+            elif isinstance(item, dict):
+                key = item.get("key") or item.get("id") or item.get("name")
+                if isinstance(key, str) and key:
+                    keys.add(key)
+        return tuple(sorted(keys))
+    return tuple(
+        sorted(key for key in payload if isinstance(key, str) and key not in {"request_id", "user_goal", "workflow_id"})
+    )
+
+
+def _evidence_value_present(value: object) -> bool:
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list | tuple | dict | set):
+        return bool(value)
+    return True

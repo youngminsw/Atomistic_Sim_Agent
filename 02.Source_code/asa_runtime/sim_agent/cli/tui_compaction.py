@@ -110,6 +110,7 @@ def _run_replay(agent_id: str, state: TuiState, output_stream: TextIO) -> TuiSta
 
 def _write_compaction_status(registry: AgentRegistry, output_stream: TextIO) -> None:
     output_stream.write("Compaction Status\n")
+    output_stream.write("Agent                Summary    Messages  Replay      Compact ID\n")
     output_stream.write("compact_status_view=true\n")
     for handle in registry.handles.values():
         summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
@@ -137,6 +138,10 @@ def _write_compaction_status(registry: AgentRegistry, output_stream: TextIO) -> 
 
 
 def _write_agent_status(output_stream: TextIO, row: CompactStatusRow) -> None:
+    output_stream.write(
+        f"{row.agent_id:<20} {row.summary_status:<10} {row.message_count:<9} "
+        f"{row.replay_status:<11} {row.compact_id}\n"
+    )
     output_stream.write(f"compact_agent={row.agent_id}\n")
     output_stream.write(f"compact_summary_status={row.summary_status}\n")
     output_stream.write(f"compact_message_count={row.message_count} compact_replay={row.replay_status}\n")

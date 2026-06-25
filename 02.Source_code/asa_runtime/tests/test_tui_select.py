@@ -18,14 +18,14 @@ def test_menu_redraw_clears_each_line_from_column_one() -> None:
 
     _render_options(
         (
-            MenuOption("oauth", "OAuth gateway", "browser/OAuth backed model gateway"),
+            MenuOption("oauth", "Browser OAuth", "browser-backed provider auth"),
             MenuOption("api_key", "API key", "direct provider token or key"),
         ),
         1,
         output,
     )
 
-    assert output.getvalue().startswith("\r\x1b[2K  OAuth gateway")
+    assert output.getvalue().startswith("\r\x1b[2K  Browser OAuth")
     assert "\n\r\x1b[2K❯ API key" in output.getvalue()
 
 

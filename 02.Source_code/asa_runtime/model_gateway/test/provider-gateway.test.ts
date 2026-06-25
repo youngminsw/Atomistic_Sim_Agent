@@ -16,7 +16,7 @@ import type { OAuthAuthInfo } from "../src/index.js"
 
 test("CredentialManager refreshes expired OAuth credentials through provider boundary", async () => {
   const provider = new FakeOAuthProvider({
-    id: "oauth_gateway",
+    id: "openai-codex",
     accessToken: "access:initial",
     refreshToken: "refresh:initial",
     expiresInMs: -1,
@@ -41,16 +41,16 @@ test("FileCredentialStore persists credentials for gateway restarts", async () =
   const path = join(root, "credentials.json")
   try {
     const first = new FileCredentialStore(path)
-    await first.set("oauth_gateway", {
+    await first.set("openai-codex", {
       access: "access:persisted",
       refresh: "refresh:persisted",
       expires: 123,
     })
 
     const second = new FileCredentialStore(path)
-    const stored = await second.get("oauth_gateway")
+    const stored = await second.get("openai-codex")
 
-    assert.equal(stored?.provider, "oauth_gateway")
+    assert.equal(stored?.provider, "openai-codex")
     assert.equal(stored?.credentials.access, "access:persisted")
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -60,9 +60,9 @@ test("FileCredentialStore persists credentials for gateway restarts", async () =
 test("FakeOAuthProvider exposes login auth info without network", async () => {
   let authInfo: OAuthAuthInfo | undefined
   const provider = new FakeOAuthProvider({
-    id: "openclaw",
-    name: "Openclaw Test",
-    authUrl: "https://openclaw.local/auth",
+    id: "openai-codex",
+    name: "ChatGPT OAuth Test",
+    authUrl: "https://auth.openai.com/oauth/authorize",
     accountId: "acct-1",
     email: "agent@example.test",
   })
@@ -74,7 +74,7 @@ test("FakeOAuthProvider exposes login auth info without network", async () => {
     onPrompt: async () => "",
   })
 
-  assert.equal(authInfo?.url, "https://openclaw.local/auth")
+  assert.equal(authInfo?.url, "https://auth.openai.com/oauth/authorize")
   assert.equal(credentials.accountId, "acct-1")
   assert.equal(credentials.email, "agent@example.test")
 })
@@ -82,7 +82,7 @@ test("FakeOAuthProvider exposes login auth info without network", async () => {
 test("buildGatewayAdapterResponse returns Python-compatible snake_case adapter", () => {
   const response = buildGatewayAdapterResponse({
     model_provider: {
-      provider: "oauth_gateway",
+      provider: "local_gateway",
       model: "gpt-5.5",
       reasoning_effort: "high",
       base_url: "http://127.0.0.1:8787/v1",
@@ -97,7 +97,7 @@ test("buildGatewayAdapterResponse returns Python-compatible snake_case adapter",
   })
 
   assert.equal(response.ok, true)
-  assert.equal(response.adapter.provider, "oauth_gateway")
+  assert.equal(response.adapter.provider, "local_gateway")
   assert.equal(response.adapter.base_url, "http://127.0.0.1:8787/v1")
   assert.equal(response.adapter.auth_refresh_command, "model-gateway auth refresh --print")
   assert.equal(response.api_key, "gateway-access")
@@ -120,7 +120,7 @@ test("createModelGatewayServer exposes health, models, request id, and upstream 
 
   const gateway = createModelGatewayServer({
     modelProvider: {
-      provider: "oauth_gateway",
+      provider: "local_gateway",
       model: "gpt-5.5",
       reasoning_effort: "high",
       base_url: "http://127.0.0.1:8787/v1",
@@ -145,7 +145,7 @@ test("createModelGatewayServer exposes health, models, request id, and upstream 
     assert.equal(health["auth_mode"], "gateway")
     assert.equal(models["gateway_request_id"], "gw-test-1")
     assert.equal(response["gateway_request_id"], "gw-test-1")
-    assert.equal(response["gateway_provider"], "oauth_gateway")
+    assert.equal(response["gateway_provider"], "local_gateway")
     assert.equal(response["output_text"], "gateway_echo_ready")
   } finally {
     await close(gateway)
@@ -156,7 +156,7 @@ test("createModelGatewayServer exposes health, models, request id, and upstream 
 test("createModelGatewayServer reports missing credentials as hard gateway blocker", async () => {
   const gateway = createModelGatewayServer({
     modelProvider: {
-      provider: "oauth_gateway",
+      provider: "local_gateway",
       model: "gpt-5.5",
       reasoning_effort: "high",
       base_url: "http://127.0.0.1:8787/v1",

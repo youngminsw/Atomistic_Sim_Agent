@@ -59,7 +59,7 @@ def model_endpoint_action_entry(
         "action": action,
         "actor": action_actor(action),
         "status": "ready_after_user_action"
-        if "login_to_model_gateway_or_provide_token" in user_actions
+        if "login_to_model_provider_or_provide_token" in user_actions
         else "ready",
         "command": [
             "python3",
@@ -73,14 +73,14 @@ def model_endpoint_action_entry(
             str(Path(output_dir) / "production_gateway_smoke_ledger.json")
         ],
     }
-    if "login_to_model_gateway_or_provide_token" in user_actions:
-        payload["requires_user_action"] = "login_to_model_gateway_or_provide_token"
+    if "login_to_model_provider_or_provide_token" in user_actions:
+        payload["requires_user_action"] = "login_to_model_provider_or_provide_token"
     return payload
 
 
 def _model_endpoint_recovery_steps(action: str, user_actions: list[str]) -> list[str]:
     steps = ["persist_validated_request_from_agent_plan"]
-    if "login_to_model_gateway_or_provide_token" in user_actions:
-        steps.append("login_to_model_gateway_or_provide_token")
+    if "login_to_model_provider_or_provide_token" in user_actions:
+        steps.append("login_to_model_provider_or_provide_token")
     steps.append(action)
     return steps

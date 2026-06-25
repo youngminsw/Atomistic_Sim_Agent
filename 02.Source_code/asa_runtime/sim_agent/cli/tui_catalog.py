@@ -18,7 +18,7 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
         "/model status|set|profiles|profile|assign|login",
         "select profiles, gateway/model, thinking, agent models, and credentials",
     ),
-    SlashCommand("/login", "/login [oauth|api-key] --provider <id>", "choose OAuth gateway or API key login flow"),
+    SlashCommand("/login", "/login [oauth|api-key] --provider <id>", "choose browser OAuth or API key provider login"),
     SlashCommand("/hud", "/hud", "provider/model/auth/session HUD with connection guidance"),
     SlashCommand("/guide", "/guide", "plain-language Korean onboarding and next-step guide"),
     SlashCommand("/start", "/start", "same beginner onboarding as /guide"),
@@ -60,22 +60,39 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand("/exit", "/exit", "close the interactive shell"),
 )
 
-SIMULATION_SKILLS: Final[tuple[tuple[str, str], ...]] = (
-    ("research", "source-backed literature and GraphDB ingestion planning"),
-    ("md", "LAMMPS structure, force-field, incident campaign, and physics gates"),
-    ("ml-mdn", "MD event dataset, MDN training gate, uncertainty, active learning"),
-    ("feature-scale", "KMC transport and Level-Set profile evolution"),
-    ("qa", "hard-blocker audit, evidence gate, production-readiness report"),
-    ("controller", "HTML controller bridge and run bundle inspection"),
-)
+
+def simulation_skill_rows() -> tuple[tuple[str, str], ...]:
+    from sim_agent.agents_sdk_runtime.markdown_skills import markdown_skill_summary_rows
+
+    return markdown_skill_summary_rows()
+
+
+def markdown_skill_commands() -> tuple[SlashCommand, ...]:
+    from sim_agent.agents_sdk_runtime.markdown_skills import markdown_skill_specs
+
+    return tuple(
+        SlashCommand(spec.command, f"{spec.command} <message>", f"{spec.name} skill -> {spec.agent_id}: {spec.summary}")
+        for spec in markdown_skill_specs()
+    )
+
+
+def all_commands() -> tuple[SlashCommand, ...]:
+    commands = [*COMMANDS]
+    seen = {command.name for command in commands}
+    for command in markdown_skill_commands():
+        if command.name in seen:
+            continue
+        commands.append(command)
+        seen.add(command.name)
+    return tuple(commands)
 
 
 def command_names() -> tuple[str, ...]:
-    names = {command.name for command in COMMANDS}
+    names = {command.name for command in all_commands()}
     return tuple(sorted(names))
 
 
 def suggested_commands(prefix: str) -> tuple[SlashCommand, ...]:
     if prefix == "/":
-        return COMMANDS
-    return tuple(command for command in COMMANDS if command.name.startswith(prefix) or prefix in command.usage)
+        return all_commands()
+    return tuple(command for command in all_commands() if command.name.startswith(prefix) or prefix in command.usage)

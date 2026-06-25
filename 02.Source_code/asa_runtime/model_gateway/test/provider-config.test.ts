@@ -43,9 +43,23 @@ test("parseModelProviderConfig accepts explicit direct OpenAI provider config", 
   })
 })
 
+test("parseModelProviderConfig defaults ChatGPT OAuth without gateway credential names", () => {
+  const config = parseModelProviderConfig({
+    provider: "openai-codex",
+    model: "gpt-5.5",
+    reasoning_effort: "high",
+    base_url: "https://chatgpt.com/backend-api",
+  })
+
+  assert.equal(config.provider, "openai-codex")
+  assert.equal(config.authMode, "oauth")
+  assert.equal(config.apiKeyEnv, "ASA_OPENAI_CODEX_TOKEN")
+  assert.equal(config.credentialSource, "oauth_token")
+})
+
 test("parseModelProviderConfig accepts xhigh and max reasoning at the config layer", () => {
   const xhigh = parseModelProviderConfig({
-    provider_id: "oauth_gateway",
+    provider_id: "local_gateway",
     model: "gpt-5.5",
     reasoning_effort: "xhigh",
     base_url: "http://127.0.0.1:8787/v1",
@@ -59,8 +73,8 @@ test("parseModelProviderConfig accepts xhigh and max reasoning at the config lay
     auth_mode: "api_key",
   })
 
-  assert.equal(xhigh.provider, "oauth_gateway")
-  assert.equal(xhigh.providerId, "oauth_gateway")
+  assert.equal(xhigh.provider, "local_gateway")
+  assert.equal(xhigh.providerId, "local_gateway")
   assert.equal(xhigh.reasoningEffort, "xhigh")
   assert.equal(max.reasoningEffort, "max")
 })
@@ -69,36 +83,36 @@ test("parseModelProviderConfig rejects low reasoning for physics decisions", () 
   assert.throws(
     () =>
       parseModelProviderConfig({
-        provider: "oauth_gateway",
+        provider: "local_gateway",
         model: "gpt-5.3-codex-spark",
         reasoning_effort: "low",
         base_url: "http://127.0.0.1:8787/v1",
         use_case: "physics_decision",
-        auth_mode: "oauth",
+        auth_mode: "gateway",
       }),
     error => error instanceof ModelProviderConfigError && error.code === "high_stakes_requires_high_reasoning",
   )
 })
 
-test("parseModelProviderConfig accepts canonical gateway auth for OAuth gateway", () => {
+test("parseModelProviderConfig accepts canonical gateway auth for local gateway", () => {
   const config = parseModelProviderConfig({
-    provider: "oauth_gateway",
+    provider: "local_gateway",
     model: "gpt-5.5",
     reasoning_effort: "high",
     base_url: "http://127.0.0.1:8787/v1",
     use_case: "primary_control",
     structured_outputs: true,
     streaming: true,
-    api_key_env: "MODEL_GATEWAY_TOKEN",
+    api_key_env: "RUNTIME_GATEWAY_TOKEN",
     auth_mode: "gateway",
     auth_refresh_command: "model-gateway auth refresh --print",
   })
 
-  assert.equal(config.provider, "oauth_gateway")
+  assert.equal(config.provider, "local_gateway")
   assert.equal(config.authMode, "gateway")
   assert.deepEqual(toPythonModelProviderAdapter(config), {
-    provider: "oauth_gateway",
-    provider_id: "oauth_gateway",
+    provider: "local_gateway",
+    provider_id: "local_gateway",
     model: "gpt-5.5",
     api_protocol: "openai_compatible",
     reasoning_effort: "high",
@@ -109,7 +123,7 @@ test("parseModelProviderConfig accepts canonical gateway auth for OAuth gateway"
     streaming: true,
     tool_choice_support: true,
     provider_session_support: true,
-    api_key_env: "MODEL_GATEWAY_TOKEN",
+    api_key_env: "RUNTIME_GATEWAY_TOKEN",
     auth_mode: "gateway",
     credential_source: "gateway_token",
     auth_refresh_command: "model-gateway auth refresh --print",
@@ -120,7 +134,7 @@ test("parseModelProviderConfig rejects legacy gateway_token auth mode", () => {
   assert.throws(
     () =>
       parseModelProviderConfig({
-        provider: "oauth_gateway",
+        provider: "local_gateway",
         model: "gpt-5.5",
         reasoning_effort: "high",
         base_url: "http://127.0.0.1:8787/v1",

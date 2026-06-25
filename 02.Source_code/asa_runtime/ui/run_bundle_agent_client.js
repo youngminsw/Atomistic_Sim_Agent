@@ -77,7 +77,12 @@
   }
 
   function applyModelSettings(documentRef, payload) {
-    const endpoint = payload.llm_endpoint && typeof payload.llm_endpoint === "object" ? payload.llm_endpoint : {};
+    const endpoint =
+      payload.model_provider && typeof payload.model_provider === "object"
+        ? payload.model_provider
+        : payload.llm_endpoint && typeof payload.llm_endpoint === "object"
+          ? payload.llm_endpoint
+          : {};
     const merged = {
       ...runtimeEndpoint(),
       ...endpoint,
@@ -87,8 +92,8 @@
     if (error) return { error };
     return {
       payload: {
-      ...payload,
-      llm_endpoint: merged,
+        ...payload,
+        model_provider: merged,
       },
     };
   }

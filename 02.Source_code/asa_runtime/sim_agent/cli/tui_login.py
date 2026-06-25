@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol, TextIO
 
 from sim_agent.provider_registry import login_profile_by_id
-from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway
+from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_provider
 
 from .tui_browser_oauth import start_browser_oauth
 from .tui_login_profiles import LOGIN_PROFILES, LoginProfile, LoginTarget, choose_login_target, login_companies
@@ -145,7 +145,7 @@ def _login_with_token(mode: str, args: Sequence[str], state: TuiState, output_st
         output_stream.write(f"login_error={mode}_token_required\n")
         write_login_options(output_stream)
         return
-    payload = login_model_gateway(
+    payload = login_model_provider(
         {
             "provider": provider,
             "login_profile": profile,
@@ -161,7 +161,7 @@ def _login_with_token(mode: str, args: Sequence[str], state: TuiState, output_st
         output_stream.write(f"provider={payload['provider']} auth_mode={mode}\n")
         if profile:
             output_stream.write(f"login_profile={profile}\n")
-        output_stream.write(f"credential_store={payload['credential_store']}\n")
+        output_stream.write(f"provider_credential_store={payload['provider_credential_store']}\n")
         return
     write_login_success(output_stream, provider=payload["provider"], label=_login_success_label(profile, provider))
 

@@ -4,11 +4,14 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool
 from sim_agent.cli.tui_state import initial_state
 from sim_agent.cli.tui_timeline import timeline_events
+from sim_agent.runtime_config import default_runtime_config, save_runtime_config
+from sim_agent.runtime_config_types import ModelEndpointRuntimeConfig
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -104,12 +107,15 @@ def _run_module_interactive(
     session_dir: Path,
     extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    config_path = session_dir / "runtime-config.json"
+    _write_static_runtime_config(config_path)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["ASA_SESSION_DIR"] = str(session_dir)
     env["ASA_STARTUP_WIZARD"] = "0"
+    env["ATOMISTIC_SIM_AGENT_RUNTIME_CONFIG"] = str(config_path)
     return subprocess.run(
         [sys.executable, "-m", "sim_agent", *(extra_args or [])],
         cwd=PROJECT_ROOT,
@@ -120,6 +126,26 @@ def _run_module_interactive(
         capture_output=True,
         check=False,
         timeout=20,
+    )
+
+
+def _write_static_runtime_config(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    config = default_runtime_config()
+    save_runtime_config(
+        replace(
+            config,
+            model_endpoint=ModelEndpointRuntimeConfig(
+                provider="local_gateway",
+                model="timeline-static",
+                reasoning_effort="high",
+                base_url="http://127.0.0.1:9/v1",
+                auth_mode="none",
+                api_key_env="ASA_TEST_STATIC_TOKEN",
+            ),
+            agent_model_overrides=(),
+        ),
+        path,
     )
 
 

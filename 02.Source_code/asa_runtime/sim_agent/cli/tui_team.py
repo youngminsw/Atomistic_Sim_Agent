@@ -6,6 +6,7 @@ from typing import TextIO
 
 from sim_agent.agent_runtime import (
     AutoCompactionPolicy,
+    SUBAGENT_PRESETS,
     default_worker_adapter_config,
     load_agent_registry,
     resolve_subagent_preset,
@@ -25,7 +26,7 @@ from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, Provi
 from sim_agent.schemas._parse import as_mapping, as_sequence, as_str
 
 from .tui_agent_activity import build_agent_activity_summary
-from .tui_catalog import SIMULATION_SKILLS
+from .tui_catalog import simulation_skill_rows
 from .tui_parse import parse_options
 from .tui_render import AgentStatusRow, write_agent_workboard
 from .tui_semantic import write_semantic_line
@@ -33,9 +34,9 @@ from .tui_state import TuiState, append_event, replace_team_ledger
 
 SHORT_BOUNDARIES: dict[str, str] = {
     "md_agent": "LAMMPS MD and physics gates",
-    "ml_mdn_agent": "MDN training and uncertainty gate",
+    "ml_agent": "MDN training and uncertainty gate",
     "feature_scale_agent": "KMC and Level-Set evolution",
-    "research_graphdb_agent": "GraphDB research and provenance",
+    "research_agent": "GraphDB research and provenance",
     "qa_agent": "QA evidence and blocker audit",
 }
 
@@ -79,7 +80,7 @@ def handle_agents(state: TuiState, output_stream: TextIO) -> None:
 
 def handle_skills(output_stream: TextIO) -> None:
     output_stream.write("skill_catalog=true\n")
-    for name, summary in SIMULATION_SKILLS:
+    for name, summary in simulation_skill_rows():
         output_stream.write(f"skill={name} summary={summary}\n")
     registry = skill_registry_summary()
     output_stream.write(f"skill_registry_dispatch={as_str(registry['dispatch_mode'], 'dispatch_mode')}\n")
@@ -184,7 +185,7 @@ def _persistent_agent_rows(rows: Sequence[AgentStatusRow]) -> tuple[AgentStatusR
 
 def _bounded_subagent_rows() -> tuple[AgentStatusRow, ...]:
     rows: list[AgentStatusRow] = []
-    for name in ("planner", "architect", "critic", "executor"):
+    for name in SUBAGENT_PRESETS:
         preset = resolve_subagent_preset(name)
         rows.append(AgentStatusRow(preset.name, "preset", f"clean-room bounded · {preset.scope_notes}"))
     return tuple(rows)

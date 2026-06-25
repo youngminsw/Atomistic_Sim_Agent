@@ -85,12 +85,16 @@ def replay_agent_compaction(session_dir: Path, agent_id: str) -> CompactionResul
         return _blocked(handle.session_dir, CompactionRequest(agent_id, "", ""), "compact_summary_missing")
     if payload == {}:
         return _blocked(handle.session_dir, CompactionRequest(agent_id, "", ""), "corrupt_summary")
-    counts = _ledger_counts(handle.messages_path, handle.events_path)
     request = CompactionRequest(agent_id, _str_value(payload, "compact_id"), _str_value(payload, "summary"))
+    poison_blocker = _summary_poison_blocker(payload)
+    if poison_blocker is not None:
+        return _blocked(handle.session_dir, request, poison_blocker)
+    counts = _ledger_counts(handle.messages_path, handle.events_path)
     if counts is None:
         return _blocked(handle.session_dir, request, "corrupt_ledger")
-    if _has_replay_mismatch(handle.messages_path, handle.events_path, counts, payload):
-        return _blocked(handle.session_dir, request, "compact_replay_mismatch")
+    replay_blocker = _replay_blocker(handle.messages_path, handle.events_path, counts, payload)
+    if replay_blocker is not None:
+        return _blocked(handle.session_dir, request, replay_blocker)
     _mark_replay_passed(summary_path, payload, counts)
     return CompactionResult("succeeded", "replayed", agent_id, request.compact_id, summary_path)
 
@@ -232,13 +236,58 @@ def _auto_result(
     )
 
 
-def _has_replay_mismatch(messages_path: Path, events_path: Path, counts: LedgerCounts, payload: JsonMap) -> bool:
-    return (
-        counts.message_count < _int_value(payload, "message_count")
-        or counts.event_count < _int_value(payload, "event_count")
-        or _boundary_sequence_mismatch(messages_path, _int_value(payload, "message_count"), _int_value(payload, "last_message_sequence"))
-        or _boundary_sequence_mismatch(events_path, _int_value(payload, "event_count"), _int_value(payload, "last_event_sequence"))
+def _replay_blocker(messages_path: Path, events_path: Path, counts: LedgerCounts, payload: JsonMap) -> str | None:
+    message_count = _int_value(payload, "message_count")
+    event_count = _int_value(payload, "event_count")
+    if _has_orphan_tool_result(messages_path, events_path, message_count, event_count):
+        return "orphan_tool_result"
+    if (
+        counts.message_count < message_count
+        or counts.event_count < event_count
+        or _boundary_sequence_mismatch(messages_path, message_count, _int_value(payload, "last_message_sequence"))
+        or _boundary_sequence_mismatch(events_path, event_count, _int_value(payload, "last_event_sequence"))
+    ):
+        return "stale_compact_cursor"
+    return None
+
+
+def _summary_poison_blocker(payload: JsonMap) -> str | None:
+    summary = _str_value(payload, "summary").lower()
+    poison_markers = (
+        "ignore previous instructions",
+        "ignore all previous",
+        "<system",
+        "</system",
+        '"role":"system"',
+        '"role": "system"',
+        "role=system",
+        "developer message",
+        "system prompt override",
+        "function_call_output",
     )
+    if any(marker in summary for marker in poison_markers):
+        return "compact_summary_poisoned"
+    return None
+
+
+def _has_orphan_tool_result(messages_path: Path, events_path: Path, message_count: int, event_count: int) -> bool:
+    messages = read_jsonl(messages_path)
+    events = read_jsonl(events_path)
+    if messages is None or events is None:
+        return False
+    for record in messages[:message_count]:
+        if record.get("role") in {"tool", "function"} or record.get("type") in {"tool_result", "function_call_output"}:
+            return True
+    pending_tool_selections = 0
+    for record in events[:event_count]:
+        event_type = record.get("event_type")
+        if event_type == "model_tool_selected":
+            pending_tool_selections += 1
+        elif event_type == "tool_result_appended":
+            if pending_tool_selections <= 0:
+                return True
+            pending_tool_selections -= 1
+    return False
 
 
 def _boundary_sequence_mismatch(path: Path, record_count: int, expected_sequence: int) -> bool:

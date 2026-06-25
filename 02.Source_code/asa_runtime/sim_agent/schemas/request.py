@@ -7,10 +7,11 @@ from .distributions import FluxSchedule, IonAngularDistribution, IonEnergyDistri
 from .errors import SchemaValidationError
 from .state import SimulationScene
 from sim_agent.llm_endpoints.config import ModelProviderConfig
+from sim_agent.model_provider_payload import model_provider_payload
 
 
 @dataclass(frozen=True, slots=True)
-class LLMEndpointConfig:
+class ModelProviderRequestConfig:
     provider: str
     model: str
     reasoning_effort: str
@@ -18,7 +19,7 @@ class LLMEndpointConfig:
     auth_mode: str
 
     @classmethod
-    def from_mapping(cls, value: JsonMap) -> LLMEndpointConfig:
+    def from_mapping(cls, value: JsonMap) -> ModelProviderRequestConfig:
         provider_config = ModelProviderConfig.from_mapping(value)
         return cls(
             provider=provider_config.provider,
@@ -27,6 +28,9 @@ class LLMEndpointConfig:
             base_url=provider_config.base_url,
             auth_mode=provider_config.auth_mode,
         )
+
+
+LLMEndpointConfig = ModelProviderRequestConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +61,7 @@ class EtchRecipe:
 @dataclass(frozen=True, slots=True)
 class SimulationRequest:
     request_id: str
-    llm_endpoint: LLMEndpointConfig
+    model_provider: ModelProviderRequestConfig
     scene: SimulationScene
     recipe: EtchRecipe
 
@@ -66,10 +70,14 @@ class SimulationRequest:
         mapping = as_mapping(value, "simulation_request")
         return cls(
             request_id=str_field(mapping, "request_id"),
-            llm_endpoint=LLMEndpointConfig.from_mapping(as_mapping(mapping.get("llm_endpoint"), "llm_endpoint")),
+            model_provider=ModelProviderRequestConfig.from_mapping(model_provider_payload(mapping)),
             scene=SimulationScene.from_mapping(as_mapping(mapping.get("scene"), "scene")),
             recipe=EtchRecipe.from_mapping(as_mapping(mapping.get("recipe"), "recipe")),
         )
+
+    @property
+    def llm_endpoint(self) -> ModelProviderRequestConfig:
+        return self.model_provider
 
 
 @dataclass(frozen=True, slots=True)

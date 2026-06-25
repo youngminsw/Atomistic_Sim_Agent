@@ -77,7 +77,7 @@
     return fetcher("/api/model/gateway/smoke", {
       method: "POST",
       headers: csrfHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ llm_endpoint: endpoint, request }),
+      body: JSON.stringify({ model_provider: endpoint, request }),
     })
       .then((response) => response.json().then((body) => ({ ok: response.ok, body })))
       .then((result) => {

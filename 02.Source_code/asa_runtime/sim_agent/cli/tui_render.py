@@ -8,10 +8,9 @@ from typing import Final, TextIO
 
 from sim_agent.agents_sdk_runtime.runtime import AGENT_ROLES
 
-from .tui_catalog import COMMANDS, SIMULATION_SKILLS, SlashCommand
+from .tui_catalog import SlashCommand, all_commands, simulation_skill_rows, suggested_commands
 from .tui_chat import chat_hud_summary
 from .tui_hud import build_hud_status, ledger_label
-from .tui_timeline import timeline_summary
 from .tui_state import TuiState
 from .tui_theme import PLAIN_THEME, TuiTheme, paint, theme_for
 from .tui_width import cell_width, pad_cells, trim_cells
@@ -79,7 +78,6 @@ def write_hud_panel(state: TuiState, output_stream: TextIO) -> None:
     style = _style_for(output_stream)
     hud = build_hud_status(state)
     chat = chat_hud_summary(state)
-    timeline = timeline_summary(state)
     connected = "connected" if hud.connected else "not connected"
     output_stream.write(_top("ASA HUD", style))
     output_stream.write(_row("model rail", f"{hud.provider}/{hud.model}", style, tone="accent"))
@@ -87,13 +85,6 @@ def write_hud_panel(state: TuiState, output_stream: TextIO) -> None:
     output_stream.write(_row("auth rail", f"{hud.auth_mode}{style.separator}{connected}", style, tone="success" if hud.connected else "warning"))
     output_stream.write(_row("session rail", hud.session_id, style, tone="muted"))
     output_stream.write(_row("chat rail", f"{chat.message_count} messages{style.separator}last {chat.last_role}@{chat.last_target}", style))
-    output_stream.write(
-        _row(
-            "timeline rail",
-            f"{timeline.event_count} events{style.separator}{timeline.latest_source}/{timeline.latest_actor}:{timeline.latest_event_type}",
-            style,
-        )
-    )
     output_stream.write(_row("activity rail", _agent_activity_label(state), style))
     output_stream.write(_row("palette rail", "/ commands, direct @agent summon", style))
     output_stream.write(_row("agent rail", "orchestrator + MD/MDN/feature/GraphDB/QA", style))
@@ -114,10 +105,6 @@ def write_hud_panel(state: TuiState, output_stream: TextIO) -> None:
     output_stream.write(f"chat_message_count={chat.message_count}\n")
     output_stream.write(f"chat_transcript_path={chat.path}\n")
     output_stream.write(f"chat_transcript_corrupt_lines={chat.corrupt_lines}\n")
-    output_stream.write(f"timeline_event_count={timeline.event_count}\n")
-    output_stream.write(
-        f"timeline_latest={timeline.latest_source}/{timeline.latest_actor}/{timeline.latest_event_type}\n"
-    )
     output_stream.write(f"agent_activity_label={_agent_activity_label(state)}\n")
     output_stream.write("agent_mention_surface=true\n")
     output_stream.write("direct_agent_mention=true\n")
@@ -129,10 +116,10 @@ def write_hud_panel(state: TuiState, output_stream: TextIO) -> None:
 def write_help_panel(output_stream: TextIO) -> None:
     style = _style_for(output_stream)
     output_stream.write(_top("Slash Command Palette", style))
-    for command in COMMANDS:
+    for command in all_commands():
         output_stream.write(_row(command.usage, command.summary, style))
     output_stream.write(_rule(style))
-    output_stream.write(_row("simulation skills", ", ".join(name for name, _summary in SIMULATION_SKILLS), style))
+    output_stream.write(_row("simulation skills", ", ".join(name for name, _summary in simulation_skill_rows()), style))
     output_stream.write(_bottom(style))
 
 
@@ -143,7 +130,7 @@ def write_command_palette(prefix: str, output_stream: TextIO) -> None:
     for command in commands:
         output_stream.write(_row(command.usage, command.summary, style))
     output_stream.write(_rule(style))
-    output_stream.write(_row("simulation skills", ", ".join(name for name, _summary in SIMULATION_SKILLS), style))
+    output_stream.write(_row("simulation skills", ", ".join(name for name, _summary in simulation_skill_rows()), style))
     output_stream.write(_bottom(style))
 
 
@@ -165,10 +152,10 @@ def initial_agent_rows() -> tuple[AgentStatusRow, ...]:
 
 
 def _palette_commands(prefix: str) -> tuple[SlashCommand, ...]:
-    matches = tuple(command for command in COMMANDS if command.name.startswith(prefix) or prefix in command.usage)
+    matches = suggested_commands(prefix)
     if matches:
         return matches
-    return COMMANDS
+    return all_commands()
 
 
 def _agent_detail(row: AgentStatusRow, style: BoxStyle) -> str:

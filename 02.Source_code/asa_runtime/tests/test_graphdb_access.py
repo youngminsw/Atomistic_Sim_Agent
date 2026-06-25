@@ -53,9 +53,9 @@ def test_agent_graph_context_exposes_queries_for_every_agent_role() -> None:
     assert "password" not in payload["connection"]
     assert {item["agent_id"] for item in payload["role_queries"]} == {
         "orchestrator",
-        "research_graphdb_agent",
+        "research_agent",
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
         "qa_agent",
         "infra_agent",
@@ -160,6 +160,51 @@ def test_graphdb_import_executor_applies_bundle_with_injected_client(tmp_path: P
     assert payload["row_counts"]["sources"] >= 9
     assert payload["row_counts"]["claims"] >= 9
     assert payload["row_counts"]["entities"] >= 28
+
+
+def test_graphdb_import_executor_blocks_database_listing_failures(tmp_path: Path) -> None:
+    from sim_agent.knowledge import (
+        GraphDBAccessError,
+        GraphDBGateRequest,
+        GraphDBMode,
+        GraphDBWriteRequest,
+        build_graphdb_gate_plan,
+        build_source_graph_import_bundle,
+        execute_graph_import_bundle,
+        seeded_provenance_registry,
+    )
+
+    bundle = build_source_graph_import_bundle(
+        seeded_provenance_registry(),
+        build_graphdb_gate_plan(
+            GraphDBGateRequest(
+                mode=GraphDBMode.DRY_RUN,
+                user_db_approval=False,
+                existing_database_names=("neo4j",),
+                database_name="atomistic_sim_agent_demo",
+            )
+        ),
+        tmp_path / "bundle",
+        sync_run_id="product-graphdb-list-failure",
+    )
+
+    class FailingListClient(FakeGraphDBClient):
+        def list_databases(self) -> tuple[str, ...]:
+            raise GraphDBAccessError("database_list_failed:permission_denied")
+
+    report = execute_graph_import_bundle(
+        bundle.output_dir,
+        GraphDBWriteRequest(
+            approve_write=True,
+            database_name="atomistic_sim_agent_demo",
+            require_empty_database=True,
+        ),
+        client=FailingListClient(),
+    )
+
+    assert report.applied is False
+    assert report.status == "blocked"
+    assert report.blocker_reasons == ("database_list_failed:permission_denied",)
 
 
 def test_graphdb_import_executor_closes_owned_clients(tmp_path: Path, monkeypatch: Any) -> None:

@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
+import pytest
+
 from sim_agent.agent_harness.tools import default_tool_registry
-from sim_agent.agents_sdk_runtime import AgentLoop, AsaAgentSession
+from sim_agent.agents_sdk_runtime import AgentLoop, AsaAgentSession, ModelToolChoiceBlocked
 from sim_agent.agents_sdk_runtime.gateway_client_types import GatewayClientSmokeError
+from sim_agent.agents_sdk_runtime.prompt_assets import load_domain_role_prompt
 from sim_agent.agents_sdk_runtime.provider_tool_choice_model import ProviderToolChoiceModel
 from sim_agent.llm_endpoints import ModelProviderConfig
-from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway
+from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_provider
 
 
 def test_provider_tool_choice_model_posts_visible_tool_schemas_and_parses_output_tool_call(tmp_path: Path) -> None:
@@ -29,10 +33,24 @@ def test_provider_tool_choice_model_posts_visible_tool_schemas_and_parses_output
     assert (tmp_path / "artifacts" / "provider" / "evidence.txt").read_text(encoding="utf-8") == "ok"
     assert body["model"] == "gpt-5.5"
     assert body["input"] == [{"role": "user", "content": "Write provider-selected evidence"}]
+    assert isinstance(body["instructions"], str)
+    assert "ASA common system policy" in body["instructions"]
+    assert "You are ASA" in body["instructions"]
+    assert "Workflow policy" in body["instructions"]
+    assert "Request gate" in body["instructions"]
+    assert "Domain agent role" in body["instructions"]
+    assert "You are the Orchestrator" in body["instructions"]
     assert "artifact_write" in tool_names
     assert body["reasoning"]["effort"] == "high"
     assert body["metadata"]["agent_id"] == "orchestrator"
     assert body["metadata"]["session_id"] == "provider-session"
+    manifest = json.loads((tmp_path / "prompt_assembly_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "asa_prompt_assembly_manifest_v1"
+    assert manifest["agent_id"] == "orchestrator"
+    assert manifest["api_protocol"] == "openai_responses"
+    assert manifest["layer_kinds"][:3] == ["system_policy", "workflow_policy", "domain_role"]
+    assert manifest["messages"] == [{"role": "user", "content": "Write provider-selected evidence"}]
+    assert "artifact_write" in manifest["tool_names"]
 
 
 def test_provider_tool_choice_model_parses_tool_calls_list_shape(tmp_path: Path) -> None:
@@ -49,7 +67,7 @@ def test_provider_tool_choice_model_uses_stored_credential_token_when_no_explici
 ) -> None:
     monkeypatch.delenv("MODEL_GATEWAY_TOKEN", raising=False)
     monkeypatch.setenv(CREDENTIAL_STORE_ENV, str(tmp_path / "credentials.json"))
-    login_model_gateway(
+    login_model_provider(
         {
             "provider": "oauth_gateway",
             "access_token": "stored-provider-token",
@@ -110,13 +128,42 @@ def test_provider_tool_choice_model_retries_endpoint_unreachable_before_blocking
     assert (tmp_path / "artifacts" / "provider" / "retry.txt").read_text(encoding="utf-8") == "ok"
 
 
-def test_provider_tool_choice_model_blocks_final_text_only_as_no_tool(tmp_path: Path) -> None:
+def test_provider_tool_choice_model_blocks_malformed_explicit_api_protocol(tmp_path: Path) -> None:
+    session = _session(tmp_path, "https://gateway.test/v1")
+    malformed = replace(session, endpoint=replace(session.endpoint, api_protocol="definitely_not_a_protocol"))
+    model = ProviderToolChoiceModel(api_key="test-token", retry_count=0)
+
+    with pytest.raises(ModelToolChoiceBlocked, match="invalid_api_protocol=definitely_not_a_protocol"):
+        model.choose_tools(malformed, malformed.model_visible_tool_schemas())
+
+
+def test_provider_tool_choice_model_accepts_final_text_without_tool_call(tmp_path: Path) -> None:
     with _ToolChoiceGateway({"output_text": "No tool needed."}) as gateway:
         result = AgentLoop(_session(tmp_path, gateway.base_url), ProviderToolChoiceModel(api_key="test-token")).run()
 
-    assert result.status == "blocked"
-    assert result.blockers == ("no_model_tool_selected",)
+    assert result.status == "succeeded"
+    assert result.blockers == ()
     assert result.selected_tools == ()
+    assert result.final_output == "No tool needed."
+    assert result.session.messages[-1] == {"role": "assistant", "content": "No tool needed."}
+
+
+def test_provider_tool_choice_model_accepts_sse_output_text_without_tool_call(tmp_path: Path) -> None:
+    sse_body = "\n\n".join(
+        (
+            'data: {"type":"response.output_text.delta","delta":"No tool"}',
+            'data: {"type":"response.output_text.delta","delta":" needed."}',
+            'data: {"type":"response.output_text.done","text":"No tool needed."}',
+            "data: [DONE]",
+        )
+    )
+    with _ToolChoiceGateway(sse_body, response_content_type="text/event-stream") as gateway:
+        result = AgentLoop(_session(tmp_path, gateway.base_url), ProviderToolChoiceModel(api_key="test-token")).run()
+
+    assert result.status == "succeeded"
+    assert result.blockers == ()
+    assert result.selected_tools == ()
+    assert result.final_output == "No tool needed."
 
 
 def test_provider_tool_choice_model_blocks_unknown_tool_before_execution(tmp_path: Path) -> None:
@@ -171,6 +218,7 @@ def _session(
         endpoint=endpoint,
         output_dir=tmp_path,
         registry=default_tool_registry(),
+        role_prompt=load_domain_role_prompt("orchestrator"),
     )
 
 
@@ -203,16 +251,18 @@ def _fake_codex_token(account_id: str) -> str:
 class _ToolChoiceGateway:
     def __init__(
         self,
-        response_payload: dict[str, object],
+        response_payload: dict[str, object] | str,
         *,
         expected_path: str = "/v1/responses",
         expected_token: str = "test-token",
+        response_content_type: str = "application/json",
     ) -> None:
         self._handler = type(
             "_ToolChoiceGatewayHandler",
             (_ToolChoiceGatewayHandler,),
             {
                 "response_payload": response_payload,
+                "response_content_type": response_content_type,
                 "request_body": None,
                 "request_headers": {},
                 "expected_path": expected_path,
@@ -251,7 +301,8 @@ class _ToolChoiceGateway:
 
 
 class _ToolChoiceGatewayHandler(BaseHTTPRequestHandler):
-    response_payload: dict[str, object] = {}
+    response_payload: dict[str, object] | str = {}
+    response_content_type = "application/json"
     request_body: dict[str, object] | None = None
     request_headers: dict[str, str] = {}
     expected_path = "/v1/responses"
@@ -276,10 +327,13 @@ class _ToolChoiceGatewayHandler(BaseHTTPRequestHandler):
         self.__class__.request_body = json.loads(self.rfile.read(length).decode("utf-8"))
         self._write(self.response_payload)
 
-    def _write(self, payload: dict[str, object], status: int = 200) -> None:
-        body = json.dumps(payload).encode("utf-8")
+    def _write(self, payload: dict[str, object] | str, status: int = 200) -> None:
+        if isinstance(payload, str):
+            body = payload.encode("utf-8")
+        else:
+            body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
-        self.send_header("content-type", "application/json")
+        self.send_header("content-type", self.response_content_type)
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

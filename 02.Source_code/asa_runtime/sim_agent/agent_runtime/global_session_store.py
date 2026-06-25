@@ -168,13 +168,20 @@ def _index_entries(default_root: Path) -> list[tuple[str, Path]]:
     entries: list[tuple[str, Path]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         payload = as_mapping(json.loads(line), "global_session_index")
-        entries.append(
-            (
-                as_str(payload.get("session_id"), "global_session_index.session_id"),
-                Path(as_str(payload.get("session_dir"), "global_session_index.session_dir")),
-            )
-        )
+        session_dir = Path(as_str(payload.get("session_dir"), "global_session_index.session_dir"))
+        if not _is_relative_to(session_dir, default_root):
+            continue
+        entries.append((as_str(payload.get("session_id"), "global_session_index.session_id"), session_dir))
     return entries
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path_resolved = path.expanduser().resolve()
+        root_resolved = root.expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    return path_resolved == root_resolved or root_resolved in path_resolved.parents
 
 
 def _model_from_payload(payload: JsonMap) -> GlobalSessionModel:

@@ -40,7 +40,7 @@ def test_production_readiness_report_blocks_planned_only_ledger(tmp_path: Path) 
     assert "model_endpoint_smoke_required" in report["hard_blockers"]
     assert "graphdb_live_ingest_required" in report["hard_blockers"]
     assert "production_feature_scale_report_required" in report["hard_blockers"]
-    assert "login_to_model_gateway_or_provide_token" in report["user_actions"]
+    assert "login_to_model_provider_or_provide_token" in report["user_actions"]
     assert "approve_remote_or_long_compute_run" in report["user_actions"]
     assert "approve_empty_neo4j_database_write" in report["user_actions"]
     assert "resolve_md_production_blockers" in report["agent_actions"]

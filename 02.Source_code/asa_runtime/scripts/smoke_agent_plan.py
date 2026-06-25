@@ -19,6 +19,7 @@ from sim_agent.agent_harness import (
     write_agent_plan_artifacts,
 )
 from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, ProviderConfigPolicyError
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.schemas._parse import as_mapping
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -32,7 +33,7 @@ def main() -> int:
 
     try:
         payload = as_mapping(json.loads(Path(args.request).read_text(encoding="utf-8")), "simulation_request")
-        endpoint = ModelProviderConfig.from_mapping(as_mapping(payload.get("llm_endpoint"), "llm_endpoint"))
+        endpoint = ModelProviderConfig.from_mapping(model_provider_payload(payload))
         result = SimulationAgentHarness(endpoint=endpoint, client=OfflineModelClient()).plan(payload)
         output_dir = _optional_path(args.output_dir)
     except (json.JSONDecodeError, OSError, SchemaValidationError, ProviderConfigPolicyError, ModelPolicyError) as exc:

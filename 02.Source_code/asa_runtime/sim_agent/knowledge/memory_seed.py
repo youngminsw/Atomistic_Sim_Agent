@@ -180,11 +180,11 @@ def _tags(text: str) -> tuple[str, ...]:
 
 
 def _used_by(tags: Sequence[str]) -> tuple[str, ...]:
-    users = ["research_graphdb_agent", "qa_agent"]
+    users = ["research_agent", "qa_agent"]
     if "md" in tags or "lammps" in tags or "force_field" in tags:
         users.append("md_agent")
     if "mdn" in tags or "surrogate" in tags:
-        users.append("ml_mdn_agent")
+        users.append("ml_agent")
     if "level_set" in tags or "etching" in tags:
         users.append("feature_scale_agent")
     return tuple(dict.fromkeys(users))

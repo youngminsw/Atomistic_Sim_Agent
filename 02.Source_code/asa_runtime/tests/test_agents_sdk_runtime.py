@@ -42,9 +42,9 @@ def test_agents_sdk_runtime_dry_run_records_all_agent_handoffs_and_approvals(tmp
 
     assert result.handoff_sequence == (
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     )
     assert len(result.messages) == 10
@@ -59,16 +59,16 @@ def test_agents_sdk_runtime_dry_run_records_all_agent_handoffs_and_approvals(tmp
         "destructive_action": "not_required",
     }
     assert ledger["graph_memory"]["status"] == "query_plan_ready"
-    assert ledger["graph_memory"]["research_write_owner"] == "research_graphdb_agent"
+    assert ledger["graph_memory"]["research_write_owner"] == "research_agent"
     assert {item["agent_id"] for item in ledger["graph_memory"]["agent_snapshots"]} == {
         "orchestrator",
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
-    assert "handoff_to_research_graphdb_agent:research_graphdb_agent" in {
+    assert "handoff_to_research_agent:research_agent" in {
         item["summary"] for item in ledger["trace"]
     }
 
@@ -106,9 +106,9 @@ def test_actual_openai_agents_sdk_team_and_fake_gateway_smoke() -> None:
     assert team.orchestrator.name == "Orchestrator"
     assert set(team.specialists) == {
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
     assert "handoff_to_md_agent" in team.handoff_tool_names
@@ -139,9 +139,9 @@ def test_smoke_agents_sdk_runtime_cli_writes_ledger(tmp_path: Path) -> None:
     assert ledger["run_id"] == "agents-sdk-valid_ar_si_pr_hole"
     assert ledger["handoff_sequence"] == [
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     ]
 
@@ -174,24 +174,24 @@ def test_agent_team_session_smoke_writes_durable_sessions_and_call_matrix(tmp_pa
     assert session_files == {
         "orchestrator.jsonl",
         "md_agent.jsonl",
-        "ml_mdn_agent.jsonl",
+        "ml_agent.jsonl",
         "feature_scale_agent.jsonl",
-        "research_graphdb_agent.jsonl",
+        "research_agent.jsonl",
         "qa_agent.jsonl",
     }
     assert set(ledger["call_matrix"]["orchestrator"]) == {
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
     assert ledger["graph_memory"]["status"] == "query_plan_ready"
-    assert ledger["graph_memory"]["research_write_owner"] == "research_graphdb_agent"
-    for role_id in ("md_agent", "ml_mdn_agent", "feature_scale_agent"):
+    assert ledger["graph_memory"]["research_write_owner"] == "research_agent"
+    for role_id in ("md_agent", "ml_agent", "feature_scale_agent"):
         assert set(ledger["call_matrix"][role_id]) == {
             "orchestrator",
-            "research_graphdb_agent",
+            "research_agent",
             "qa_agent",
         }
     assert any(event["event_type"] == "heartbeat_registered" for event in ledger["events"])

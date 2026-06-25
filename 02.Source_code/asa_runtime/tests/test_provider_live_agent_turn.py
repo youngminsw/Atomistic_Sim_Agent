@@ -99,22 +99,22 @@ def test_live_agent_turn_injects_only_validated_compact_summary(tmp_path: Path) 
     assert body_after_replay["input"][-1] == {"role": "user", "content": "After replay"}
 
 
-def test_live_agent_turn_keeps_static_model_for_offline_auth_none_session(tmp_path: Path) -> None:
+def test_live_agent_turn_keeps_static_model_only_for_explicit_static_session(tmp_path: Path) -> None:
     record = open_global_session(
         GlobalSessionOpenRequest(
             requested_dir=tmp_path / "session",
             default_root=tmp_path,
-            model=_model("http://127.0.0.1:9/v1", auth_mode="none", provider="local_gateway", name="offline-static"),
+            model=_model("http://127.0.0.1:9/v1", auth_mode="none", provider="static", name="explicit-static"),
         )
     ).record
 
-    result = run_live_agent_turn(record.session_dir, "orchestrator", "Offline static turn")
+    result = run_live_agent_turn(record.session_dir, "orchestrator", "Explicit static turn")
 
     assert result.status == "succeeded"
-    assert result.model_id == "local_gateway/offline-static"
+    assert result.model_id == "static/explicit-static"
     assert result.selected_tools == ("artifact_write",)
     evidence = record.paths.agent_sessions / "orchestrator" / "artifacts" / "live_agent_turn" / "evidence.txt"
-    assert "Offline static turn" in evidence.read_text(encoding="utf-8")
+    assert "Explicit static turn" in evidence.read_text(encoding="utf-8")
 
 
 def _model(

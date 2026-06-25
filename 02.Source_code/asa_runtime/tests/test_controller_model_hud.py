@@ -17,7 +17,7 @@ from sim_agent.schemas._parse import as_mapping, as_str
 
 
 def test_ui_status_payload_includes_model_auth_hud(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", str(tmp_path / "credentials.json"))
+    monkeypatch.setenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", str(tmp_path / "credentials.json"))
 
     from sim_agent.ui import build_ui_api_status
     from sim_agent.ui.response_payload import status_payload
@@ -28,6 +28,7 @@ def test_ui_status_payload_includes_model_auth_hud(monkeypatch, tmp_path: Path) 
     assert model_auth["connected_provider_count"] == 0
     assert "Model is not connected" in as_str(model_auth["friendly_message"], "friendly_message")
     assert "/login" in as_str(model_auth["action_hint"], "action_hint")
+    assert "provider_credential_store" not in model_auth
     assert "credential_store" not in model_auth
 
 

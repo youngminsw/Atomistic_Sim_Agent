@@ -38,10 +38,12 @@ class TimelineSummary:
 def write_timeline(state: TuiState, output_stream: TextIO, *, limit: int = 30) -> None:
     events = timeline_events(state, limit=limit)
     output_stream.write("ASA Timeline\n")
+    output_stream.write("timeline rail\n")
     output_stream.write("timeline=true\n")
     output_stream.write(f"timeline_session_id={state.session_id}\n")
     output_stream.write(f"timeline_session_dir={display_path(state.session_dir)}\n")
     output_stream.write(f"timeline_event_count={len(events)}\n")
+    output_stream.write(f"timeline_latest={_latest_event_summary(events)}\n")
     for event in events:
         sequence = "-" if event.sequence is None else str(event.sequence)
         output_stream.write(
@@ -206,3 +208,10 @@ def _trim(value: str, limit: int = 160) -> str:
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[: limit - 3] + "..."
+
+
+def _latest_event_summary(events: tuple[TimelineEvent, ...]) -> str:
+    if not events:
+        return "-"
+    latest = events[-1]
+    return _trim(f"{latest.source}:{latest.actor}:{latest.event_type}")

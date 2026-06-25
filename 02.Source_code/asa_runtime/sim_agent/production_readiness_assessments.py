@@ -119,7 +119,7 @@ def assess_model_endpoint(
         return
     hard_blockers.append("model_endpoint_smoke_required")
     if auth_mode in OAUTH_LIKE_AUTH_MODES:
-        user_actions.append("login_to_model_gateway_or_provide_token")
+        user_actions.append("login_to_model_provider_or_provide_token")
     agent_actions.append("run_model_endpoint_smoke_after_credentials")
 
 

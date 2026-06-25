@@ -8,7 +8,7 @@ from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import as_mapping, as_sequence
 from sim_agent.ui.model_auth import (
     CREDENTIAL_STORE_ENV,
-    login_model_gateway,
+    login_model_provider,
     model_auth_status_payload,
 )
 from sim_agent.ui.model_connection import model_connection_status
@@ -81,8 +81,14 @@ def write_model_status(state: TuiState, output_stream: TextIO) -> None:
         state.model.auth_mode,
         state.model.api_key_env,
     )
+    output_stream.write("Model Status\n")
     output_stream.write("model_status=true\n")
     write_active_profile_status(runtime_config, output_stream)
+    output_stream.write(
+        f"Active model: {state.model.provider}/{state.model.name} "
+        f"(thinking {state.model.reasoning_effort}, auth {state.model.auth_mode})\n"
+    )
+    output_stream.write(f"Connection: {connection.connection_label} - {connection.friendly_message}\n")
     output_stream.write(
         f"provider={state.model.provider} model={state.model.name} "
         f"reasoning_effort={state.model.reasoning_effort} "
@@ -168,6 +174,7 @@ def _save_thinking_level(level: str, state: TuiState, output_stream: TextIO) -> 
     )
     next_state = replace_model(state, model)
     append_event(next_state, "model_thinking_level_set", level)
+    output_stream.write(f"Thinking level saved: {level}\n")
     output_stream.write("model_thinking_level_saved=true\n")
     output_stream.write(f"thinking_level={level} reasoning_effort={level}\n")
     return next_state
@@ -183,7 +190,7 @@ def _login_model(args: Sequence[str], state: TuiState, output_stream: TextIO) ->
     if access_token is None:
         output_stream.write("model_login_error=access_token_required\n")
         return
-    payload = login_model_gateway(
+    payload = login_model_provider(
         {
             "provider": options.get("provider", state.model.provider),
             "access_token": access_token,
@@ -194,4 +201,4 @@ def _login_model(args: Sequence[str], state: TuiState, output_stream: TextIO) ->
     append_event(state, "model_login", f"provider={payload['provider']}")
     output_stream.write("model_login_ok=true\n")
     output_stream.write(f"provider={payload['provider']}\n")
-    output_stream.write(f"credential_store={payload['credential_store']}\n")
+    output_stream.write(f"provider_credential_store={payload['provider_credential_store']}\n")

@@ -22,7 +22,7 @@ from .agent_compute import build_agent_compute_bundle_http_response
 from .agent_plan import build_agent_plan_http_response
 from .api import build_ui_agent_graph_context, build_ui_api_status, validate_ui_api_request
 from .controller import ControllerRunRequest, UiMode
-from .model_auth import ModelAuthError, login_model_gateway, model_auth_status_payload, run_model_gateway_smoke_from_controller
+from .model_auth import ModelAuthError, login_model_provider, model_auth_status_payload, run_model_gateway_smoke_from_controller
 from .response_payload import (
     click_diagnostic_contract_payload,
     run_response_payload,
@@ -64,7 +64,7 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
             case "/api/knowledge/agent-context":
                 self._write_json(build_ui_agent_graph_context(), 200)
             case "/api/model/auth/status":
-                self._write_json(model_auth_status_payload(include_credential_store=False), 200)
+                self._write_json(model_auth_status_payload(include_provider_credential_store=False), 200)
             case "/api/click-diagnostics":
                 self._write_json(click_diagnostic_contract_payload(), 200)
             case "/":
@@ -124,8 +124,9 @@ class UiRequestHandler(SimpleHTTPRequestHandler):
 
     def _handle_model_auth_login(self, payload: JsonMap) -> None:
         try:
-            result = dict(login_model_gateway(payload))
+            result = dict(login_model_provider(payload))
             result.pop("credential_store", None)
+            result.pop("provider_credential_store", None)
             self._write_json(result, 200)
         except ModelAuthError as exc:
             self._write_json({"error": str(exc)}, 400)

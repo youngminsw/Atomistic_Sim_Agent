@@ -139,7 +139,7 @@ def test_direct_agent_mention_appends_target_agent_transcript(tmp_path: Path) ->
         for message in messages
     )
     assert messages[-1]["role"] == "assistant"
-    assert "agent loop completed" in str(messages[-1]["content"])
+    assert "agent loop blocked: endpoint_unreachable" in str(messages[-1]["content"])
     assert events[-1]["event_type"] == "agent_message_appended"
 
 
@@ -164,7 +164,18 @@ def test_direct_agent_mention_runs_target_agent_loop(tmp_path: Path) -> None:
     event_types = {event["event_type"] for event in events}
     assert "agent_loop_completed" in event_types
     assert any(message["role"] == "assistant" and "agent loop" in str(message["content"]) for message in messages)
-    assert "agent_loop_status=succeeded" in result.stdout
+    assert "agent_loop_status=blocked" in result.stdout
+    assert "endpoint_unreachable" in result.stdout
+    assert "agent_loop_tools=" in result.stdout
+    assert "ASA Activity Rail" in result.stdout
+    assert "Progress" in result.stdout
+    assert "Tool Call" in result.stdout
+    assert "Output" in result.stdout
+    assert "Runtime Events" in result.stdout
+    assert "tool_call=none" in result.stdout
+    assert "event=model_start" in result.stdout
+    assert "event=blocker" in result.stdout
+    assert "ASA Chat Deck" in result.stdout
 
 
 def test_direct_agent_tty_output_hides_semantic_debug_lines(tmp_path: Path) -> None:
@@ -179,10 +190,15 @@ def test_direct_agent_tty_output_hides_semantic_debug_lines(tmp_path: Path) -> N
     )
 
     rendered = output.getvalue()
+    assert "ASA Activity Rail" in rendered
+    assert "Tool Call" in rendered
+    assert "Runtime Events" in rendered
     assert "ASA Chat Deck" in rendered
     assert "assistant@md_agent" in rendered
     assert "agent_direct_route=" not in rendered
     assert "agent_loop_status=" not in rendered
+    assert "tool_call=" not in rendered
+    assert "event=model_start" not in rendered
     assert "chat_window=true" not in rendered
     assert "chat_message_count=" not in rendered
 
@@ -211,6 +227,24 @@ def test_direct_agent_mention_continues_same_agent_session(tmp_path: Path) -> No
     assert sum(1 for event in events if event["event_type"] == "agent_loop_completed") == 2
 
 
+def test_unknown_agent_mention_blocks_without_orchestrator_run(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    output = StringIO()
+    legacy_agent_id = "ml_" + "mdn_agent"
+
+    handle_chat_message(
+        [f"@{legacy_agent_id}", "legacy", "alias"],
+        state,
+        output,
+        _unused_run_handler,
+    )
+
+    rendered = output.getvalue()
+    assert f"agent_direct_route_blocked={legacy_agent_id}" in rendered
+    assert "agent_direct_route_blocker=unknown_agent" in rendered
+    assert not (tmp_path / "chat-runs").exists()
+
+
 def _state(tmp_path: Path) -> TuiState:
     return TuiState(session_id="asa-test", session_dir=tmp_path, model=ModelSettings())
 
@@ -229,12 +263,29 @@ class _TtyStringIO(StringIO):
 
 
 def _env(tmp_path: Path) -> dict[str, str]:
+    runtime_config = tmp_path / "runtime-config.json"
+    runtime_config.write_text(
+        json.dumps(
+            {
+                "model_endpoint": {
+                    "provider": "openai-codex",
+                    "model": "gpt-5.5",
+                    "reasoning_effort": "high",
+                    "base_url": "http://127.0.0.1:1/v1",
+                    "auth_mode": "oauth",
+                    "api_key_env": "ASA_OPENAI_CODEX_TOKEN",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["ASA_SESSION_DIR"] = str(tmp_path / "session")
-    env["ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
+    env["ATOMISTIC_SIM_AGENT_RUNTIME_CONFIG"] = str(runtime_config)
+    env["ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
     env.pop("MODEL_GATEWAY_TOKEN", None)
     return env
 

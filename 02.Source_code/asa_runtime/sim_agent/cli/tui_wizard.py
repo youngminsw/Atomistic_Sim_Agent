@@ -4,12 +4,13 @@ from collections.abc import Sequence
 from typing import TextIO
 
 from sim_agent.knowledge.memory_seed import MemorySeedError, build_memory_seed_bundle, read_memory_seed_sources_from_neo4j
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV
 from sim_agent.runtime_config import load_runtime_config
 
 from .tui_login import TerminalLoginSelector, handle_login
 from .tui_select import MenuOption, choose_option, prompt_visible
 from .tui_setup import handle_setup
-from .tui_state import DEFAULT_OUTPUT_DIR, TuiState
+from .tui_state import TuiState, default_output_dir
 from .tui_thinking import choose_thinking_level
 from .tui_wizard_graphdb import graphdb_wizard
 from .tui_wizard_run import interview_run_wizard
@@ -75,7 +76,7 @@ def _endpoint_wizard(state: TuiState, input_stream: TextIO, output_stream: TextI
     preset = choose_option(
         "Model Endpoint",
         (
-            MenuOption("codex", "OpenAI Codex subscription", "OAuth gateway model endpoint"),
+            MenuOption("codex", "OpenAI Codex subscription", "browser OAuth provider endpoint"),
             MenuOption("openai", "OpenAI API key", "direct API key env"),
             MenuOption("anthropic", "Anthropic API key", "direct Claude API key env"),
             MenuOption("local", "Local gateway", "no-auth smoke gateway"),
@@ -119,7 +120,7 @@ def _endpoint_wizard(state: TuiState, input_stream: TextIO, output_stream: TextI
 
 def _memory_seed_wizard(output_stream: TextIO) -> None:
     config = load_runtime_config()
-    output_dir = DEFAULT_OUTPUT_DIR / "graphdb-memory-seed"
+    output_dir = default_output_dir() / "graphdb-memory-seed"
     try:
         sources = read_memory_seed_sources_from_neo4j()
         bundle = build_memory_seed_bundle(
@@ -142,7 +143,7 @@ def _memory_seed_wizard(output_stream: TextIO) -> None:
 def _endpoint_preset(preset: str) -> tuple[str, str, str, str, str]:
     match preset:  # noqa: MATCH_OK - endpoint preset input has a safe fallback.
         case "codex":
-            return ("openai-codex", "gpt-5-codex", "https://model-gateway.local/v1", "gateway", "MODEL_GATEWAY_TOKEN")
+            return ("openai-codex", "gpt-5-codex", OPENAI_CODEX_BASE_URL, "oauth", OPENAI_CODEX_TOKEN_ENV)
         case "openai":
             return ("openai", "gpt-5.5", "https://api.openai.com/v1", "api_key", "OPENAI_API_KEY")
         case "anthropic":

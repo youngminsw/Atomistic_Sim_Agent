@@ -8,11 +8,16 @@ from pathlib import Path
 
 from sim_agent.agents_sdk_runtime.gateway_client import GatewayClientSmokeResult, run_production_gateway_client_smoke
 from sim_agent.llm_endpoints import ModelProviderConfig
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.schemas._parse import JsonMap, as_mapping, as_str, require
 
 
-CREDENTIAL_STORE_ENV = "ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"
+PROVIDER_CREDENTIAL_STORE_ENV = "ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"
+LEGACY_CREDENTIAL_STORE_ENV = "ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"
+CREDENTIAL_STORE_ENV = PROVIDER_CREDENTIAL_STORE_ENV
 SMOKE_OUTPUT_DIR_ENV = "ATOMISTIC_MODEL_GATEWAY_SMOKE_DIR"
+PROVIDER_CREDENTIAL_STORE_FILENAME = "provider-credentials.json"
+LEGACY_GATEWAY_CREDENTIAL_STORE_FILENAME = "model-gateway-credentials.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,9 +36,9 @@ class ModelCredentialStatus:
     expires: int | None
     auth_mode: str
     updated_at_ms: int | None
-    credential_store: Path
+    provider_credential_store: Path
 
-    def to_payload(self, *, include_credential_store: bool = True) -> JsonMap:
+    def to_payload(self, *, include_provider_credential_store: bool = True) -> JsonMap:
         payload: dict[str, object] = {
             "provider": self.provider,
             "stored": self.stored,
@@ -42,12 +47,12 @@ class ModelCredentialStatus:
             "auth_mode": self.auth_mode,
             "updated_at_ms": self.updated_at_ms,
         }
-        if include_credential_store:
-            payload["credential_store"] = str(self.credential_store)
+        if include_provider_credential_store:
+            payload["provider_credential_store"] = str(self.provider_credential_store)
         return payload
 
 
-def login_model_gateway(payload: JsonMap) -> JsonMap:
+def login_model_provider(payload: JsonMap) -> JsonMap:
     provider = as_str(require(payload, "provider"), "provider").strip().lower()
     access_token = as_str(require(payload, "access_token"), "access_token")
     refresh_token = _optional_str(payload, "refresh_token") or access_token
@@ -71,18 +76,22 @@ def login_model_gateway(payload: JsonMap) -> JsonMap:
         "provider": provider,
         "logged_in": True,
         "expires": credentials["expires"],
-        "credential_store": str(store),
+        "provider_credential_store": str(store),
     }
 
 
-def model_auth_status_payload(*, include_credential_store: bool = True) -> JsonMap:
+def login_model_gateway(payload: JsonMap) -> JsonMap:
+    return login_model_provider(payload)
+
+
+def model_auth_status_payload(*, include_provider_credential_store: bool = True) -> JsonMap:
     store = _credential_store_path()
-    items = _read_credentials(store)
+    items = _read_provider_credentials(store)
     statuses = [
         model_credential_status(provider, store=store, entry=entry)
         for provider, entry in sorted(items.items())
     ]
-    providers = [status.to_payload(include_credential_store=False) for status in statuses]
+    providers = [status.to_payload(include_provider_credential_store=False) for status in statuses]
     connected_count = sum(1 for status in statuses if status.logged_in)
     payload: dict[str, object] = {
         "ok": True,
@@ -91,8 +100,8 @@ def model_auth_status_payload(*, include_credential_store: bool = True) -> JsonM
         "friendly_message": _status_message(connected_count),
         "action_hint": "Run /login, or set a provider token and use /model set before Smoke API.",
     }
-    if include_credential_store:
-        payload["credential_store"] = str(store)
+    if include_provider_credential_store:
+        payload["provider_credential_store"] = str(store)
     return payload
 
 
@@ -103,7 +112,7 @@ def model_credential_status(
     entry: JsonMap | None = None,
 ) -> ModelCredentialStatus:
     resolved_store = store or _credential_store_path()
-    resolved_entry = entry if entry is not None else _read_credentials(resolved_store).get(provider)
+    resolved_entry = entry if entry is not None else _read_provider_credentials(resolved_store).get(provider)
     if resolved_entry is None:
         return ModelCredentialStatus(
             provider=provider,
@@ -112,7 +121,7 @@ def model_credential_status(
             expires=None,
             auth_mode="oauth",
             updated_at_ms=None,
-            credential_store=resolved_store,
+            provider_credential_store=resolved_store,
         )
     return ModelCredentialStatus(
         provider=provider,
@@ -121,12 +130,12 @@ def model_credential_status(
         expires=_entry_expires(resolved_entry),
         auth_mode=_entry_auth_mode(resolved_entry),
         updated_at_ms=_int_or_none(resolved_entry.get("updatedAtMs")),
-        credential_store=resolved_store,
+        provider_credential_store=resolved_store,
     )
 
 
 def run_model_gateway_smoke_from_controller(payload: JsonMap) -> JsonMap:
-    endpoint = ModelProviderConfig.from_mapping(as_mapping(require(payload, "llm_endpoint"), "llm_endpoint"))
+    endpoint = ModelProviderConfig.from_mapping(model_provider_payload(payload))
     request = as_mapping(payload.get("request", payload), "request")
     token = access_token_for_provider(endpoint.provider)
     result = run_production_gateway_client_smoke(
@@ -157,7 +166,7 @@ def _smoke_payload(result: GatewayClientSmokeResult) -> JsonMap:
 
 
 def access_token_for_provider(provider: str) -> str | None:
-    entry = _read_credentials(_credential_store_path()).get(provider)
+    entry = _read_provider_credentials(_credential_store_path()).get(provider)
     if entry is None:
         return None
     credentials = entry.get("credentials")
@@ -176,7 +185,7 @@ def _write_credentials(
     *,
     login_profile: str | None = None,
 ) -> None:
-    items = _read_credentials(path)
+    items = _read_credentials_for_write(path)
     entry: dict[str, object] = {
         "provider": provider,
         "credentials": credentials,
@@ -185,6 +194,10 @@ def _write_credentials(
     if login_profile:
         entry["loginProfile"] = login_profile
     items[provider] = entry
+    _write_credentials_file(items, path)
+
+
+def _write_credentials_file(items: dict[str, JsonMap], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)
@@ -196,7 +209,7 @@ def _read_credentials(path: Path) -> dict[str, JsonMap]:
     except FileNotFoundError:
         return {}
     if not isinstance(raw, dict):
-        raise ModelAuthError("credential_store_object_required")
+        raise ModelAuthError("provider_credential_store_object_required")
     items: dict[str, JsonMap] = {}
     for key, value in raw.items():
         if isinstance(key, str) and isinstance(value, dict):
@@ -204,11 +217,41 @@ def _read_credentials(path: Path) -> dict[str, JsonMap]:
     return items
 
 
+def _read_provider_credentials(path: Path) -> dict[str, JsonMap]:
+    items = _read_credentials(path)
+    if items or _credential_store_overridden():
+        return items
+    for legacy_path in _legacy_credential_store_paths():
+        legacy_items = _read_credentials(legacy_path)
+        if legacy_items:
+            _write_credentials_file(legacy_items, path)
+            return legacy_items
+    return {}
+
+
+def _read_credentials_for_write(path: Path) -> dict[str, JsonMap]:
+    if _credential_store_overridden():
+        return _read_credentials(path)
+    return _read_provider_credentials(path)
+
+
 def _credential_store_path() -> Path:
-    configured = os.environ.get(CREDENTIAL_STORE_ENV)
+    configured = os.environ.get(PROVIDER_CREDENTIAL_STORE_ENV) or os.environ.get(LEGACY_CREDENTIAL_STORE_ENV)
     if configured:
-        return Path(configured)
-    return Path.home() / ".atomistic-sim-agent" / "model-gateway-credentials.json"
+        return Path(configured).expanduser()
+    return Path.home() / ".asa" / PROVIDER_CREDENTIAL_STORE_FILENAME
+
+
+def _credential_store_overridden() -> bool:
+    return bool(os.environ.get(PROVIDER_CREDENTIAL_STORE_ENV) or os.environ.get(LEGACY_CREDENTIAL_STORE_ENV))
+
+
+def _legacy_credential_store_paths() -> tuple[Path, ...]:
+    home = Path.home()
+    return (
+        home / ".asa" / LEGACY_GATEWAY_CREDENTIAL_STORE_FILENAME,
+        home / ".atomistic-sim-agent" / LEGACY_GATEWAY_CREDENTIAL_STORE_FILENAME,
+    )
 
 
 def _smoke_output_dir() -> Path:

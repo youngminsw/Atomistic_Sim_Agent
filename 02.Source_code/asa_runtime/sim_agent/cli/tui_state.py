@@ -13,12 +13,14 @@ from sim_agent.agent_runtime import (
     append_global_session_event,
     open_global_session,
 )
+from sim_agent.project_layout import ensure_project_state_layout
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV
 from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import JsonMap
 
 
 SOURCE_ROOT: Final = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR: Final = SOURCE_ROOT / "evidence" / "asa-tui"
+DEFAULT_OUTPUT_DIR: Final = Path(".asa") / "evidence" / "asa-tui"
 SESSION_LEDGER_NAME: Final = "asa_session.json"
 SESSION_EVENTS_NAME: Final = "asa_session_events.jsonl"
 SESSION_DIR_ENV: Final = "ASA_SESSION_DIR"
@@ -29,9 +31,9 @@ class ModelSettings:
     provider: str = "openai-codex"
     name: str = "gpt-5-codex"
     reasoning_effort: str = "high"
-    base_url: str = "https://model-gateway.local/v1"
-    auth_mode: str = "gateway"
-    api_key_env: str = "MODEL_GATEWAY_TOKEN"
+    base_url: str = OPENAI_CODEX_BASE_URL
+    auth_mode: str = "oauth"
+    api_key_env: str = OPENAI_CODEX_TOKEN_ENV
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +56,8 @@ class TuiStep:
 
 def initial_state(session_dir: Path | None = None, *, resume: str | None = None) -> TuiState:
     env_dir = os.environ.get(SESSION_DIR_ENV)
-    resolved = session_dir or (Path(env_dir) if env_dir else DEFAULT_OUTPUT_DIR)
+    layout = ensure_project_state_layout()
+    requested_dir = session_dir or (Path(env_dir).expanduser() if env_dir else None)
     endpoint = load_runtime_config().model_endpoint
     model = ModelSettings(
         provider=endpoint.provider,
@@ -66,8 +69,8 @@ def initial_state(session_dir: Path | None = None, *, resume: str | None = None)
     )
     session_result = open_global_session(
         GlobalSessionOpenRequest(
-            requested_dir=resolved if session_dir or env_dir else None,
-            default_root=DEFAULT_OUTPUT_DIR,
+            requested_dir=requested_dir,
+            default_root=layout.asa_root,
             model=_global_model(model),
             resume=resume,
         )
@@ -93,6 +96,7 @@ def initial_state(session_dir: Path | None = None, *, resume: str | None = None)
 def resume_state(state: TuiState, target: str = "latest") -> TuiState:
     target_value = target.strip() or "latest"
     model = _model_settings_from_global(state.model)
+    layout = ensure_project_state_layout()
     requested_dir: Path | None = None
     resume = target_value
     if target_value in {"latest", ""}:
@@ -104,7 +108,7 @@ def resume_state(state: TuiState, target: str = "latest") -> TuiState:
     session_result = open_global_session(
         GlobalSessionOpenRequest(
             requested_dir=requested_dir,
-            default_root=DEFAULT_OUTPUT_DIR,
+            default_root=layout.asa_root,
             model=_global_model(model),
             resume=resume,
         )
@@ -249,3 +253,7 @@ def _model_settings_from_global(model: GlobalSessionModel | ModelSettings) -> Mo
 
 def _looks_like_path(value: str) -> bool:
     return value.startswith(("/", "~", ".")) or "\\" in value
+
+
+def default_output_dir() -> Path:
+    return ensure_project_state_layout().evidence_root / "asa-tui"

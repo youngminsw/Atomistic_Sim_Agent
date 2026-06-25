@@ -34,9 +34,11 @@ export class InMemoryCredentialStore implements CredentialStore {
 
 export class FileCredentialStore implements CredentialStore {
   readonly #path: string
+  readonly #legacyPaths: readonly string[]
 
-  constructor(path: string) {
+  constructor(path: string, legacyPaths: readonly string[] = []) {
     this.#path = path
+    this.#legacyPaths = legacyPaths
   }
 
   async get(provider: string): Promise<StoredCredential | undefined> {
@@ -63,11 +65,25 @@ export class FileCredentialStore implements CredentialStore {
   }
 
   async #readAll(): Promise<Record<string, StoredCredential>> {
+    const primary = await this.#readExisting(this.#path)
+    if (primary !== undefined) {
+      return primary
+    }
+    for (const legacyPath of this.#legacyPaths) {
+      const legacy = await this.#readExisting(legacyPath)
+      if (legacy !== undefined && Object.keys(legacy).length > 0) {
+        return legacy
+      }
+    }
+    return {}
+  }
+
+  async #readExisting(path: string): Promise<Record<string, StoredCredential> | undefined> {
     try {
-      return JSON.parse(await readFile(this.#path, "utf8")) as Record<string, StoredCredential>
+      return parseCredentialRecord(await readFile(path, "utf8"))
     } catch (error) {
       if (isNotFound(error)) {
-        return {}
+        return undefined
       }
       throw error
     }
@@ -119,4 +135,36 @@ export class CredentialManager {
 
 function isNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+}
+
+function parseCredentialRecord(raw: string): Record<string, StoredCredential> {
+  const value: unknown = JSON.parse(raw)
+  if (!isRecord(value)) {
+    return {}
+  }
+  const items: Record<string, StoredCredential> = {}
+  for (const [provider, candidate] of Object.entries(value)) {
+    if (isStoredCredential(candidate)) {
+      items[provider] = candidate
+    }
+  }
+  return items
+}
+
+function isStoredCredential(value: unknown): value is StoredCredential {
+  if (!isRecord(value)) {
+    return false
+  }
+  const credentials = value["credentials"]
+  return (
+    typeof value["provider"] === "string"
+    && typeof value["updatedAtMs"] === "number"
+    && isRecord(credentials)
+    && typeof credentials["access"] === "string"
+    && typeof credentials["expires"] === "number"
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

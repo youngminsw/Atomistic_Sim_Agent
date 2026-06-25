@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sim_agent.agent_runtime.live_agent_turn import dispatch_live_agent_message
 from sim_agent.agent_runtime.message_bus import SendAgentMessageRequest
+from sim_agent.schemas._parse import JsonMap
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,9 +25,13 @@ class DirectAgentChatResult:
     turn_status: str
     model_id: str
     selected_tools: tuple[str, ...]
+    blockers: tuple[str, ...]
+    runtime_events: tuple[JsonMap, ...]
 
     @property
     def assistant_content(self) -> str:
+        if self.blockers:
+            return f"{self.target} blocked in persistent session {self.agent_session_id}: {', '.join(self.blockers)}."
         return f"{self.target} completed a live agent loop in persistent session {self.agent_session_id}."
 
 
@@ -48,4 +53,6 @@ def run_direct_agent_chat(request: DirectAgentChatRequest) -> DirectAgentChatRes
         turn_status=dispatch.turn_status,
         model_id=dispatch.model_id,
         selected_tools=dispatch.selected_tools,
+        blockers=dispatch.blockers,
+        runtime_events=dispatch.runtime_events,
     )

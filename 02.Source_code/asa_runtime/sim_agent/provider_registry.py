@@ -7,10 +7,10 @@ from typing import Final, Literal
 LoginTokenMode = Literal["oauth", "api_key"]
 LoginFlowKind = Literal["browser_oauth", "device_oauth", "api_key", "local", "manual_oauth"]
 
-GATEWAY_BASE_URL: Final = "https://model-gateway.local/v1"
+LEGACY_PROVIDER_GATEWAY_BASE_URL: Final = "https://model-gateway.local/v1"
 OPENAI_CODEX_BASE_URL: Final = "https://chatgpt.com/backend-api"
 LOCAL_GATEWAY_BASE_URL: Final = "http://localhost:8787/v1"
-MODEL_GATEWAY_TOKEN_ENV: Final = "MODEL_GATEWAY_TOKEN"
+LEGACY_MODEL_GATEWAY_TOKEN_ENV: Final = "MODEL_GATEWAY_TOKEN"
 OPENAI_CODEX_TOKEN_ENV: Final = "ASA_OPENAI_CODEX_TOKEN"
 
 
@@ -43,9 +43,9 @@ def _provider(
     label: str,
     summary: str,
     *,
-    base_url: str = GATEWAY_BASE_URL,
+    base_url: str = LEGACY_PROVIDER_GATEWAY_BASE_URL,
     auth_mode: str = "gateway",
-    api_key_env: str = MODEL_GATEWAY_TOKEN_ENV,
+    api_key_env: str = LEGACY_MODEL_GATEWAY_TOKEN_ENV,
 ) -> ProviderSpec:
     return ProviderSpec(provider_id, company, label, base_url, auth_mode, api_key_env, summary)
 
@@ -187,7 +187,7 @@ def login_companies() -> tuple[str, ...]:
 def default_api_key_env(provider_id: str) -> str:
     spec = provider_by_id(provider_id)
     if spec is None:
-        return MODEL_GATEWAY_TOKEN_ENV
+        return LEGACY_MODEL_GATEWAY_TOKEN_ENV
     return spec.default_api_key_env
 
 

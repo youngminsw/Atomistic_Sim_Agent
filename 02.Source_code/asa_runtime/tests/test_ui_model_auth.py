@@ -18,12 +18,107 @@ if str(SOURCE_ROOT) not in sys.path:
 from sim_agent.schemas._parse import JsonMap, as_mapping
 
 
+def test_provider_credentials_default_to_asa_home_and_avoid_gateway_filename(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from sim_agent.ui.model_auth import login_model_provider, model_auth_status_payload
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", raising=False)
+    monkeypatch.delenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", raising=False)
+
+    login = login_model_provider(
+        {
+            "provider": "openai-codex",
+            "access_token": "provider-token",
+            "refresh_token": "provider-refresh",
+            "auth_mode": "oauth",
+        }
+    )
+    status = model_auth_status_payload()
+
+    expected = home / ".asa" / "provider-credentials.json"
+    assert login["provider_credential_store"] == str(expected)
+    assert "credential_store" not in login
+    assert expected.is_file()
+    assert not (home / ".asa" / "model-gateway-credentials.json").exists()
+    assert status["provider_credential_store"] == str(expected)
+    assert "model-gateway-credentials" not in json.dumps(status)
+
+
+def test_legacy_gateway_credential_store_is_migrated_to_provider_store(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from sim_agent.ui.model_auth import access_token_for_provider, model_auth_status_payload
+
+    home = tmp_path / "home"
+    legacy = home / ".atomistic-sim-agent" / "model-gateway-credentials.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps(
+            {
+                "openai-codex": {
+                    "provider": "openai-codex",
+                    "credentials": {
+                        "access": "legacy-access",
+                        "refresh": "legacy-refresh",
+                        "expires": 4_102_444_800_000,
+                        "authMode": "oauth",
+                    },
+                    "updatedAtMs": 1,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", raising=False)
+    monkeypatch.delenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", raising=False)
+
+    token = access_token_for_provider("openai-codex")
+    status = model_auth_status_payload()
+
+    migrated = home / ".asa" / "provider-credentials.json"
+    assert token == "legacy-access"
+    assert migrated.is_file()
+    assert status["provider_credential_store"] == str(migrated)
+    assert "model-gateway-credentials" not in json.dumps(status)
+
+
+def test_legacy_gateway_credential_env_alias_still_reads_custom_store(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from sim_agent.ui.model_auth import access_token_for_provider
+
+    store = tmp_path / "legacy-env-credentials.json"
+    store.write_text(
+        json.dumps(
+            {
+                "anthropic": {
+                    "provider": "anthropic",
+                    "credentials": {"access": "legacy-env-access", "authMode": "oauth"},
+                    "updatedAtMs": 1,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", raising=False)
+    monkeypatch.setenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", str(store))
+
+    assert access_token_for_provider("anthropic") == "legacy-env-access"
+
+
 def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, monkeypatch) -> None:
     from sim_agent.ui import build_ui_api_status
     from sim_agent.ui.server import build_ui_http_server
 
     credential_store = tmp_path / "credentials.json"
-    monkeypatch.setenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", str(credential_store))
+    monkeypatch.setenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", str(credential_store))
     monkeypatch.setenv("ATOMISTIC_MODEL_GATEWAY_SMOKE_DIR", str(tmp_path / "smoke"))
     gateway = ThreadingHTTPServer(("127.0.0.1", 0), _GatewayHandler)
     gateway_host = gateway.server_name
@@ -42,7 +137,7 @@ def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, mo
         login_body, login_code = _post_json(
             f"http://{host}:{port}/api/model/auth/login",
             {
-                "provider": "oauth_gateway",
+                "provider": "local_gateway",
                 "access_token": "controller-secret-token",
                 "refresh_token": "controller-refresh-token",
                 "expires_in_s": 3600,
@@ -55,13 +150,13 @@ def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, mo
         smoke_body, smoke_code = _post_json(
             f"http://{host}:{port}/api/model/gateway/smoke",
             {
-                "llm_endpoint": {
-                    "provider": "oauth_gateway",
+                "model_provider": {
+                    "provider": "local_gateway",
                     "model": "gpt-5.5",
                     "reasoning_effort": "high",
                     "base_url": f"http://{gateway_host}:{gateway_port}/v1",
                     "auth_mode": "gateway",
-                    "api_key_env": "MODEL_GATEWAY_TOKEN",
+                    "api_key_env": "RUNTIME_GATEWAY_TOKEN",
                 },
                 "request": {
                     "request_id": "controller-smoke",
@@ -80,11 +175,11 @@ def test_controller_model_auth_login_status_and_gateway_smoke(tmp_path: Path, mo
 
     assert login_code == 200
     assert login_body["ok"] is True
-    assert login_body["provider"] == "oauth_gateway"
+    assert login_body["provider"] == "local_gateway"
     assert "credential_store" not in login_body
     assert "controller-secret-token" not in json.dumps(login_body)
     provider_status = _first_provider_status(status_body)
-    assert provider_status["provider"] == "oauth_gateway"
+    assert provider_status["provider"] == "local_gateway"
     assert provider_status["logged_in"] is True
     assert "controller-secret-token" not in json.dumps(status_body)
     assert smoke_code == 200

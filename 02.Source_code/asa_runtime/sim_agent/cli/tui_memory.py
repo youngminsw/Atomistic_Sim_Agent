@@ -26,9 +26,9 @@ from sim_agent.schemas._parse import JsonMap, as_mapping, as_sequence, as_str
 ROLE_IDS: tuple[str, ...] = (
     "orchestrator",
     "md_agent",
-    "ml_mdn_agent",
+    "ml_agent",
     "feature_scale_agent",
-    "research_graphdb_agent",
+    "research_agent",
     "qa_agent",
 )
 

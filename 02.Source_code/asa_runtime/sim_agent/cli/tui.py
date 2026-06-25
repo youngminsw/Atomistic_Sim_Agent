@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from pathlib import Path
 from typing import TextIO
+
+from sim_agent.agent_runtime import append_agent_message
+from sim_agent.agents_sdk_runtime.markdown_skills import markdown_skill_by_command, skill_context_message
 
 from .tui_chat import handle_chat, handle_chat_message
 from .tui_compaction import handle_compact
@@ -17,7 +20,7 @@ from .tui_prompt import build_prompt_reader
 from .tui_render import write_command_palette
 from .tui_run import handle_run
 from .tui_runtime import handle_runtime
-from .tui_semantic import filter_semantic_tty_output
+from .tui_semantic import filter_semantic_tty_output, write_semantic_lines
 from .tui_setup import handle_setup
 from .tui_state import TuiState, TuiStep, append_event, initial_state
 from .tui_team import handle_agents, handle_contract, handle_harness, handle_skills, handle_team
@@ -45,17 +48,17 @@ def run_tui(
             state = handle_wizard((), state, input_stream, output_stream, interactive=True)
         except KeyboardInterrupt:
             append_event(state, "session_exit", "User interrupted startup wizard")
-            output_stream.write("^C\nbye\n")
+            _write_exit(output_stream, prefix="^C\n")
             return 0
     while True:
         try:
             raw = prompt_reader.read_line()
         except KeyboardInterrupt:
             append_event(state, "session_exit", "User interrupted interactive shell")
-            output_stream.write("^C\nbye\n")
+            _write_exit(output_stream, prefix="^C\n")
             return 0
         if raw == "":
-            output_stream.write("bye\n")
+            _write_exit(output_stream)
             return 0
         if not prompt_reader.echoes_input:
             output_stream.write("\n")
@@ -63,7 +66,7 @@ def run_tui(
             step = _handle_line(raw.strip(), state, input_stream, output_stream, prompt_reader.echoes_input)
         except KeyboardInterrupt:
             append_event(state, "session_exit", "User interrupted interactive shell")
-            output_stream.write("^C\nbye\n")
+            _write_exit(output_stream, prefix="^C\n")
             return 0
         state = step.state
         if step.exit_requested:
@@ -90,7 +93,7 @@ def _handle_line(
             return TuiStep(state=state, exit_requested=False)
         case "/exit" | "/quit":
             append_event(state, "session_exit", "User closed interactive shell")
-            output_stream.write("bye\n")
+            _write_exit(output_stream)
             return TuiStep(state=state, exit_requested=True)
         case "/help":
             write_help(output_stream)
@@ -193,6 +196,22 @@ def _handle_default(
     output_stream: TextIO,
 ) -> TuiStep:
     if command.startswith("/"):
+        spec = markdown_skill_by_command(command)
+        if spec is not None:
+            if not args:
+                output_stream.write(f"skill_blocked={command} blocker=missing_message\n")
+                append_event(state, "markdown_skill_blocked", f"{command}:missing_message")
+                return TuiStep(state=state, exit_requested=False)
+            append_event(state, "markdown_skill_invoked", f"{spec.name}:{spec.agent_id}")
+            append_agent_message(state.session_dir, spec.agent_id, "system", skill_context_message(spec))
+            output_stream.write("markdown_skill_invoked=true\n")
+            output_stream.write(f"skill_name={spec.name}\n")
+            output_stream.write(f"skill_agent={spec.agent_id}\n")
+            output_stream.write(f"skill_file={spec.path}\n")
+            return TuiStep(
+                state=handle_chat_message((f"@{spec.agent_id}", *args), state, output_stream, handle_run),
+                exit_requested=False,
+            )
         output_stream.write(f"unknown_command={command}\n")
         write_command_palette(command, output_stream)
         return TuiStep(state=state, exit_requested=False)
@@ -214,3 +233,8 @@ def _log_limit(args: tuple[str, ...]) -> int:
 def _startup_wizard_enabled() -> bool:
     value = os.environ.get("ASA_STARTUP_WIZARD", "1").strip().lower()
     return value not in {"0", "false", "no", "off"}
+
+
+def _write_exit(output_stream: TextIO, *, prefix: str = "") -> None:
+    output_stream.write(f"{prefix}bye\n")
+    output_stream.flush()

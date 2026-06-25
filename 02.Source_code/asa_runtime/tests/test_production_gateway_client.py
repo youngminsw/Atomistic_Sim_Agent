@@ -57,9 +57,9 @@ def test_production_gateway_client_smoke_records_request_and_sessions(tmp_path: 
     assert ledger["fake_gateway_model"] is False
     assert ledger["gateway_request_id"] == "gw-python-smoke"
     assert ledger["gateway_policy_id"] == "production-gateway-smoke-plan-v1"
-    assert ledger["provider"] == "oauth_gateway"
+    assert ledger["provider"] == "local_gateway"
     assert ledger["auth_mode"] == "gateway"
-    assert sessions == {"orchestrator.jsonl", "research_graphdb_agent.jsonl", "qa_agent.jsonl"}
+    assert sessions == {"orchestrator.jsonl", "research_agent.jsonl", "qa_agent.jsonl"}
 
 
 def test_production_gateway_client_smoke_records_missing_credential_blocker(tmp_path: Path) -> None:
@@ -173,13 +173,13 @@ def test_production_gateway_client_smoke_blocks_allowed_but_wrong_agent_plan(tmp
 
 def _write_gateway_request(tmp_path: Path, base_url: str) -> Path:
     payload = _mutable_request("valid_ar_si_pr_hole.json")
-    payload["llm_endpoint"] = {
-        "provider": "oauth_gateway",
+    payload["model_provider"] = {
+        "provider": "local_gateway",
         "model": "gpt-5.5",
         "reasoning_effort": "high",
         "base_url": base_url,
         "auth_mode": "gateway",
-        "api_key_env": "MODEL_GATEWAY_TOKEN",
+        "api_key_env": "RUNTIME_GATEWAY_TOKEN",
     }
     path = tmp_path / "gateway_request.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -230,7 +230,7 @@ class _MockGatewayHandler(BaseHTTPRequestHandler):
                 "gateway_request_id": "gw-python-smoke",
                 "output_text": "production_gateway_client_ready",
                 "agent_plan": {
-                    "specialist": "research_graphdb_agent",
+                    "specialist": "research_agent",
                     "second_call": "qa_agent",
                 },
             }

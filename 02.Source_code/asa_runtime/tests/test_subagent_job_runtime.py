@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 
 from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool
-from sim_agent.cli.tui_state import initial_state
+from sim_agent.agent_runtime import GlobalSessionModel, GlobalSessionOpenRequest, open_global_session
+from sim_agent.cli.tui_state import ModelSettings, TuiState, persist_state
 
 
 def test_subagent_control_lists_and_awaits_completed_bounded_job(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
     registry = default_tool_registry()
     run = execute_runtime_tool(
         RuntimeToolCall(
@@ -62,7 +63,7 @@ def test_subagent_control_lists_and_awaits_completed_bounded_job(tmp_path: Path)
 
 
 def test_subagent_control_writes_lifecycle_events_for_running_job(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
     registry = default_tool_registry()
     running_dir = state.session_dir / "agent_sessions" / "qa_agent" / "subagents" / "critic" / "review-live"
     running_dir.mkdir(parents=True)
@@ -99,7 +100,7 @@ def test_subagent_control_writes_lifecycle_events_for_running_job(tmp_path: Path
 
 
 def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
     registry = default_tool_registry()
     execute_runtime_tool(
         RuntimeToolCall(
@@ -154,8 +155,83 @@ def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> No
     assert missing.blocker == "unknown_subagent"
 
 
+def test_subagent_control_detects_lost_process_and_restarts_same_job(tmp_path: Path) -> None:
+    state = _static_state(tmp_path)
+    registry = default_tool_registry()
+    running_dir = state.session_dir / "agent_sessions" / "md_agent" / "subagents" / "planner" / "lost-plan"
+    running_dir.mkdir(parents=True)
+    (running_dir / "subagent_running.lock").write_text(
+        json.dumps(
+            {
+                "caller_agent": "md_agent",
+                "preset": "planner",
+                "subagent_id": "lost-plan",
+                "depth": 1,
+                "task": "Recover a lost bounded planner run.",
+                "owner_pid": 999999999,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    listed = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="subagent_control",
+            arguments={"action": "list", "caller_agent": "md_agent"},
+            run_id="lost-list",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+    progress = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="subagent_control",
+            arguments={
+                "action": "progress",
+                "caller_agent": "md_agent",
+                "preset": "planner",
+                "subagent_id": "lost-plan",
+            },
+            run_id="lost-progress",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+    restarted = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="subagent_control",
+            arguments={
+                "action": "restart",
+                "caller_agent": "md_agent",
+                "preset": "planner",
+                "subagent_id": "lost-plan",
+            },
+            run_id="lost-restart",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    assert listed.status == "succeeded"
+    assert listed.output["subagents"][0]["state"] == "lost_process"
+    assert listed.output["subagents"][0]["lost_process"] is True
+    assert progress.status == "blocked"
+    assert progress.blocker == "subagent_lost_process"
+    assert progress.output["state"] == "lost_process"
+    assert restarted.status == "succeeded"
+    assert restarted.output["action"] == "restart"
+    assert restarted.output["subagent_id"] == "lost-plan"
+    assert restarted.output["previous_blocker"] == "subagent_lost_process"
+    assert (running_dir / "subagent_run.json").is_file()
+    assert any(path.name.startswith("lost-plan.lost-") for path in running_dir.parent.iterdir())
+
+
 def test_provider_visible_schema_includes_subagent_control(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
     schema = next(tool for tool in default_tool_registry().tools if tool.name == "subagent_control")
 
     result = execute_runtime_tool(
@@ -191,3 +267,33 @@ def _control(session_id: str, session_dir: Path, action: str, *, content: str, r
         registry,
         session_dir,
     )
+
+
+def _static_state(session_dir: Path) -> TuiState:
+    model = GlobalSessionModel(
+        provider="static",
+        name="explicit-static",
+        reasoning_effort="high",
+        base_url="https://model-gateway.local/v1",
+        auth_mode="none",
+        api_key_env="MODEL_GATEWAY_TOKEN",
+    )
+    record = open_global_session(
+        GlobalSessionOpenRequest(requested_dir=session_dir, default_root=session_dir, model=model)
+    ).record
+    state = TuiState(
+        session_id=record.session_id,
+        session_dir=record.session_dir,
+        model=ModelSettings(
+            provider=model.provider,
+            name=model.name,
+            reasoning_effort=model.reasoning_effort,
+            base_url=model.base_url,
+            auth_mode=model.auth_mode,
+            api_key_env=model.api_key_env,
+        ),
+        global_session_id=record.session_id,
+        global_session_path=record.paths.global_session,
+    )
+    persist_state(state)
+    return state

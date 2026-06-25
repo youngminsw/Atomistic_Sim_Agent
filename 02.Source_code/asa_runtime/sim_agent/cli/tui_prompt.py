@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from typing import Iterable, Literal, Protocol, TextIO
 
 from sim_agent.agents_sdk_runtime.runtime import AGENT_ROLES
 
-from .tui_catalog import SIMULATION_SKILLS, command_names, suggested_commands
+from .tui_catalog import command_names, simulation_skill_rows, suggested_commands
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,13 +90,13 @@ def slash_completion_rows(prefix: str) -> tuple[SlashCompletionRow, ...]:
     if token == "/" or "/skills".startswith(token):
         rows.extend(
             SlashCompletionRow(
-                value=name,
-                insert_text="/skills",
+                value=f"/{name}" if not name.startswith("/") else name,
+                insert_text=f"/{name}" if not name.startswith("/") else name,
                 kind="skill",
                 meta=summary,
                 display=f"skill: {name}",
             )
-            for name, summary in SIMULATION_SKILLS
+            for name, summary in simulation_skill_rows()
         )
     return tuple(rows)
 
@@ -134,6 +135,7 @@ def prompt_completion_rows(prefix: str) -> tuple[SlashCompletionRow, ...]:
 
 
 def _build_prompt_session() -> PromptSessionProtocol | None:
+    os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
     try:
         from prompt_toolkit import PromptSession
         from prompt_toolkit.completion import CompleteEvent, Completer, Completion
@@ -190,7 +192,6 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
             "<style fg='ansicyan'>/model</style> "
             "<style fg='ansicyan'>/team</style> "
             "<style fg='ansicyan'>/compact</style> "
-            "<style fg='ansicyan'>/timeline</style> "
             "<style fg='ansicyan'>/skills</style> "
             "<style fg='ansicyan'>/runtime</style> "
             "<style fg='ansicyan'>/setup</style>"

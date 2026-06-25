@@ -18,6 +18,7 @@ from sim_agent.agents_sdk_runtime import (
     write_agents_sdk_runtime_ledger,
 )
 from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, ProviderConfigPolicyError
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.schemas._parse import as_mapping
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -35,7 +36,7 @@ def main() -> int:
 
     try:
         payload = as_mapping(json.loads(Path(args.request).read_text(encoding="utf-8")), "simulation_request")
-        endpoint = ModelProviderConfig.from_mapping(as_mapping(payload.get("llm_endpoint"), "llm_endpoint"))
+        endpoint = ModelProviderConfig.from_mapping(model_provider_payload(payload))
         result = run_agents_sdk_runtime_dry_run(payload, endpoint, run_sdk_smoke=args.run_sdk_smoke)
         ledger_path = write_agents_sdk_runtime_ledger(Path(args.output_dir), result)
         team_result = None

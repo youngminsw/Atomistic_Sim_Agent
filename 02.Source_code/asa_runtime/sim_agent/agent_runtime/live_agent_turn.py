@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from sim_agent.llm_endpoints import ModelProviderConfig
 from sim_agent.schemas._parse import JsonMap
@@ -11,6 +11,14 @@ from .agent_registry import AgentSessionHandle, load_agent_registry
 from .agent_session_io import append_agent_event, append_agent_message
 from .compaction import COMPACT_SUMMARY_NAME
 from .compaction_store import read_json, read_jsonl
+from .live_agent_context import (
+    live_turn_handle_with_model_override,
+    live_turn_ledger_facts,
+    live_turn_project_guidance,
+    live_turn_skill_names,
+    live_turn_workflow_policy,
+    live_turn_workflow_state,
+)
 from .message_bus import (
     ReplyAgentMessageRequest,
     SendAgentMessageRequest,
@@ -19,8 +27,6 @@ from .message_bus import (
     reply_agent_message,
     send_agent_message,
 )
-
-PLACEHOLDER_GATEWAY_BASE_URL: Final = "https://model-gateway.local/v1"
 
 if TYPE_CHECKING:
     from sim_agent.agents_sdk_runtime import AsaAgentSession, StaticToolChoiceModel, ToolChoiceModel
@@ -34,6 +40,7 @@ class LiveAgentTurnResult:
     model_id: str
     selected_tools: tuple[str, ...]
     blockers: tuple[str, ...]
+    runtime_events: tuple[JsonMap, ...] = ()
 
     def to_json(self) -> JsonMap:
         return {
@@ -43,6 +50,7 @@ class LiveAgentTurnResult:
             "model_id": self.model_id,
             "selected_tools": list(self.selected_tools),
             "blockers": list(self.blockers),
+            "runtime_events": list(self.runtime_events),
         }
 
 
@@ -58,6 +66,7 @@ class LiveAgentDispatchResult:
     selected_tools: tuple[str, ...]
     bus_statuses: tuple[str, ...]
     blockers: tuple[str, ...]
+    runtime_events: tuple[JsonMap, ...] = ()
 
     def to_json(self) -> JsonMap:
         return {
@@ -71,6 +80,7 @@ class LiveAgentDispatchResult:
             "selected_tools": list(self.selected_tools),
             "bus_statuses": list(self.bus_statuses),
             "blockers": list(self.blockers),
+            "runtime_events": list(self.runtime_events),
         }
 
 
@@ -111,15 +121,17 @@ def dispatch_live_agent_message(
         selected_tools=turn.selected_tools,
         bus_statuses=statuses,
         blockers=blockers,
+        runtime_events=turn.runtime_events,
     )
 
 
 def run_live_agent_turn(session_dir: Path, agent_id: str, user_goal: str) -> LiveAgentTurnResult:
-    from sim_agent.agents_sdk_runtime import AgentLoop
+    from sim_agent.agents_sdk_runtime import AgentLoop, runtime_event_to_json
 
     handle = _ensure_turn_user_message(session_dir, agent_id, user_goal)
-    session = _agent_loop_session(handle, user_goal)
-    loop_result = AgentLoop(session, _live_turn_model(handle, user_goal, session)).run()
+    runtime_handle = live_turn_handle_with_model_override(handle)
+    session = _agent_loop_session(runtime_handle, user_goal)
+    loop_result = AgentLoop(session, _live_turn_model(runtime_handle, user_goal, session)).run()
     for event in loop_result.trace:
         append_agent_event(session_dir, agent_id, event.event_type, event.summary)
     append_agent_message(session_dir, agent_id, "assistant", _assistant_message(loop_result.status, loop_result.blockers))
@@ -130,11 +142,12 @@ def run_live_agent_turn(session_dir: Path, agent_id: str, user_goal: str) -> Liv
         model_id=loop_result.model_id,
         selected_tools=tuple(call.tool_name for call in loop_result.selected_tools),
         blockers=loop_result.blockers,
+        runtime_events=tuple(runtime_event_to_json(event) for event in loop_result.runtime_events),
     )
 
 
 def _agent_loop_session(handle: AgentSessionHandle, user_goal: str) -> AsaAgentSession:
-    from sim_agent.agent_harness.tools import default_tool_registry
+    from sim_agent.agent_harness.tools import tool_registry_for_agent
     from sim_agent.agents_sdk_runtime import AsaAgentSession
 
     return AsaAgentSession(
@@ -144,9 +157,15 @@ def _agent_loop_session(handle: AgentSessionHandle, user_goal: str) -> AsaAgentS
         user_goal=user_goal,
         endpoint=_endpoint(handle),
         output_dir=handle.session_dir,
-        registry=default_tool_registry(),
+        registry=tool_registry_for_agent(handle.agent_id),
         role_prompt=handle.role_prompt,
+        role_prompt_kind="domain_role",
+        workflow_policy=live_turn_workflow_policy(),
+        project_guidance=live_turn_project_guidance(handle),
         compact_summary=_compact_summary(handle),
+        workflow_state=live_turn_workflow_state(handle),
+        skills=live_turn_skill_names(handle.agent_id),
+        ledger_facts=live_turn_ledger_facts(handle),
         messages=_chat_messages(handle),
     )
 
@@ -179,17 +198,14 @@ def _default_live_turn_model(handle: AgentSessionHandle, user_goal: str) -> Stat
 
 
 def _uses_static_fallback(handle: AgentSessionHandle) -> bool:
-    return (
-        handle.model.auth_mode == "none"
-        or handle.model.provider in {"local_gateway", "offline", "static"}
-        or handle.model.base_url == PLACEHOLDER_GATEWAY_BASE_URL
-    )
+    return handle.model.provider in {"offline", "static"}
 
 
 def _endpoint(handle: AgentSessionHandle) -> ModelProviderConfig:
+    provider = "local_gateway" if _uses_static_fallback(handle) else handle.model.provider
     return ModelProviderConfig.from_mapping(
         {
-            "provider": handle.model.provider,
+            "provider": provider,
             "model": handle.model.name,
             "reasoning_effort": handle.model.reasoning_effort,
             "base_url": handle.model.base_url,

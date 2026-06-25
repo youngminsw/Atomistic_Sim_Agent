@@ -16,7 +16,7 @@ from sim_agent.knowledge import (  # noqa: E402
     GraphDBMode,
     ResearchQuestion,
     build_graphdb_gate_plan,
-    build_research_graphdb_agent_artifacts,
+    build_research_agent_artifacts,
     seeded_provenance_registry,
 )
 
@@ -26,7 +26,7 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--existing-db", action="append", default=[])
     parser.add_argument("--database-name", default="atomistic_sim_agent_knowledge")
-    parser.add_argument("--sync-run-id", default="research-graphdb-agent-sync")
+    parser.add_argument("--sync-run-id", default="research-agent-sync")
     parser.add_argument("--query", default="What source-backed knowledge should agents read before simulation?")
     parser.add_argument("--tag", action="append", default=[])
     parser.add_argument("--neo4j-uri", default="bolt://youngmin-lab:7687")
@@ -48,7 +48,7 @@ def main() -> int:
         print(str(exc))
         return 1
 
-    result = build_research_graphdb_agent_artifacts(
+    result = build_research_agent_artifacts(
         seeded_provenance_registry(),
         gate_plan,
         Path(args.out),

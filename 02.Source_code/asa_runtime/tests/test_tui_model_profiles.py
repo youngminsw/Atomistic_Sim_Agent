@@ -58,6 +58,7 @@ def test_profile_status_surfaces_agree_after_reload(tmp_path: Path) -> None:
     assert second.stdout.count("active_profile=codex-medium") >= 3
     assert "model_profile=codex-medium customized=false" in second.stdout
     assert "model=openai-codex/gpt-5.5/medium/oauth" in second.stdout
+    assert "provider_credential_store=" not in second.stdout
     assert "credential_store=" not in second.stdout
 
 

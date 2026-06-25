@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import assert_never
 
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV
 from sim_agent.schemas._parse import JsonMap
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -32,9 +33,9 @@ class AgentCliRequestInput:
     model_provider: str = "openai-codex"
     model_name: str = "gpt-5-codex"
     reasoning_effort: str = "high"
-    model_base_url: str = "https://model-gateway.local/v1"
-    model_auth_mode: str = "gateway"
-    model_api_key_env: str = "MODEL_GATEWAY_TOKEN"
+    model_base_url: str = OPENAI_CODEX_BASE_URL
+    model_auth_mode: str = "oauth"
+    model_api_key_env: str = OPENAI_CODEX_TOKEN_ENV
 
 
 def parse_range(raw: str, field: str) -> tuple[float, float]:
@@ -57,7 +58,7 @@ def build_agent_cli_request(
     return {
         "request_id": _request_id(config),
         "user_goal": config.goal,
-        "llm_endpoint": _model_provider(config),
+        "model_provider": _model_provider(config),
         "scene": _scene(config),
         "recipe": _recipe(config, energy_range, polar_range, azimuth_range),
     }

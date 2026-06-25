@@ -33,7 +33,7 @@ def test_asa_interactive_exposes_agent_team_skill_status_and_logs(tmp_path: Path
     assert "agent=md_agent" in result.stdout
     assert "agent=qa_agent" in result.stdout
     assert "harness_contract=true" in result.stdout
-    assert "call=md_agent->orchestrator,research_graphdb_agent,qa_agent" in result.stdout
+    assert "call=md_agent->orchestrator,research_agent,qa_agent" in result.stdout
     assert "qa_gate=slurm_job_script:qa_before_submit" in result.stdout
     assert "Agent Workboard" in result.stdout
     assert "role-local harness initialized" in result.stdout

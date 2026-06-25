@@ -50,6 +50,7 @@ def test_tty_login_token_output_is_redacted_and_recommends_model_action(
     assert "Signed in with OpenAI API." in text
     assert "Next: /model profile codex-pro" in text
     assert "login_ok=true" not in text
+    assert "provider_credential_store=" not in text
     assert "credential_store=" not in text
     assert str(store) not in text
     assert "access_token" not in text
@@ -87,7 +88,7 @@ def test_non_tty_login_token_output_keeps_machine_contract(
     text = output.getvalue()
     assert "login_ok=true" in text
     assert "provider=openai auth_mode=api_key" in text
-    assert f"credential_store={store}" in text
+    assert f"provider_credential_store={store}" in text
     assert "machine-secret-token" not in text
 
 
@@ -95,7 +96,7 @@ def test_tty_configured_browser_oauth_keeps_copyable_url_without_store_path(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    # Given: a normal TTY starts a configured OAuth gateway fallback.
+    # Given: a normal TTY starts a configured browser OAuth fallback.
     store = tmp_path / "credentials.json"
     monkeypatch.setenv(CREDENTIAL_STORE_ENV, str(store))
     monkeypatch.setenv("ASA_BROWSER_OAUTH_OPEN", "0")
@@ -120,6 +121,7 @@ def test_tty_configured_browser_oauth_keeps_copyable_url_without_store_path(
     assert "Open this URL in your browser:" in text
     assert "https://auth.example.test/start/openai-codex/chatgpt_codex" in text
     assert "browser_oauth_url=" not in text
+    assert "provider_credential_store=" not in text
     assert "credential_store=" not in text
     assert str(store) not in text
     assert "access_token" not in text
@@ -187,6 +189,7 @@ def test_kimi_tty_oauth_success_is_redacted(tmp_path: Path, monkeypatch) -> None
     assert "Next: /model profile codex-pro" in text
     assert "browser_oauth_credential_saved=true" not in text
     assert "login_ok=true" not in text
+    assert "provider_credential_store=" not in text
     assert "credential_store=" not in text
     assert str(store) not in text
     assert "access_token" not in text

@@ -59,7 +59,7 @@ def test_asa_module_auth_login_status_redacts_token(tmp_path: Path) -> None:
             "auth",
             "login",
             "--provider",
-            "oauth_gateway",
+            "openai-codex",
             "--access-token",
             "asa-secret-token",
             "--refresh-token",
@@ -80,7 +80,7 @@ def test_asa_module_auth_login_status_redacts_token(tmp_path: Path) -> None:
     assert login.returncode == 0, login.stdout + login.stderr
     assert status.returncode == 0, status.stdout + status.stderr
     assert "auth_login_ok=true" in login.stdout
-    assert "oauth_gateway" in status.stdout
+    assert "openai-codex" in status.stdout
     assert "asa-secret-token" not in status.stdout
 
 
@@ -108,6 +108,44 @@ def test_asa_interactive_slash_opens_command_palette() -> None:
     assert "/setup" in result.stdout
     assert "simulation skills" in result.stdout
     assert "md" in result.stdout
+
+
+def test_asa_interactive_can_invoke_markdown_skill_by_slash_name(tmp_path: Path) -> None:
+    session_dir = tmp_path / "session"
+    result = _run_module_interactive(
+        [
+            "/md prepare a tiny LAMMPS verification plan",
+            "/research collect provenance for Ar Si etch",
+            "/exit",
+        ],
+        session_dir=session_dir,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "markdown_skill_invoked=true" in result.stdout
+    assert "skill_name=md" in result.stdout
+    assert "skill_agent=md_agent" in result.stdout
+    assert "skill_file=" in result.stdout
+    assert "skill_name=research" in result.stdout
+    assert "skill_agent=research_agent" in result.stdout
+    md_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "md_agent" / "messages.jsonl")
+    md_context_index = _message_index(md_messages, "system", "ASA_SKILL_CONTEXT_V1")
+    md_user_index = _message_index(md_messages, "user", "prepare a tiny LAMMPS verification plan")
+    assert md_context_index < md_user_index
+    assert "Skill: md" in md_messages[md_context_index]["content"]
+    assert "# MD Skill" in md_messages[md_context_index]["content"]
+    research_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "research_agent" / "messages.jsonl")
+    research_context_index = _message_index(research_messages, "system", "ASA_SKILL_CONTEXT_V1")
+    assert "Skill: research" in research_messages[research_context_index]["content"]
+    md_messages = (session_dir / "agent_sessions" / "md_agent" / "messages.jsonl").read_text(encoding="utf-8")
+    research_messages = (session_dir / "agent_sessions" / "research_agent" / "messages.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert "ASA_SKILL_CONTEXT_V1" in md_messages
+    assert "Skill: md" in md_messages
+    assert "system prompt layer" in md_messages
+    assert "ASA_SKILL_CONTEXT_V1" in research_messages
+    assert "Skill: research" in research_messages
 
 
 def test_asa_interactive_login_selector_and_api_key_mode_redacts_secret(tmp_path: Path) -> None:
@@ -140,11 +178,14 @@ def test_asa_interactive_login_selector_and_api_key_mode_redacts_secret(tmp_path
     assert "cli-secret-token" not in result.stdout
 
 
-def test_asa_live_slash_completion_catalog_exposes_commands_and_skills() -> None:
+def test_asa_live_slash_completion_catalog_exposes_commands_and_skills(tmp_path: Path, monkeypatch) -> None:
     if str(SOURCE_ROOT) not in sys.path:
         sys.path.insert(0, str(SOURCE_ROOT))
 
     from sim_agent.cli.tui_prompt import slash_completion_rows
+
+    skill_root = _write_markdown_skill(tmp_path / "skills", "dynamic-skill", "/dynamic-skill", "qa_agent")
+    monkeypatch.setenv("ASA_SKILL_ROOTS", str(skill_root))
 
     rows = slash_completion_rows("/")
     command_rows = {row.value: row for row in rows if row.kind == "command"}
@@ -158,8 +199,19 @@ def test_asa_live_slash_completion_catalog_exposes_commands_and_skills() -> None
     assert "/memory" in command_rows
     assert "/skills" in command_rows
     assert "gateway/model" in command_rows["/model"].meta
-    assert "md" in skill_rows
-    assert "LAMMPS" in skill_rows["md"].meta
+    assert "/md" in skill_rows
+    assert skill_rows["/md"].insert_text == "/md"
+    assert "LAMMPS" in skill_rows["/md"].meta
+    assert "/dynamic-skill" in skill_rows
+    assert skill_rows["/dynamic-skill"].insert_text == "/dynamic-skill"
+
+
+def test_asa_interactive_slash_skill_without_message_is_blocked() -> None:
+    result = _run_module_interactive(["/md", "/exit"])
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "skill_blocked=/md blocker=missing_message" in result.stdout
+    assert "markdown_skill_invoked=true" not in result.stdout
 
 
 def test_asa_interactive_model_login_status_redacts_token(tmp_path: Path) -> None:
@@ -167,7 +219,7 @@ def test_asa_interactive_model_login_status_redacts_token(tmp_path: Path) -> Non
     result = _run_module_interactive(
         [
             "/model login "
-            f"--provider oauth_gateway --access-token asa-secret-token "
+            f"--provider openai-codex --access-token asa-secret-token "
             f"--refresh-token asa-refresh-token --credential-store {shlex.quote(str(store))}",
             "/model status",
             "/exit",
@@ -176,7 +228,7 @@ def test_asa_interactive_model_login_status_redacts_token(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "model_login_ok=true" in result.stdout
-    assert "provider=oauth_gateway logged_in=True" in result.stdout
+    assert "provider=openai-codex logged_in=True" in result.stdout
     assert "asa-secret-token" not in result.stdout
 
 
@@ -246,3 +298,35 @@ def _run_module_interactive(
         capture_output=True,
         check=False,
     )
+
+def _jsonl(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _message_index(messages: list[dict[str, object]], role: str, content: str) -> int:
+    for index, message in enumerate(messages):
+        if message.get("role") == role and content in str(message.get("content", "")):
+            return index
+    raise AssertionError(f"missing {role} message containing {content}")
+
+
+def _write_markdown_skill(root: Path, name: str, command: str, agent_id: str) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"{name}.md").write_text(
+        "\n".join(
+            (
+                "---",
+                f"name: {name}",
+                f"command: {command}",
+                f"agent_id: {agent_id}",
+                f"summary: {name} summary",
+                "---",
+                f"# {name}",
+                "",
+                f"{name} body",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    return root

@@ -64,7 +64,13 @@ def test_workflow_start_tool_writes_resumable_workflow_ledger(tmp_path: Path) ->
     result = execute_runtime_tool(
         RuntimeToolCall(
             tool_name="workflow_start",
-            arguments={"workflow_id": "ralplan", "payload": {"request_id": "workflow-test"}},
+            arguments={
+                "workflow_id": "ralplan",
+                "payload": {
+                    "request_id": "workflow-test",
+                    "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
+                },
+            },
             run_id="workflow-run",
             session_id=state.session_id,
         ),
@@ -75,6 +81,7 @@ def test_workflow_start_tool_writes_resumable_workflow_ledger(tmp_path: Path) ->
     assert result.status == "ready"
     assert result.output["workflow_id"] == "ralplan"
     assert result.output["resumable"] is True
+    assert result.output["gate_status"] == "passed"
     assert (state.session_dir / result.output["ledger_ref"]).is_file()
 
 

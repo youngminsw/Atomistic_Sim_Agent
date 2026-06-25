@@ -4,7 +4,13 @@ import { parseModelProviderConfig, type ModelProviderConfig } from "../provider/
 import { FileCredentialStore, type StoredCredential } from "../storage/credential-store.js"
 import { CliArgsError, hasFlag, optionalOption, parseArgs, requiredOption } from "./args.js"
 
-const DEFAULT_STORE = ".atomistic-sim-agent/model-gateway-credentials.json"
+const PROVIDER_CREDENTIAL_STORE_ENV = "ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"
+const LEGACY_CREDENTIAL_STORE_ENV = "ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"
+const DEFAULT_PROVIDER_CREDENTIAL_STORE = ".asa/provider-credentials.json"
+const LEGACY_PROVIDER_CREDENTIAL_STORES = [
+  ".asa/model-gateway-credentials.json",
+  ".atomistic-sim-agent/model-gateway-credentials.json",
+] as const
 const DEFAULT_EXPIRES_IN_MS = 3_600_000
 
 export type CliRunResult = {
@@ -60,7 +66,7 @@ async function authLogin(args: ReturnType<typeof parseArgs>, runtime: CliRuntime
   }
   const refresh = optionalOption(args, "refresh-token") ?? token
   const expiresInMs = numberOption(args, "expires-in-ms", DEFAULT_EXPIRES_IN_MS)
-  const store = new FileCredentialStore(storePath(args))
+  const store = credentialStore(args)
   const stored = await store.set(provider, {
     access: token,
     refresh,
@@ -71,7 +77,7 @@ async function authLogin(args: ReturnType<typeof parseArgs>, runtime: CliRuntime
 
 async function authStatus(args: ReturnType<typeof parseArgs>): Promise<CliRunResult> {
   const provider = requiredOption(args, "provider")
-  const stored = await new FileCredentialStore(storePath(args)).get(provider)
+  const stored = await credentialStore(args).get(provider)
   const payload = {
     provider,
     logged_in: stored !== undefined,
@@ -164,7 +170,7 @@ async function credentialForConfig(
 }
 
 async function requireStoredCredential(args: ReturnType<typeof parseArgs>, provider: string): Promise<StoredCredential> {
-  const stored = await new FileCredentialStore(storePath(args)).get(provider)
+  const stored = await credentialStore(args).get(provider)
   if (stored === undefined) {
     throw new CliArgsError(`missing_credentials:${provider}`)
   }
@@ -172,7 +178,29 @@ async function requireStoredCredential(args: ReturnType<typeof parseArgs>, provi
 }
 
 function storePath(args: ReturnType<typeof parseArgs>): string {
-  return optionalOption(args, "credential-store") ?? `${process.env["HOME"] ?? "."}/${DEFAULT_STORE}`
+  return optionalOption(args, "credential-store") ?? credentialStoreEnv() ?? homePath(DEFAULT_PROVIDER_CREDENTIAL_STORE)
+}
+
+function credentialStore(args: ReturnType<typeof parseArgs>): FileCredentialStore {
+  const path = storePath(args)
+  return new FileCredentialStore(path, legacyCredentialStorePaths(args, path))
+}
+
+function credentialStoreEnv(): string | undefined {
+  return process.env[PROVIDER_CREDENTIAL_STORE_ENV] ?? process.env[LEGACY_CREDENTIAL_STORE_ENV]
+}
+
+function legacyCredentialStorePaths(args: ReturnType<typeof parseArgs>, canonicalPath: string): readonly string[] {
+  if (optionalOption(args, "credential-store") !== undefined || credentialStoreEnv() !== undefined) {
+    return []
+  }
+  return LEGACY_PROVIDER_CREDENTIAL_STORES
+    .map(homePath)
+    .filter(path => path !== canonicalPath)
+}
+
+function homePath(relativePath: string): string {
+  return `${process.env["HOME"] ?? "."}/${relativePath}`
 }
 
 function numberOption(args: ReturnType<typeof parseArgs>, key: string, fallback: number): number {

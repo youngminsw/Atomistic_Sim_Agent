@@ -19,7 +19,7 @@ class ModelConnectionStatus:
     connection_label: str
     friendly_message: str
     action_hint: str
-    credential_store: Path
+    provider_credential_store: Path
 
     def to_payload(self) -> JsonMap:
         return {
@@ -30,7 +30,7 @@ class ModelConnectionStatus:
             "connection_label": self.connection_label,
             "friendly_message": self.friendly_message,
             "action_hint": self.action_hint,
-            "credential_store": str(self.credential_store),
+            "provider_credential_store": str(self.provider_credential_store),
         }
 
 
@@ -38,7 +38,7 @@ def model_connection_status(provider: str, model: str, auth_mode: str, api_key_e
     normalized_provider = provider.strip().lower()
     normalized_mode = auth_mode.strip().lower()
     credential_status = model_credential_status(normalized_provider)
-    store = credential_status.credential_store
+    store = credential_status.provider_credential_store
     match normalized_mode:
         case "none":
             return _connection(
@@ -160,5 +160,5 @@ def _connection(
         connection_label=label,
         friendly_message=message,
         action_hint=action_hint,
-        credential_store=store,
+        provider_credential_store=store,
     )

@@ -122,11 +122,11 @@ def test_research_import_cli_rejects_unsourced_claim() -> None:
     assert "source_required" in result.stdout
 
 
-def test_research_graphdb_agent_cli_exports_bundle_context_and_query_answer(tmp_path: Path) -> None:
+def test_research_agent_cli_exports_bundle_context_and_query_answer(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            str(SOURCE_ROOT / "scripts" / "research_graphdb_agent.py"),
+            str(SOURCE_ROOT / "scripts" / "research_agent.py"),
             "--out",
             str(tmp_path),
             "--existing-db",
@@ -149,7 +149,7 @@ def test_research_graphdb_agent_cli_exports_bundle_context_and_query_answer(tmp_
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "research_graphdb_agent_status=ready" in result.stdout
+    assert "research_agent_status=ready" in result.stdout
     assert "graphdb_ingest_accepted=true" in result.stdout
     assert "graphdb_write=false" in result.stdout
     assert "agent_access_enabled=true" in result.stdout

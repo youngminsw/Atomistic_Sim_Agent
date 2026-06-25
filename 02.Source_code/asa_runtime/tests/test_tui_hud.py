@@ -56,7 +56,7 @@ def test_malformed_stored_credentials_are_not_reported_connected(monkeypatch, tm
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE", str(credential_store))
+    monkeypatch.setenv("ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE", str(credential_store))
 
     from sim_agent.schemas._parse import as_mapping, as_sequence
     from sim_agent.ui.model_auth import model_auth_status_payload
@@ -99,7 +99,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"
-    env["ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
+    env["ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
     env["ASA_SESSION_DIR"] = str(tmp_path / "session")
     env.pop("OPENCLAW_OAUTH_TOKEN", None)
     env.pop("OPENAI_API_KEY", None)

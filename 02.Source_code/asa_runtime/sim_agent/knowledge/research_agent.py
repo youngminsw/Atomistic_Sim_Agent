@@ -18,7 +18,7 @@ from .research_tools import ResearchAnswer, ResearchQuestion, answer_research_qu
 
 
 @dataclass(frozen=True, slots=True)
-class ResearchGraphDBAgentResult:
+class ResearchAgentResult:
     status: str
     graphdb_write: bool
     bundle: GraphImportBundle
@@ -30,7 +30,7 @@ class ResearchGraphDBAgentResult:
     def summary_lines(self) -> tuple[str, ...]:
         role_agents = ",".join(query.agent_id for query in self.agent_context.role_queries)
         return (
-            f"research_graphdb_agent_status={self.status}",
+            f"research_agent_status={self.status}",
             f"graphdb_ingest_accepted={str(self.bundle.report.accepted).lower()}",
             f"graphdb_write={str(self.graphdb_write).lower()}",
             f"database_name={self.bundle.report.database_name}",
@@ -46,7 +46,7 @@ class ResearchGraphDBAgentResult:
         )
 
 
-def build_research_graphdb_agent_artifacts(
+def build_research_agent_artifacts(
     registry: ProvenanceRegistry,
     gate_plan: GraphDBGatePlan,
     output_dir: Path,
@@ -54,7 +54,7 @@ def build_research_graphdb_agent_artifacts(
     sync_run_id: str,
     question: ResearchQuestion,
     connection: GraphDBConnectionConfig | None = None,
-) -> ResearchGraphDBAgentResult:
+) -> ResearchAgentResult:
     bundle = build_source_graph_import_bundle(registry, gate_plan, output_dir, sync_run_id=sync_run_id)
     context = build_agent_graph_context(gate_plan, connection)
     answer = answer_research_question(registry, question)
@@ -74,7 +74,7 @@ def build_research_graphdb_agent_artifacts(
     )
     answer_path.write_text(_json(_answer_payload(answer)) + "\n", encoding="utf-8")
 
-    return ResearchGraphDBAgentResult(
+    return ResearchAgentResult(
         status="ready" if bundle.report.accepted else "blocked",
         graphdb_write=False,
         bundle=bundle,
@@ -85,7 +85,7 @@ def build_research_graphdb_agent_artifacts(
     )
 
 
-def research_graphdb_agent_payload(result: ResearchGraphDBAgentResult) -> dict[str, Any]:
+def research_agent_payload(result: ResearchAgentResult) -> dict[str, Any]:
     return {
         "status": result.status,
         "graphdb_write": result.graphdb_write,

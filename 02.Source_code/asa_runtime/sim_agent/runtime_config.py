@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -15,6 +14,8 @@ from sim_agent.llm_endpoints.config import (
 )
 from sim_agent.llm_endpoints.model_catalog import find_model_catalog_entry
 from sim_agent.llm_endpoints.model_profiles import ModelProfileAssignment, find_model_profile
+from sim_agent.project_layout import ensure_project_state_layout
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV, provider_by_id
 from sim_agent.runtime_compute_config import (
     ComputeResourceConfig,
     compute_from_payload,
@@ -27,6 +28,12 @@ from sim_agent.runtime_graphdb_config import (
     graphdb_from_payload,
     graphdb_payload,
 )
+from sim_agent.runtime_config_types import (
+    ActiveModelProfileRuntimeConfig,
+    AgentModelRuntimeConfig,
+    ModelEndpointRuntimeConfig,
+    RuntimeConfig,
+)
 from sim_agent.schemas._parse import JsonMap, as_mapping, as_sequence, as_str
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -34,50 +41,11 @@ from sim_agent.schemas.errors import SchemaValidationError
 RUNTIME_CONFIG_ENV: Final = "ATOMISTIC_SIM_AGENT_RUNTIME_CONFIG"
 
 
-@dataclass(frozen=True, slots=True)
-class ModelEndpointRuntimeConfig:
-    provider: str
-    model: str
-    reasoning_effort: str
-    base_url: str
-    auth_mode: str
-    api_key_env: str
-
-
-@dataclass(frozen=True, slots=True)
-class AgentModelRuntimeConfig:
-    agent_id: str
-    provider: str
-    model: str
-    reasoning_effort: str
-    base_url: str
-    auth_mode: str
-    api_key_env: str
-
-
-@dataclass(frozen=True, slots=True)
-class ActiveModelProfileRuntimeConfig:
-    name: str
-    customized: bool
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeConfig:
-    workspace_root: str
-    evidence_root: str
-    team_mode_default: bool
-    model_endpoint: ModelEndpointRuntimeConfig
-    active_profile: ActiveModelProfileRuntimeConfig
-    agent_model_overrides: tuple[AgentModelRuntimeConfig, ...]
-    graphdb: GraphDBRuntimeConfig
-    compute_resources: tuple[ComputeResourceConfig, ...]
-
-
 def runtime_config_path() -> Path:
     configured = os.environ.get(RUNTIME_CONFIG_ENV)
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".atomistic-sim-agent" / "runtime-config.json"
+    return Path.home() / ".asa" / "runtime-config.json"
 
 
 def load_runtime_config(path: Path | None = None) -> RuntimeConfig:
@@ -97,16 +65,16 @@ def save_runtime_config(config: RuntimeConfig, path: Path | None = None) -> Path
 
 
 def default_runtime_config() -> RuntimeConfig:
-    source_root = Path(__file__).resolve().parents[1]
+    layout = ensure_project_state_layout()
     return RuntimeConfig(
-        workspace_root=str(source_root),
-        evidence_root=str(source_root / "evidence" / "asa-runtime"),
+        workspace_root=str(layout.project_root),
+        evidence_root=str(layout.evidence_root),
         team_mode_default=True,
         model_endpoint=ModelEndpointRuntimeConfig(
             provider="openai-codex",
             model="gpt-5-codex",
             reasoning_effort=PRIMARY_REASONING,
-            base_url="https://model-gateway.local/v1",
+            base_url=OPENAI_CODEX_BASE_URL,
             auth_mode=DEFAULT_AUTH_MODE_BY_PROVIDER["openai-codex"],
             api_key_env=DEFAULT_API_KEY_ENV_BY_PROVIDER["openai-codex"],
         ),
@@ -118,8 +86,7 @@ def default_runtime_config() -> RuntimeConfig:
 
 
 def default_model_endpoint(config: RuntimeConfig | None = None) -> ModelProviderConfig:
-    endpoint = (config or load_runtime_config()).model_endpoint
-    payload = _model_payload(endpoint)
+    payload = _model_payload((config or load_runtime_config()).model_endpoint)
     payload["use_case"] = ModelUseCase.LOW_RISK_SUMMARIZATION.value
     return ModelProviderConfig.from_mapping(payload)
 
@@ -231,7 +198,7 @@ def _active_profile_from_payload(
 
 
 def _model_from_payload(payload: JsonMap) -> ModelEndpointRuntimeConfig:
-    return ModelEndpointRuntimeConfig(
+    endpoint = ModelEndpointRuntimeConfig(
         provider=as_str(payload.get("provider"), "provider"),
         model=as_str(payload.get("model"), "model"),
         reasoning_effort=_optional_text(payload, "reasoning_effort", PRIMARY_REASONING),
@@ -239,6 +206,27 @@ def _model_from_payload(payload: JsonMap) -> ModelEndpointRuntimeConfig:
         auth_mode=as_str(payload.get("auth_mode"), "auth_mode"),
         api_key_env=as_str(payload.get("api_key_env"), "api_key_env"),
     )
+    return _migrate_legacy_openai_codex_gateway_endpoint(endpoint)
+
+
+def _migrate_legacy_openai_codex_gateway_endpoint(
+    endpoint: ModelEndpointRuntimeConfig,
+) -> ModelEndpointRuntimeConfig:
+    if (
+        endpoint.provider == "openai-codex"
+        and endpoint.base_url == "https://model-gateway.local/v1"
+        and endpoint.auth_mode == "gateway"
+        and endpoint.api_key_env == "MODEL_GATEWAY_TOKEN"
+    ):
+        return ModelEndpointRuntimeConfig(
+            provider=endpoint.provider,
+            model=endpoint.model,
+            reasoning_effort=endpoint.reasoning_effort,
+            base_url=OPENAI_CODEX_BASE_URL,
+            auth_mode="oauth",
+            api_key_env=OPENAI_CODEX_TOKEN_ENV,
+        )
+    return endpoint
 
 
 def _agent_model_from_payload(payload: JsonMap) -> AgentModelRuntimeConfig:
@@ -299,13 +287,17 @@ def _config_matches_profile(
 def _endpoint_from_profile_assignment(assignment: ModelProfileAssignment) -> ModelEndpointRuntimeConfig:
     entry = find_model_catalog_entry(assignment.reference)
     if entry is None:
+        spec = provider_by_id(assignment.provider)
+        base_url = spec.default_base_url if spec is not None else OPENAI_CODEX_BASE_URL
+        auth_mode = spec.default_auth_mode if spec is not None else "oauth"
+        api_key_env = spec.default_api_key_env if spec is not None else OPENAI_CODEX_TOKEN_ENV
         return ModelEndpointRuntimeConfig(
             provider=assignment.provider,
             model=assignment.model,
             reasoning_effort=assignment.reasoning_effort,
-            base_url="https://model-gateway.local/v1",
-            auth_mode="oauth",
-            api_key_env="MODEL_GATEWAY_TOKEN",
+            base_url=base_url,
+            auth_mode=auth_mode,
+            api_key_env=api_key_env,
         )
     return ModelEndpointRuntimeConfig(
         provider=entry.provider,

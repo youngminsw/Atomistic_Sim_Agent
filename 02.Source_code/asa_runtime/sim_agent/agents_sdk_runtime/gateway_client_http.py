@@ -87,6 +87,9 @@ def _json_map_from_sse(raw: str) -> JsonMap:
     calls = _tool_calls_from_sse_events(events)
     if calls:
         return {"output": calls}
+    output_text = _output_text_from_sse_events(events)
+    if output_text is not None:
+        return {"output_text": output_text}
     raise GatewayClientSmokeError("endpoint_sse_response_without_tool_calls")
 
 
@@ -125,6 +128,23 @@ def _tool_calls_from_sse_events(events: list[JsonMap]) -> list[JsonMap]:
                 call["arguments"] = arguments_by_item[call_id]
             calls.append(call)
     return calls
+
+
+def _output_text_from_sse_events(events: list[JsonMap]) -> str | None:
+    deltas: list[str] = []
+    for event in events:
+        event_type = event.get("type")
+        if event_type == "response.output_text.done":
+            text = event.get("text")
+            if isinstance(text, str):
+                return text
+        if event_type == "response.output_text.delta":
+            delta = event.get("delta")
+            if isinstance(delta, str):
+                deltas.append(delta)
+    if deltas:
+        return "".join(deltas)
+    return None
 
 
 def _str_or_empty(value: object) -> str:

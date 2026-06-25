@@ -27,6 +27,11 @@ def test_run_bundle_viewer_html_exposes_offline_controller_controls() -> None:
     assert 'id="validate-run"' in html
     assert 'id="run-offline"' in html
     assert 'id="model-provider"' in html
+    assert 'value="openai-codex"' in html
+    assert 'value="local_gateway"' in html
+    assert "OAuth Gateway" not in html
+    assert "Openclaw" not in html
+    assert "Anthropic Gateway" not in html
     assert 'id="model-name"' in html
     assert 'id="reasoning-effort"' in html
     assert 'id="auth-mode"' in html
@@ -43,6 +48,8 @@ def test_run_bundle_viewer_html_exposes_offline_controller_controls() -> None:
     assert 'id="fact-active-learning"' in html
     assert 'id="agent-plan-form"' in html
     assert 'id="agent-request-json"' in html
+    assert '"model_provider": {}' in html
+    assert '"llm_endpoint": {}' not in html
     assert "run_bundle_controller.js" in html
     assert "run_bundle_live_model.js" in html
     assert "run_bundle_api_client.js" in html
@@ -120,7 +127,7 @@ def test_live_client_maps_http_run_response_to_display_state() -> None:
     script = "\n".join(
         [
             f"const live = require({str(js)!r});",
-            "const response = { can_run: true, run_status: 'complete', qa_report: { status: 'pass', hard_blockers: [] }, production_readiness: { production_ready: false, hard_blockers: ['model_endpoint_smoke_required'], user_actions: ['login_to_model_gateway_or_provide_token'], action_plan: [{ action: 'run_model_endpoint_smoke_after_credentials', actor: 'agent', status: 'ready_after_user_action', requires_user_action: 'login_to_model_gateway_or_provide_token', command: ['python3', 'smoke.py'] }] }, agent_statuses: [{ agent_id: 'qa_agent', label: 'QA Agent', status: 'pass', summary: 'clear', detail: 'checked' }], agent_message_log: [{ sender: 'qa_agent', recipient: 'orchestrator', message: 'clear' }], continuous_logs: ['qa_report_path=/tmp/qa_report.json'], artifact_links: { qa_report: '/tmp/qa_report.json' }, bundle: { manifest: { run_id: 'live-hole', feature_type: 'hole', run_status: 'complete' }, timeline: { state_count: 4, states: [{ step_index: 0, time_s: 0, total_removed_volume_nm3: 0, cells: [] }, { step_index: 3, time_s: 0.3, total_removed_volume_nm3: 0.25, cells: [{ ix: 1, iy: 2, iz: 0, material_id: 'Si', cumulative_energy_eV: 70, surface_depth_nm: 0.05 }] }] }, diagnostics: { click_count: 1, clicks: [{ ix: 1, iy: 2, iz: 0, material_id: 'Si', region: 'opening', energy_transfer_eV: 70, damage_dose: 0.5, removed_depth_nm: 0.05, profile_history_nm: [0, 0.02, 0.05], energy_history_eV: [0, 35, 70], uncertainty_ood: false, incident_history: [{ event_id: 'evt-1', energy_eV: 88.5, polar_deg: 35, azimuth_deg: 180, deposited_energy_eV: 70, removed_depth_nm: 0.05 }] }] }, active_learning_plan: { controlled_event_probe_allowed: true, batch_size: 1, requests: [{ protocol: 'controlled_event_probe', sample_count: 3 }] } } };",
+            "const response = { can_run: true, run_status: 'complete', qa_report: { status: 'pass', hard_blockers: [] }, production_readiness: { production_ready: false, hard_blockers: ['model_endpoint_smoke_required'], user_actions: ['login_to_model_provider_or_provide_token'], action_plan: [{ action: 'run_model_endpoint_smoke_after_credentials', actor: 'agent', status: 'ready_after_user_action', requires_user_action: 'login_to_model_provider_or_provide_token', command: ['python3', 'smoke.py'] }] }, agent_statuses: [{ agent_id: 'qa_agent', label: 'QA Agent', status: 'pass', summary: 'clear', detail: 'checked' }], agent_message_log: [{ sender: 'qa_agent', recipient: 'orchestrator', message: 'clear' }], continuous_logs: ['qa_report_path=/tmp/qa_report.json'], artifact_links: { qa_report: '/tmp/qa_report.json' }, bundle: { manifest: { run_id: 'live-hole', feature_type: 'hole', run_status: 'complete' }, timeline: { state_count: 4, states: [{ step_index: 0, time_s: 0, total_removed_volume_nm3: 0, cells: [] }, { step_index: 3, time_s: 0.3, total_removed_volume_nm3: 0.25, cells: [{ ix: 1, iy: 2, iz: 0, material_id: 'Si', cumulative_energy_eV: 70, surface_depth_nm: 0.05 }] }] }, diagnostics: { click_count: 1, clicks: [{ ix: 1, iy: 2, iz: 0, material_id: 'Si', region: 'opening', energy_transfer_eV: 70, damage_dose: 0.5, removed_depth_nm: 0.05, profile_history_nm: [0, 0.02, 0.05], energy_history_eV: [0, 35, 70], uncertainty_ood: false, incident_history: [{ event_id: 'evt-1', energy_eV: 88.5, polar_deg: 35, azimuth_deg: 180, deposited_energy_eV: 70, removed_depth_nm: 0.05 }] }] }, active_learning_plan: { controlled_event_probe_allowed: true, batch_size: 1, requests: [{ protocol: 'controlled_event_probe', sample_count: 3 }] } } };",
             "const state = live.displayStateFromRunResponse(response);",
             "if (state.runId !== 'live-hole') throw new Error('bad run id');",
             "if (state.featureType !== 'hole') throw new Error('bad feature');",
@@ -221,7 +228,7 @@ def test_live_client_timeline_slider_replays_api_bundle_steps() -> None:
             "const nodes = Object.fromEntries(ids.map((id) => [id, new Node(id)]));",
             "nodes['mode-select'].value = '3d'; nodes['feature-select'].value = 'hole'; nodes['run-steps'].value = '3'; nodes['run-ions'].value = '5';",
             "const documentRef = { getElementById(id) { return nodes[id] || null; }, createElement(id) { return new Node(id); } };",
-            "const response = { run_status: 'complete', qa_report: { status: 'pass', hard_blockers: [] }, production_readiness: { production_ready: false, hard_blockers: ['model_endpoint_smoke_required'], user_actions: ['login_to_model_gateway_or_provide_token'], action_plan: [{ action: 'run_model_endpoint_smoke_after_credentials', actor: 'agent', status: 'ready_after_user_action', requires_user_action: 'login_to_model_gateway_or_provide_token', command: ['python3', 'smoke_production_gateway_client.py'] }] }, agent_statuses: [{ agent_id: 'qa_agent', label: 'QA Agent', status: 'pass', summary: 'clear', detail: 'checked' }], agent_message_log: [{ sender: 'qa_agent', recipient: 'orchestrator', message: 'clear' }], continuous_logs: ['qa_report_path=/tmp/qa_report.json'], artifact_links: { qa_report: '/tmp/qa_report.json' }, bundle: { manifest: { run_id: 'slider-hole', feature_type: 'hole' }, timeline: { states: [{ step_index: 0, time_s: 0, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 0, surface_depth_nm: 0 }] }, { step_index: 1, time_s: 0.1, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 10, surface_depth_nm: 0.01 }] }, { step_index: 2, time_s: 0.2, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 20, surface_depth_nm: 0.02 }] }] }, diagnostics: { click_count: 1, clicks: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', region: 'opening', energy_transfer_eV: 20, removed_depth_nm: 0.02, profile_history_nm: [0, 0.01, 0.02], energy_history_eV: [0, 10, 20], event_ids: ['evt-1'] }] } } };",
+            "const response = { run_status: 'complete', qa_report: { status: 'pass', hard_blockers: [] }, production_readiness: { production_ready: false, hard_blockers: ['model_endpoint_smoke_required'], user_actions: ['login_to_model_provider_or_provide_token'], action_plan: [{ action: 'run_model_endpoint_smoke_after_credentials', actor: 'agent', status: 'ready_after_user_action', requires_user_action: 'login_to_model_provider_or_provide_token', command: ['python3', 'smoke_production_gateway_client.py'] }] }, agent_statuses: [{ agent_id: 'qa_agent', label: 'QA Agent', status: 'pass', summary: 'clear', detail: 'checked' }], agent_message_log: [{ sender: 'qa_agent', recipient: 'orchestrator', message: 'clear' }], continuous_logs: ['qa_report_path=/tmp/qa_report.json'], artifact_links: { qa_report: '/tmp/qa_report.json' }, bundle: { manifest: { run_id: 'slider-hole', feature_type: 'hole' }, timeline: { states: [{ step_index: 0, time_s: 0, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 0, surface_depth_nm: 0 }] }, { step_index: 1, time_s: 0.1, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 10, surface_depth_nm: 0.01 }] }, { step_index: 2, time_s: 0.2, cells: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', cumulative_energy_eV: 20, surface_depth_nm: 0.02 }] }] }, diagnostics: { click_count: 1, clicks: [{ ix: 1, iy: 1, iz: 0, material_id: 'Si', region: 'opening', energy_transfer_eV: 20, removed_depth_nm: 0.02, profile_history_nm: [0, 0.01, 0.02], energy_history_eV: [0, 10, 20], event_ids: ['evt-1'] }] } } };",
             "const fetcher = () => Promise.resolve({ ok: true, json: () => Promise.resolve(response) });",
             "async function main() { live.mount(documentRef, fetcher); await nodes['run-offline'].trigger('click'); if (nodes['timeline-range'].max !== '2') throw new Error('bad slider max'); if (nodes['timeline-range'].value !== '2') throw new Error('bad slider value'); if (!nodes['agent-status-board'].textContent.includes('QA Agent')) throw new Error('agent board not rendered'); if (!nodes['artifact-links'].textContent.includes('qa_report')) throw new Error('artifact links not rendered'); if (!nodes['qa-hard-blockers'].textContent.includes('none')) throw new Error('qa blockers not rendered'); if (!nodes['production-action-plan'].textContent.includes('run_model_endpoint_smoke_after_credentials')) throw new Error('action plan not rendered'); if (!nodes['production-action-plan'].children[0].title.includes('smoke_production_gateway_client.py')) throw new Error('action plan command not in hover title'); nodes['timeline-range'].value = '1'; nodes['timeline-range'].trigger('input'); if (nodes['run-status'].textContent !== 'complete / step 1') throw new Error('bad replay status'); if (nodes['timeline-output'].textContent !== '1 / 2') throw new Error('bad replay output'); }",
             "main().catch((error) => { console.error(error); process.exit(1); });",
@@ -264,11 +271,11 @@ def test_agent_client_posts_request_json_and_renders_clarification() -> None:
             "nodes['model-api-key-env'].value = 'OPENAI_API_KEY';",
             "nodes['agent-request-json'].value = JSON.stringify({",
             "  request_id: 'ui-plan',",
-            "  llm_endpoint: {",
-            "    provider: 'oauth_gateway',",
-            "    model: 'gpt-5-codex',",
+            "  model_provider: {",
+            "    provider: 'openai-codex',",
+            "    model: 'gpt-5.5',",
             "    reasoning_effort: 'high',",
-            "    base_url: 'https://model-gateway.local/v1',",
+            "    base_url: 'https://chatgpt.com/backend-api',",
             "  },",
             "});",
             "const documentRef = {",
@@ -281,8 +288,8 @@ def test_agent_client_posts_request_json_and_renders_clarification() -> None:
             "  team_session_contract: {",
             "    heartbeat_interval_s: 3600,",
             "    call_matrix: {",
-            "      orchestrator: ['md_agent', 'ml_mdn_agent', 'feature_scale_agent', 'research_graphdb_agent', 'qa_agent'],",
-            "      md_agent: ['orchestrator', 'research_graphdb_agent', 'qa_agent'],",
+            "      orchestrator: ['md_agent', 'ml_agent', 'feature_scale_agent', 'research_agent', 'qa_agent'],",
+            "      md_agent: ['orchestrator', 'research_agent', 'qa_agent'],",
             "    },",
             "    qa_gates: { slurm_job_script: 'qa_before_submit' },",
             "  },",
@@ -292,6 +299,7 @@ def test_agent_client_posts_request_json_and_renders_clarification() -> None:
             "const fetcher = (url, options) => {",
             "  if (url !== '/api/agent/plan') throw new Error('bad url');",
             "  if (!options.body.includes('ui-plan')) throw new Error('bad body');",
+            "  if (!options.body.includes('model_provider')) throw new Error('model_provider not submitted');",
             "  if (!options.body.includes('https://api.openai.com/v1')) throw new Error('model settings not merged');",
             "  if (!options.body.includes('OPENAI_API_KEY')) throw new Error('api key env not merged');",
             "  return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });",

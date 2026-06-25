@@ -31,13 +31,14 @@ from sim_agent.llm_endpoints import (
     ModelProviderConfig,
     ProviderConfigPolicyError,
 )
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.knowledge import (
     GraphDBGateRequest,
     GraphDBMode,
     ResearchQuestion,
     build_graphdb_gate_plan,
-    build_research_graphdb_agent_artifacts,
-    research_graphdb_agent_payload,
+    build_research_agent_artifacts,
+    research_agent_payload,
     seeded_provenance_registry,
 )
 from sim_agent.schemas._parse import JsonMap, as_mapping, as_str, require
@@ -96,9 +97,7 @@ def _prepare_bundle(
     ssh_port: int | None,
     md_incident_count: int,
 ) -> JsonMap:
-    endpoint = ModelProviderConfig.from_mapping(
-        as_mapping(require(request, "llm_endpoint"), "llm_endpoint")
-    )
+    endpoint = ModelProviderConfig.from_mapping(model_provider_payload(request))
     result = SimulationAgentHarness(
         endpoint=endpoint,
         client=OfflineModelClient(),
@@ -174,7 +173,7 @@ def _prepare_bundle(
         "md_postprocess_worker_bundle": postprocess_worker_payload,
     }
     payload.update(amorphous_prep)
-    payload.update(_research_graphdb_outputs(output_dir, result.run_id))
+    payload.update(_research_outputs(output_dir, result.run_id))
     payload.update(_remote_plan_outputs(output_dir, worker, ssh_target, ssh_port))
     payload.update(_lammps_remote_plan_outputs(output_dir, lammps_worker, ssh_target, ssh_port))
     payload.update(
@@ -188,8 +187,8 @@ def _prepare_bundle(
     return payload
 
 
-def _research_graphdb_outputs(output_dir: Path, run_id: str) -> JsonMap:
-    graph_dir = output_dir / "research_graphdb"
+def _research_outputs(output_dir: Path, run_id: str) -> JsonMap:
+    graph_dir = output_dir / "research_graph"
     gate_plan = build_graphdb_gate_plan(
         GraphDBGateRequest(
             mode=GraphDBMode.DRY_RUN,
@@ -199,18 +198,18 @@ def _research_graphdb_outputs(output_dir: Path, run_id: str) -> JsonMap:
             requires_empty_database=True,
         )
     )
-    result = build_research_graphdb_agent_artifacts(
+    result = build_research_agent_artifacts(
         seeded_provenance_registry(),
         gate_plan,
         graph_dir,
-        sync_run_id=f"{run_id}-research-graphdb",
+        sync_run_id=f"{run_id}-research-graph",
         question=ResearchQuestion(
             query="What source-backed knowledge should agents read before simulation?",
             tags=(),
         ),
     )
-    report_path = output_dir / "research_graphdb_agent.json"
-    payload = research_graphdb_agent_payload(result)
+    report_path = output_dir / "research_agent.json"
+    payload = research_agent_payload(result)
     _write_json(report_path, payload)
     return {
         "graphdb_agent_report_path": str(report_path),

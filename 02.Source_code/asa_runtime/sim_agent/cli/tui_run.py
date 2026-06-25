@@ -15,12 +15,13 @@ from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig, Provi
 from sim_agent.runtime_config import load_runtime_config
 
 from .tui_parse import parse_options
+from .tui_run_render import write_run_rail
 from .tui_state import (
-    DEFAULT_OUTPUT_DIR,
     SOURCE_ROOT,
     ModelSettings,
     TuiState,
     append_event,
+    default_output_dir,
     replace_run_ledger,
     replace_team_ledger,
 )
@@ -45,6 +46,14 @@ def handle_run(args: Sequence[str], state: TuiState, output_stream: TextIO) -> T
         return state
     next_state = replace_run_ledger(next_state, report.ledger_path)
     append_event(next_state, "run_prepared", report.run_id)
+    write_run_rail(
+        goal=goal,
+        provider=config.model_provider,
+        model=config.model_name,
+        reasoning_effort=config.reasoning_effort,
+        report=report,
+        output_stream=output_stream,
+    )
     output_stream.write("run_prepared=true\n")
     output_stream.write(f"run_id={report.run_id}\n")
     output_stream.write(f"artifact_dir={report.artifact_dir}\n")
@@ -56,7 +65,7 @@ def _chat_config(goal: str, options: Mapping[str, str], model: ModelSettings) ->
     compute = default_compute_resource()
     return OrchestratorChatConfig(
         message=goal,
-        output_dir=Path(options.get("output_dir", str(DEFAULT_OUTPUT_DIR))),
+        output_dir=Path(options.get("output_dir", str(default_output_dir()))),
         source_root=Path(options.get("source_root", str(SOURCE_ROOT))),
         material=options.get("material", "Si"),
         phase=options.get("phase", "amorphous"),

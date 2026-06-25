@@ -37,14 +37,14 @@ def test_agent_plan_http_response_includes_md_campaign_payload() -> None:
     assert team["qa_gates"]["slurm_job_script"] == "qa_before_submit"
     assert set(team["call_matrix"]["orchestrator"]) == {
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
     assert set(team["call_matrix"]["md_agent"]) == {
         "orchestrator",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
     assert campaign["protocol_id"] == "continuous_stratified_bombardment"

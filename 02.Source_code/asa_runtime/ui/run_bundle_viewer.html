@@ -84,11 +84,11 @@
             <label>Provider
               <select id="model-provider">
                 <option value="">Select Provider</option>
-                <option value="openclaw">Openclaw</option>
+                <option value="openai-codex">ChatGPT Plus/Pro</option>
                 <option value="openai">OpenAI</option>
-                <option value="oauth_gateway">OAuth Gateway</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google-gemini-cli">Google Gemini CLI</option>
                 <option value="local_gateway">Local Gateway</option>
-                <option value="anthropic_gateway">Anthropic Gateway</option>
               </select>
             </label>
             <label>Model
@@ -179,7 +179,7 @@
           <form id="agent-plan-form" class="agent-plan-form">
             <textarea id="agent-request-json" name="request" rows="7">{
   "request_id": "ui-agent-plan",
-  "llm_endpoint": {},
+  "model_provider": {},
   "ion_species": "Ar",
   "target_material": "Si"
 }</textarea>

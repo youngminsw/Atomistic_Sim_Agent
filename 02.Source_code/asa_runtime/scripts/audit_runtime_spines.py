@@ -42,6 +42,7 @@ def audit_runtime_spines(root: Path) -> JsonMap:
         }
         for spine in contract.spines
     }
+    required_failures = _required_detector_failures(spines)
     return {
         "status": "gap_contract_recorded",
         "root": str(root),
@@ -49,9 +50,26 @@ def audit_runtime_spines(root: Path) -> JsonMap:
         "summary": {
             "total_spines": len(contract.spines),
             "gap_open": sum(1 for spine in contract.spines if spine.status.value == "gap_open"),
+            "required_detector_failure_count": sum(len(failures) for failures in required_failures.values()),
+            "required_detector_failures": required_failures,
         },
         "spines": spines,
     }
+
+
+def _required_detector_failures(spines: dict[str, JsonMap]) -> dict[str, list[str]]:
+    failures: dict[str, list[str]] = {}
+    for spine_id, spine_payload in spines.items():
+        if spine_payload.get("status") != "complete":
+            continue
+        detectors = spine_payload.get("detectors")
+        if not isinstance(detectors, dict):
+            failures[spine_id] = ["required_detectors_missing"]
+            continue
+        missing = [name for name, value in detectors.items() if name.startswith("required_") and value is not True]
+        if missing:
+            failures[spine_id] = missing
+    return failures
 
 
 def _detectors(root: Path, spine_id: str) -> JsonMap:
@@ -63,9 +81,22 @@ def _detectors(root: Path, spine_id: str) -> JsonMap:
     if spine_id == "provider_transport":
         detectors["fixed_responses_endpoint"] = "/v1/responses" in files.provider_model
     if spine_id == "agent_session":
-        detectors["frozen_session_dto"] = "class AsaAgentSession" in files.agent_loop and "frozen=True" in files.agent_loop
+        detectors["agent_session_contract_defined"] = "class AsaAgentSession" in files.agent_loop_contract
+        detectors["agent_session_exported"] = "AsaAgentSession" in files.agent_loop
+        detectors["mutable_session_history"] = "messages: list[JsonMap]" in files.agent_loop_contract
     if spine_id == "agent_loop":
-        detectors["one_shot_choose_tools"] = "choose_tools(self.session, tool_schemas)" in files.agent_loop
+        detectors["required_model_turn_bridge"] = (
+            "complete_turn = getattr(model, \"complete_turn\", None)" in files.agent_loop
+            and "return ModelTurnResult(selected_tools=model.choose_tools(session, tool_schemas))" in files.agent_loop
+        )
+        detectors["required_tool_results_appended"] = "self.session.append_tool_result(result)" in files.agent_loop
+        detectors["required_tool_result_continuation_gate"] = "supports_tool_result_continuation(self.model)" in files.agent_loop
+        detectors["required_model_tool_events"] = (
+            "RuntimeEventType.MODEL_START" in files.agent_loop
+            and "RuntimeEventType.MODEL_DELTA" in files.agent_loop
+            and "RuntimeEventType.TOOL_START" in files.agent_loop
+            and "RuntimeEventType.TOOL_END" in files.agent_loop
+        )
     if spine_id == "subagent_runtime":
         detectors["subagent_tool_defined"] = "subagent_task" in files.tools
     if spine_id == "context_resume":
@@ -82,6 +113,7 @@ def _detectors(root: Path, spine_id: str) -> JsonMap:
 class _RuntimeFiles:
     def __init__(self, root: Path) -> None:
         self.agent_loop = _read(root / "sim_agent" / "agents_sdk_runtime" / "agent_loop.py")
+        self.agent_loop_contract = _read(root / "sim_agent" / "agents_sdk_runtime" / "agent_loop_contract.py")
         self.provider_model = _read(root / "sim_agent" / "agents_sdk_runtime" / "provider_tool_choice_model.py")
         self.live_turn = _read(root / "sim_agent" / "agent_runtime" / "live_agent_turn.py")
         self.tools = _read(root / "sim_agent" / "agent_harness" / "tools.py")

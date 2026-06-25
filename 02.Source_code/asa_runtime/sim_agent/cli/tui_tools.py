@@ -8,9 +8,13 @@ from sim_agent.agent_harness import default_tool_registry
 def handle_tools(output_stream: TextIO) -> None:
     registry = default_tool_registry()
     output_stream.write("Runtime Tool Catalog\n")
+    output_stream.write("Tool                 Family          Safety              Policy\n")
     output_stream.write("tool_catalog=true\n")
     for tool in registry.tools:
         if tool.executable:
+            output_stream.write(
+                f"{tool.name:<20} {tool.family:<15} {tool.safety:<19} {tool.policy_id}\n"
+            )
             output_stream.write(
                 f"tool={tool.name} family={tool.family} safety={tool.safety} "
                 f"approval_required={str(tool.approval_required).lower()} executable=true "

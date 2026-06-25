@@ -22,7 +22,7 @@ def status_payload(status: UiApiStatus) -> JsonMap:
         "auth_modes": list(status.auth_modes),
         "agent_roles": list(status.agent_roles),
         "compute_targets": list(status.compute_targets),
-        "model_auth": model_auth_status_payload(include_credential_store=False),
+        "model_auth": model_auth_status_payload(include_provider_credential_store=False),
         "graphdb": {
             "database_name": status.graphdb_database_name,
             "write_requires_approval": status.graphdb_write_requires_approval,
@@ -116,8 +116,8 @@ def _agent_statuses(validation: UiApiValidation, result: OfflineRunResult, readi
             "Owns routing, approvals, and final run assembly.",
         ),
         _agent_status(
-            "research_graphdb_agent",
-            "Research GraphDB",
+            "research_agent",
+            "Research Agent",
             "ready",
             "GraphDB writes remain approval-gated; source-backed retrieval is available.",
             "Builds source-to-graph import artifacts and provenance-backed answers when invoked.",
@@ -130,8 +130,8 @@ def _agent_statuses(validation: UiApiValidation, result: OfflineRunResult, readi
             "Production MD remains gated by force-field, box-size, event-count, and postprocess checks.",
         ),
         _agent_status(
-            "ml_mdn_agent",
-            "ML/MDN Agent",
+            "ml_agent",
+            "ML Agent",
             "complete",
             "Built empirical MDN artifact, accepted training gate, and active-learning report.",
             "Surrogate use is blocked in production unless the training gate is accepted.",
@@ -173,8 +173,8 @@ def _agent_status(agent_id: str, label: str, status: str, summary: str, detail: 
 def _agent_message_log(result: OfflineRunResult) -> list[JsonMap]:
     return [
         _message("orchestrator", "md_agent", "Use source-backed MD event data and preserve incident diagnostics."),
-        _message("md_agent", "ml_mdn_agent", "MD events ready for interaction-kernel inference."),
-        _message("ml_mdn_agent", "feature_scale_agent", "Kernel and uncertainty handoff ready."),
+        _message("md_agent", "ml_agent", "MD events ready for interaction-kernel inference."),
+        _message("ml_agent", "feature_scale_agent", "Kernel and uncertainty handoff ready."),
         _message("feature_scale_agent", "qa_agent", f"Profile timeline written: {result.timeline_path.name}."),
         _message("qa_agent", "orchestrator", f"QA report written: {result.qa_report_path.name}."),
         _message("orchestrator", "production_gate", "Evaluate go-live evidence after QA and external approvals."),

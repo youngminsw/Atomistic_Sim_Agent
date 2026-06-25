@@ -79,7 +79,7 @@ The current implementation supports a gated GraphDB brain: dry-run import bundle
 
 ## Source-To-Graph Import Bundle
 
-The Research GraphDB Agent must produce a reviewable bundle before any live Neo4j write:
+The Research Agent must produce a reviewable bundle before any live Neo4j write:
 
 - `sources.jsonl`: stable source identity, URL/path, title, source kind, source-owned label, and source status.
 - `understandings.jsonl`: bounded summaries, purpose, important terms, source evidence, and extraction status.

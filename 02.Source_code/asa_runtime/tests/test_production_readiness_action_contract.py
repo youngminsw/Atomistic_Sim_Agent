@@ -34,9 +34,9 @@ def test_production_readiness_assigns_owner_agents_to_actions() -> None:
     assert action_plan["resolve_md_production_blockers"]["actor"] == "md_agent"
     assert action_plan["prepare_or_import_relaxed_amorphous_structure"]["actor"] == "md_agent"
     assert action_plan["run_remote_chain_after_approval"]["actor"] == "orchestrator"
-    assert action_plan["train_or_active_learn_surrogate"]["actor"] == "ml_mdn_agent"
+    assert action_plan["train_or_active_learn_surrogate"]["actor"] == "ml_agent"
     assert action_plan["run_model_endpoint_smoke_after_credentials"]["actor"] == "orchestrator"
-    assert action_plan["apply_graphdb_import_after_approval"]["actor"] == "research_graphdb_agent"
+    assert action_plan["apply_graphdb_import_after_approval"]["actor"] == "research_agent"
     assert action_plan["run_feature_scale_from_accepted_production_surrogate"]["actor"] == "feature_scale_agent"
 
 

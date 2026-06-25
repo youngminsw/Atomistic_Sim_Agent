@@ -71,9 +71,9 @@ def build_ui_api_status() -> UiApiStatus:
         compute_targets=controller_compute_targets(),
         agent_roles=(
             "orchestrator",
-            "research_graphdb_agent",
+            "research_agent",
             "md_agent",
-            "ml_mdn_agent",
+            "ml_agent",
             "feature_scale_agent",
             "qa_agent",
             "production_gate",
@@ -165,8 +165,8 @@ def _routes() -> tuple[UiApiRoute, ...]:
             description="agent-facing GraphDB retrieval context and write approval boundary",
         ),
         UiApiRoute(method="POST", path="/api/agent/plan", description="plan request and ask for missing inputs"),
-        UiApiRoute(method="GET", path="/api/model/auth/status", description="redacted model gateway login status"),
-        UiApiRoute(method="POST", path="/api/model/auth/login", description="store model gateway token credentials"),
+        UiApiRoute(method="GET", path="/api/model/auth/status", description="redacted model provider auth status"),
+        UiApiRoute(method="POST", path="/api/model/auth/login", description="store model provider credentials"),
         UiApiRoute(method="POST", path="/api/model/gateway/smoke", description="call configured model gateway API"),
         UiApiRoute(
             method="POST",

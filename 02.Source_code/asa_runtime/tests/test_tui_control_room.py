@@ -30,7 +30,7 @@ def test_chat_records_targeted_agent_message_and_transcript(tmp_path: Path) -> N
     agent_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "md_agent" / "messages.jsonl")
     assert any(message["role"] == "user" and message["content"] == "한글 MD 캠페인 점검" for message in agent_messages)
     assert agent_messages[-1]["role"] == "assistant"
-    assert "agent loop completed" in str(agent_messages[-1]["content"])
+    assert "agent loop blocked: endpoint_unreachable" in str(agent_messages[-1]["content"])
 
 
 def test_direct_agent_mention_summons_agent_without_chat_command(tmp_path: Path) -> None:
@@ -51,7 +51,7 @@ def test_direct_agent_mention_summons_agent_without_chat_command(tmp_path: Path)
     agent_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "md_agent" / "messages.jsonl")
     assert any(message["role"] == "user" and message["content"] == "한글 MD 캠페인 바로 점검" for message in agent_messages)
     assert agent_messages[-1]["role"] == "assistant"
-    assert "agent loop completed" in str(agent_messages[-1]["content"])
+    assert "agent loop blocked: endpoint_unreachable" in str(agent_messages[-1]["content"])
 
 
 def test_hud_exposes_chat_agents_and_control_room_affordances(tmp_path: Path) -> None:
@@ -98,6 +98,10 @@ def test_chat_handles_corrupt_transcript_and_prompt_injection_without_secret_lea
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "ASA Run Rail" in result.stdout
+    assert "Progress" in result.stdout
+    assert "Artifacts" in result.stdout
+    assert "run_progress=prepared" in result.stdout
     assert "chat_transcript_corrupt_lines=1" in result.stdout
     assert "super-secret-token" not in result.stdout
     assert "run_prepared=true" in result.stdout
@@ -232,12 +236,29 @@ def _jsonl(path: Path) -> list[dict[str, object]]:
 
 
 def _env(tmp_path: Path) -> dict[str, str]:
+    runtime_config = tmp_path / "runtime-config.json"
+    runtime_config.write_text(
+        json.dumps(
+            {
+                "model_endpoint": {
+                    "provider": "openai-codex",
+                    "model": "gpt-5.5",
+                    "reasoning_effort": "high",
+                    "base_url": "http://127.0.0.1:1/v1",
+                    "auth_mode": "oauth",
+                    "api_key_env": "ASA_OPENAI_CODEX_TOKEN",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["ASA_SESSION_DIR"] = str(tmp_path / "session")
-    env["ATOMISTIC_MODEL_GATEWAY_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
+    env["ATOMISTIC_SIM_AGENT_RUNTIME_CONFIG"] = str(runtime_config)
+    env["ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
     env.pop("MODEL_GATEWAY_TOKEN", None)
     return env
 

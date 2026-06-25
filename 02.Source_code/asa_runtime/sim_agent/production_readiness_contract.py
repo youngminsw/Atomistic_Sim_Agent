@@ -49,9 +49,9 @@ PRODUCTION_ACTION_SPECS: dict[str, ProductionActionSpec] = {
         ),
     ),
     "apply_graphdb_import_after_approval": ProductionActionSpec(
-        actor="research_graphdb_agent",
+        actor="research_agent",
         missing_recovery_steps=(
-            "build_research_graphdb_import_bundle",
+            "build_graphdb_import_bundle",
             "request_empty_neo4j_write_approval",
             "apply_graphdb_import_after_approval",
         ),
@@ -81,7 +81,7 @@ PRODUCTION_ACTION_SPECS: dict[str, ProductionActionSpec] = {
         ),
     ),
     "train_or_active_learn_surrogate": ProductionActionSpec(
-        actor="ml_mdn_agent",
+        actor="ml_agent",
         missing_recovery_steps=(
             "complete_production_md_chain",
             "postprocess_lammps_execution",

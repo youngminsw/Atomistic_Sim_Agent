@@ -7,7 +7,7 @@ from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import as_mapping, as_sequence
 from sim_agent.ui.model_auth import (
     CREDENTIAL_STORE_ENV,
-    login_model_gateway,
+    login_model_provider,
     model_auth_status_payload,
     run_model_gateway_smoke_from_controller,
 )
@@ -15,9 +15,9 @@ from sim_agent.ui.model_auth import (
 
 def add_auth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     endpoint = load_runtime_config().model_endpoint
-    parser = subparsers.add_parser("auth", help="Login, inspect, and smoke-test model gateway credentials.")
+    parser = subparsers.add_parser("auth", help="Login, inspect, and smoke-test model provider credentials.")
     auth_subparsers = parser.add_subparsers(dest="auth_command", required=True)
-    login = auth_subparsers.add_parser("login", help="Store a model gateway access token.")
+    login = auth_subparsers.add_parser("login", help="Store a model provider access token.")
     login.add_argument("--provider", default=endpoint.provider)
     login.add_argument("--access-token")
     login.add_argument("--api-key")
@@ -55,7 +55,7 @@ def _login(args: argparse.Namespace) -> int:
     if access_token is None:
         print("auth_login_error=token_required")
         return 1
-    payload = login_model_gateway(
+    payload = login_model_provider(
         {
             "provider": args.provider,
             "auth_mode": args.auth_mode,
@@ -66,7 +66,7 @@ def _login(args: argparse.Namespace) -> int:
     )
     print("auth_login_ok=true")
     print(f"provider={payload['provider']}")
-    print(f"credential_store={payload['credential_store']}")
+    print(f"provider_credential_store={payload['provider_credential_store']}")
     return 0
 
 
@@ -89,7 +89,7 @@ def _status() -> int:
 def _smoke(args: argparse.Namespace) -> int:
     payload = run_model_gateway_smoke_from_controller(
         {
-            "llm_endpoint": {
+            "model_provider": {
                 "provider": args.provider,
                 "model": args.model,
                 "reasoning_effort": "high",

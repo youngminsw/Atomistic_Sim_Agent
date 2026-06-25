@@ -34,7 +34,7 @@ def role_ids(agent_roles: tuple[AgentRoleDefinition, ...]) -> tuple[str, ...]:
 def call_matrix(role_ids: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
     specialists = tuple(role for role in role_ids if role != "orchestrator")
     matrix: dict[str, tuple[str, ...]] = {"orchestrator": specialists}
-    common_peers = ("orchestrator", "research_graphdb_agent", "qa_agent")
+    common_peers = ("orchestrator", "research_agent", "qa_agent")
     for role_id in specialists:
         matrix[role_id] = tuple(peer for peer in common_peers if peer != role_id)
     return matrix

@@ -21,15 +21,15 @@ class GatewayAgentPlanPolicy:
 
 DEFAULT_GATEWAY_AGENT_PLAN_POLICY: Final = GatewayAgentPlanPolicy(
     policy_id="production-gateway-smoke-plan-v1",
-    default_specialist="research_graphdb_agent",
+    default_specialist="research_agent",
     default_second_call="qa_agent",
     allowed_agent_ids=frozenset(("orchestrator", *(role.role_id for role in AGENT_ROLES))),
     required_call_graph=(
-        "orchestrator->research_graphdb_agent",
-        "research_graphdb_agent->qa_agent",
+        "orchestrator->research_agent",
+        "research_agent->qa_agent",
     ),
     response_contract={
-        "agent_plan.specialist": "research_graphdb_agent",
+        "agent_plan.specialist": "research_agent",
         "agent_plan.second_call": "qa_agent",
     },
 )

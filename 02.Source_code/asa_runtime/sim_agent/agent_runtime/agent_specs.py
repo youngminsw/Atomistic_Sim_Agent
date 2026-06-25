@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from sim_agent.agents_sdk_runtime.prompt_assets import load_subagent_role_prompt
 from sim_agent.schemas.errors import SchemaValidationError
 
 
@@ -18,14 +19,14 @@ class SubagentPresetSpec:
     max_depth: int
 
 
-SUBAGENT_PRESETS: Final = ("planner", "architect", "critic", "executor")
+SUBAGENT_PRESETS: Final = ("planner", "architect", "critic", "executor", "verifier")
 SUBAGENT_REPORT_TOOLS: Final = ("artifact_write", "subagent_inspect")
 
 _PRESET_SPECS: Final = {
     "planner": SubagentPresetSpec(
         name="planner",
         display_name="Planner",
-        role_prompt="Build bounded ASA execution plans with explicit assumptions, risks, and verification steps.",
+        role_prompt=load_subagent_role_prompt("planner"),
         scope_notes="Planning, sequencing, acceptance criteria, and validation shape for ASA simulation work.",
         tool_names=SUBAGENT_REPORT_TOOLS,
         persistent=False,
@@ -35,7 +36,7 @@ _PRESET_SPECS: Final = {
     "architect": SubagentPresetSpec(
         name="architect",
         display_name="Architect",
-        role_prompt="Analyze ASA runtime boundaries and propose minimal architecture-compatible changes.",
+        role_prompt=load_subagent_role_prompt("architect"),
         scope_notes="Design boundaries, interfaces, contracts, and integration risk for ASA runtime modules.",
         tool_names=SUBAGENT_REPORT_TOOLS,
         persistent=False,
@@ -45,7 +46,7 @@ _PRESET_SPECS: Final = {
     "critic": SubagentPresetSpec(
         name="critic",
         display_name="Critic",
-        role_prompt="Challenge ASA work products and identify concrete blockers before completion is claimed.",
+        role_prompt=load_subagent_role_prompt("critic"),
         scope_notes="Review code, design, workflow, tool safety, evidence quality, and scientific validity.",
         tool_names=SUBAGENT_REPORT_TOOLS,
         persistent=False,
@@ -55,8 +56,18 @@ _PRESET_SPECS: Final = {
     "executor": SubagentPresetSpec(
         name="executor",
         display_name="Executor",
-        role_prompt="Execute a bounded ASA task inside the caller's scoped run directory without shell access.",
+        role_prompt=load_subagent_role_prompt("executor"),
         scope_notes="Implementation-shaped ASA work using model-visible tools, with no bash_process exposure.",
+        tool_names=SUBAGENT_REPORT_TOOLS,
+        persistent=False,
+        clean_room=True,
+        max_depth=1,
+    ),
+    "verifier": SubagentPresetSpec(
+        name="verifier",
+        display_name="Verifier",
+        role_prompt=load_subagent_role_prompt("verifier"),
+        scope_notes="Completion evidence, ledger consistency, replay safety, and domain/runtime validity checks.",
         tool_names=SUBAGENT_REPORT_TOOLS,
         persistent=False,
         clean_room=True,

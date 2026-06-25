@@ -116,7 +116,7 @@ def test_agent_cli_plans_amorphous_si_ar_pipeline(tmp_path: Path) -> None:
     assert (
         output_dir / "amorphous_structure_prep" / "amorphous_structure_source.json"
     ).exists()
-    assert (output_dir / "research_graphdb" / "ingest_report.json").exists()
+    assert (output_dir / "research_graph" / "ingest_report.json").exists()
 
 
 def test_agent_cli_writes_remote_chain_script_when_ssh_target_is_given(

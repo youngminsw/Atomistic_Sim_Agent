@@ -13,9 +13,9 @@ def orchestrator_skill_adapter(payload: JsonMap) -> JsonMap:
         "adapter_action": "agent_harness.prepare_run_plan",
         "artifacts": ("agent_run_ledger.json", "agent_team_session_ledger.json"),
         "specialist_call_order": (
-            "research_graphdb_agent",
+            "research_agent",
             "md_agent",
-            "ml_mdn_agent",
+            "ml_agent",
             "feature_scale_agent",
             "qa_agent",
         ),
@@ -47,7 +47,7 @@ def md_skill_adapter(payload: JsonMap) -> JsonMap:
     }
 
 
-def ml_mdn_skill_adapter(payload: JsonMap) -> JsonMap:
+def ml_skill_adapter(payload: JsonMap) -> JsonMap:
     gate = payload.get("surrogate_training_gate")
     accepted = isinstance(gate, dict) and gate.get("accepted") is True
     return {
@@ -69,7 +69,7 @@ def feature_scale_skill_adapter(payload: JsonMap) -> JsonMap:
     }
 
 
-def research_graphdb_skill_adapter(payload: JsonMap) -> JsonMap:
+def research_skill_adapter(payload: JsonMap) -> JsonMap:
     mode = _text(payload, "graphdb_mode", "dry_run")
     return {
         "adapter_action": "knowledge.prepare_graph_import_bundle",

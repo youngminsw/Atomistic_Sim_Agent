@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
 
-from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_gateway
+from sim_agent.ui.model_auth import CREDENTIAL_STORE_ENV, login_model_provider
 
 from .tui_browser_launch import open_url_in_browser, write_oauth_browser_block
 from .tui_login_profiles import LoginTarget
@@ -193,7 +193,7 @@ def _post_form(url: str, form: dict[str, str], *, timeout_s: float) -> dict[str,
 
 
 def _save_token(target: LoginTarget, token: KimiToken, output_stream: TextIO, state: TuiState) -> None:
-    payload = login_model_gateway(
+    payload = login_model_provider(
         {
             "provider": target.provider,
             "login_profile": target.profile,
@@ -209,7 +209,7 @@ def _save_token(target: LoginTarget, token: KimiToken, output_stream: TextIO, st
         output_stream.write("login_ok=true\n")
         output_stream.write(f"provider={payload['provider']} auth_mode=oauth\n")
         output_stream.write(f"login_profile={target.profile}\n")
-        output_stream.write(f"credential_store={payload['credential_store']}\n")
+        output_stream.write(f"provider_credential_store={payload['provider_credential_store']}\n")
         return
     write_login_success(output_stream, provider=payload["provider"], label=target.label)
 
@@ -237,7 +237,7 @@ def _kimi_headers() -> dict[str, str]:
 
 
 def _device_id() -> str:
-    root = Path.home() / ".atomistic-sim-agent"
+    root = Path.home() / ".asa"
     path = root / DEVICE_ID_FILENAME
     try:
         existing = path.read_text(encoding="utf-8").strip()

@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 
 from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool
-from sim_agent.agent_runtime import HandoffTaskRequest, handoff_task
-from sim_agent.cli.tui_state import initial_state
+from sim_agent.agent_runtime import GlobalSessionModel, GlobalSessionOpenRequest, HandoffTaskRequest, handoff_task, open_global_session
+from sim_agent.cli.tui_state import ModelSettings, TuiState, persist_state
 
 
 def test_handoff_task_writes_target_session_and_handoff_ledger(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
 
     result = handoff_task(
         state.session_dir,
@@ -40,7 +40,7 @@ def test_handoff_task_writes_target_session_and_handoff_ledger(tmp_path: Path) -
 
 
 def test_handoff_task_blocks_unknown_target_with_durable_error(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
 
     result = handoff_task(
         state.session_dir,
@@ -61,7 +61,7 @@ def test_handoff_task_blocks_unknown_target_with_durable_error(tmp_path: Path) -
 
 
 def test_handoff_task_runtime_tool_executes_against_target_agent_session(tmp_path: Path) -> None:
-    state = initial_state(tmp_path)
+    state = _static_state(tmp_path)
     registry = default_tool_registry()
 
     result = execute_runtime_tool(
@@ -94,3 +94,33 @@ def test_handoff_task_runtime_tool_executes_against_target_agent_session(tmp_pat
 
 def _jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _static_state(session_dir: Path) -> TuiState:
+    model = GlobalSessionModel(
+        provider="static",
+        name="explicit-static",
+        reasoning_effort="high",
+        base_url="https://model-gateway.local/v1",
+        auth_mode="none",
+        api_key_env="MODEL_GATEWAY_TOKEN",
+    )
+    record = open_global_session(
+        GlobalSessionOpenRequest(requested_dir=session_dir, default_root=session_dir, model=model)
+    ).record
+    state = TuiState(
+        session_id=record.session_id,
+        session_dir=record.session_dir,
+        model=ModelSettings(
+            provider=model.provider,
+            name=model.name,
+            reasoning_effort=model.reasoning_effort,
+            base_url=model.base_url,
+            auth_mode=model.auth_mode,
+            api_key_env=model.api_key_env,
+        ),
+        global_session_id=record.session_id,
+        global_session_path=record.paths.global_session,
+    )
+    persist_state(state)
+    return state

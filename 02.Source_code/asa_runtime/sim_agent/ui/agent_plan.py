@@ -7,7 +7,8 @@ from sim_agent.agents_sdk_runtime.session_contract import agent_team_session_con
 from sim_agent.agent_harness.types import ToolTraceEvent
 from sim_agent.llm_endpoints import ModelPolicyError, ModelProviderConfig
 from sim_agent.md_campaign import md_campaign_plan_payload
-from sim_agent.schemas._parse import JsonMap, as_mapping, require
+from sim_agent.model_provider_payload import model_provider_payload
+from sim_agent.schemas._parse import JsonMap
 from sim_agent.schemas.errors import SchemaValidationError
 from sim_agent.schemas.request import RunArtifact
 
@@ -20,7 +21,7 @@ def build_agent_plan_http_response(payload: JsonMap) -> tuple[JsonMap, int]:
 
 
 def _build_agent_plan_http_response(payload: JsonMap) -> tuple[JsonMap, int]:
-    endpoint = ModelProviderConfig.from_mapping(as_mapping(require(payload, "llm_endpoint"), "llm_endpoint"))
+    endpoint = ModelProviderConfig.from_mapping(model_provider_payload(payload))
     result = SimulationAgentHarness(endpoint=endpoint, client=OfflineModelClient()).plan(payload)
     return _result_payload(result), _status_code(result.status)
 

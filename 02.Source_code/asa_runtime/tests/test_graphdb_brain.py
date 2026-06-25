@@ -43,24 +43,24 @@ def test_graph_brain_context_plans_read_queries_for_every_runtime_agent() -> Non
         role_ids=(
             "orchestrator",
             "md_agent",
-            "ml_mdn_agent",
+            "ml_agent",
             "feature_scale_agent",
-            "research_graphdb_agent",
+            "research_agent",
             "qa_agent",
         ),
     )
     payload = graph_brain_payload(brain)
 
     assert payload["status"] == "query_plan_ready"
-    assert payload["research_write_owner"] == "research_graphdb_agent"
+    assert payload["research_write_owner"] == "research_agent"
     assert payload["write_requires_approval"] is True
     snapshots = tuple(as_mapping(item, "agent_snapshot") for item in as_sequence(payload["agent_snapshots"], "agent_snapshots"))
     assert {as_str(item["agent_id"], "agent_id") for item in snapshots} == {
         "orchestrator",
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
-        "research_graphdb_agent",
+        "research_agent",
         "qa_agent",
     }
     assert any(

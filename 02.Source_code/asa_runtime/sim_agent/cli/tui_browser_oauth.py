@@ -44,7 +44,7 @@ def start_browser_oauth(
         os.environ[CREDENTIAL_STORE_ENV] = credential_store
     auth_url = _configured_auth_url(target, parsed.options)
     if auth_url is not None:
-        return _start_configured_gateway_oauth(target, auth_url, parsed.flags, state, output_stream, credential_store)
+        return _start_configured_provider_oauth(target, auth_url, parsed.flags, state, output_stream, credential_store)
     if _is_openai_codex_target(target):
         return _from_provider_outcome(start_openai_codex_oauth(target, tuple(args), state, output_stream))
     if _is_kimi_code_target(target):
@@ -93,7 +93,7 @@ def _from_kimi_outcome(outcome: KimiOAuthOutcome) -> BrowserOAuthResult:
     )
 
 
-def _start_configured_gateway_oauth(
+def _start_configured_provider_oauth(
     target: LoginTarget,
     auth_url: str,
     flags: Sequence[str],
@@ -116,7 +116,7 @@ def _start_configured_gateway_oauth(
         output_stream,
         url=auth_url,
         opened=opened,
-        instructions="Complete browser login; provider callback must write the credential store.",
+        instructions="Complete browser login; provider callback must write the provider credential store.",
     )
     if machine_output(output_stream):
         output_stream.write("browser_oauth_started=true\n")
@@ -125,9 +125,9 @@ def _start_configured_gateway_oauth(
         output_stream.write(f"browser_oauth_url={auth_url}\n")
         output_stream.write(f"browser_opened={opened}\n")
         output_stream.write("browser_oauth_credential_saved=false\n")
-        output_stream.write("browser_oauth_next=complete browser login; provider callback must write credential store\n")
+        output_stream.write("browser_oauth_next=complete browser login; provider callback must write provider credential store\n")
         if credential_store:
-            output_stream.write(f"credential_store={credential_store}\n")
+            output_stream.write(f"provider_credential_store={credential_store}\n")
     else:
         output_stream.write("Waiting for browser login to finish.\n")
         output_stream.write("Next: return to ASA after the provider confirms the login.\n")

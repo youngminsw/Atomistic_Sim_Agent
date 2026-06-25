@@ -108,7 +108,7 @@ def build_graph_brain_context(
         status="read_ready" if read_client is not None else "query_plan_ready",
         database_name=context.database_name,
         smoke_query=context.smoke_query,
-        research_write_owner="research_graphdb_agent",
+        research_write_owner="research_agent",
         write_requires_approval=context.write_requires_approval,
         source_owned_labels=context.source_owned_labels,
         retrieval_rules=context.retrieval_rules,

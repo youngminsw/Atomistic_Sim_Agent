@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from sim_agent.agent_harness.tools import default_tool_registry
 from sim_agent.agents_sdk_runtime import AsaAgentSession
 from sim_agent.agents_sdk_runtime.provider_transport import (
     ProviderApiProtocol,
+    ProviderTransportPolicyError,
     api_protocol_for_session,
     provider_transport_request,
     transport_tool_calls,
@@ -22,7 +26,7 @@ def test_openai_responses_transport_uses_responses_endpoint(tmp_path: Path) -> N
     assert request.url == "https://api.openai.com/v1/responses"
     assert request.payload["model"] == "gpt-5.5"
     assert request.payload["input"] == [{"role": "user", "content": "select a safe tool"}]
-    assert request.payload["tool_choice"] == "required"
+    assert request.payload["tool_choice"] == "auto"
 
 
 def test_openai_codex_transport_uses_chatgpt_codex_endpoint(tmp_path: Path) -> None:
@@ -68,7 +72,7 @@ def test_anthropic_transport_uses_messages_endpoint_and_tool_use_parser(tmp_path
 
     assert request.protocol is ProviderApiProtocol.ANTHROPIC_MESSAGES
     assert request.url == "https://api.anthropic.com/v1/messages"
-    assert request.payload["tool_choice"] == {"type": "any"}
+    assert request.payload["tool_choice"] == {"type": "auto"}
     assert request.payload["tools"][0]["input_schema"]["type"] == "object"
     assert calls == ({"name": "artifact_write", "arguments": {"relative_path": "x", "content": "y"}},)
 
@@ -105,7 +109,7 @@ def test_gemini_transport_uses_generate_content_endpoint_and_parser(tmp_path: Pa
 
     assert request.protocol is ProviderApiProtocol.GEMINI_GENERATE_CONTENT
     assert request.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent"
-    assert request.payload["toolConfig"]["functionCallingConfig"]["mode"] == "ANY"
+    assert request.payload["toolConfig"]["functionCallingConfig"]["mode"] == "AUTO"
     assert calls == ({"name": "graphdb_dry_run", "arguments": {"database_name": "asa"}},)
 
 
@@ -114,6 +118,14 @@ def test_ollama_transport_is_openai_compatible_not_responses(tmp_path: Path) -> 
 
     assert api_protocol_for_session(session) is ProviderApiProtocol.OLLAMA_OPENAI_COMPATIBLE
     assert provider_transport_request(session, _tools(session)).url == "http://localhost:11434/v1/chat/completions"
+
+
+def test_provider_transport_rejects_malformed_explicit_protocol(tmp_path: Path) -> None:
+    session = _session(tmp_path, provider="openai", base_url="https://api.openai.com/v1")
+    malformed = replace(session, endpoint=replace(session.endpoint, api_protocol="definitely_not_a_protocol"))
+
+    with pytest.raises(ProviderTransportPolicyError, match="invalid_api_protocol=definitely_not_a_protocol"):
+        provider_transport_request(malformed, _tools(malformed))
 
 
 def test_provider_transport_exposes_subagent_control_schema(tmp_path: Path) -> None:

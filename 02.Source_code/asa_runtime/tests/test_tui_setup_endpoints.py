@@ -333,7 +333,7 @@ def test_skills_command_shows_callable_agent_skill_handlers(tmp_path: Path) -> N
     assert "skill_catalog=true" in result.stdout
     assert "skill_registry_dispatch=callable_handlers" in result.stdout
     assert "skill_impl=md_agent:prepare_and_verify_lammps_md" in result.stdout
-    assert "skill_impl=research_graphdb_agent:research_and_ingest_graphdb_catalog" in result.stdout
+    assert "skill_impl=research_agent:research_and_ingest_graphdb_catalog" in result.stdout
     assert "skill_impl=qa_agent:qa_physics_and_runtime_evidence" in result.stdout
 
 

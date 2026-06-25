@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sim_agent.md import assess_md_production_readiness
 from sim_agent.agent_run_quality import build_agent_run_quality
+from sim_agent.model_provider_payload import model_provider_payload
 from sim_agent.schemas._parse import JsonMap
 
 
@@ -213,8 +214,9 @@ def _pipeline_stages(surrogate_gate_result: JsonMap) -> list[str]:
 
 
 def _model_provider(request_payload: JsonMap) -> JsonMap:
-    endpoint = request_payload.get("llm_endpoint")
-    if not isinstance(endpoint, dict):
+    try:
+        endpoint = model_provider_payload(request_payload)
+    except ValueError:
         return {}
     fields = (
         "provider",

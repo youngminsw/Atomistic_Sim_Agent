@@ -28,12 +28,12 @@ def test_runtime_spine_contract_records_assertion_and_current_gap_for_each_spine
     contract = runtime_spine_contract()
 
     for spine in contract.spines:
-        assert spine.status is RuntimeSpineStatus.GAP_OPEN
         assert spine.required_assertion
         assert spine.current_gap
         assert spine.acceptance_probe
         assert spine.evidence_path == ".omo/evidence/task-1-asa-runtime-spine-gap-closure.json"
         assert spine.doc_anchor.startswith("#")
+    assert all(spine.status is RuntimeSpineStatus.COMPLETE for spine in contract.spines)
 
 
 def test_runtime_spine_matrix_is_json_ready_and_keyed_by_stable_spine_id() -> None:
@@ -49,5 +49,5 @@ def test_runtime_spine_matrix_is_json_ready_and_keyed_by_stable_spine_id() -> No
         "tool_runtime",
         "tui_observability",
     }
-    assert matrix["provider_transport"]["status"] == "gap_open"
-    assert "/v1/responses" in matrix["provider_transport"]["current_gap"]
+    assert matrix["provider_transport"]["status"] == "complete"
+    assert "protocol-specific endpoints" in matrix["provider_transport"]["current_gap"]

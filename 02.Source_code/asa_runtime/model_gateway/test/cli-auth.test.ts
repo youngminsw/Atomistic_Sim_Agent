@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,14 +7,14 @@ import test from "node:test"
 import { createModelGatewayServer } from "../src/index.js"
 import { runModelGatewayCli } from "../src/cli/commands.js"
 
-test("CLI auth login, status, refresh, and API smoke use one credential store", async () => {
+test("CLI auth login, status, refresh, and API smoke use one provider credential store", async () => {
   const root = await mkdtemp(join(tmpdir(), "atomistic-cli-auth-"))
   const credentialStore = join(root, "credentials.json")
   const providerConfigPath = join(root, "provider.json")
   const smokeOutputPath = join(root, "smoke.json")
   const gateway = createModelGatewayServer({
     modelProvider: {
-      provider: "oauth_gateway",
+      provider: "local_gateway",
       model: "gpt-5.5",
       reasoning_effort: "high",
       base_url: "http://127.0.0.1:1/v1",
@@ -29,7 +29,7 @@ test("CLI auth login, status, refresh, and API smoke use one credential store", 
     await writeFile(
       providerConfigPath,
       `${JSON.stringify({
-        provider: "oauth_gateway",
+        provider: "local_gateway",
         model: "gpt-5.5",
         reasoning_effort: "high",
         base_url: `${gatewayUrl}/v1`,
@@ -41,7 +41,7 @@ test("CLI auth login, status, refresh, and API smoke use one credential store", 
       "auth",
       "login",
       "--provider",
-      "oauth_gateway",
+      "local_gateway",
       "--credential-store",
       credentialStore,
       "--access-token",
@@ -53,7 +53,7 @@ test("CLI auth login, status, refresh, and API smoke use one credential store", 
       "auth",
       "status",
       "--provider",
-      "oauth_gateway",
+      "local_gateway",
       "--credential-store",
       credentialStore,
       "--json",
@@ -62,7 +62,7 @@ test("CLI auth login, status, refresh, and API smoke use one credential store", 
       "auth",
       "refresh",
       "--provider",
-      "oauth_gateway",
+      "local_gateway",
       "--credential-store",
       credentialStore,
       "--print",
@@ -93,6 +93,78 @@ test("CLI auth login, status, refresh, and API smoke use one credential store", 
     assert.equal(smokePayload["gateway_request_id"], "cli-gw-1")
   } finally {
     await close(gateway)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("CLI auth login defaults to ASA provider credential store", async () => {
+  const root = await mkdtemp(join(tmpdir(), "atomistic-cli-auth-default-"))
+  const previousHome = process.env["HOME"]
+  process.env["HOME"] = root
+
+  try {
+    const login = await runModelGatewayCli([
+      "auth",
+      "login",
+      "--provider",
+      "openai-codex",
+      "--access-token",
+      "provider-secret-token",
+    ])
+    const canonical = join(root, ".asa", "provider-credentials.json")
+    const stored = jsonRecord(await readFile(canonical, "utf8"))
+
+    assert.equal(login.code, 0)
+    assert.match(login.stdout, /login_ok=true/)
+    assert.ok(stored["openai-codex"])
+  } finally {
+    restoreHome(previousHome)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("CLI auth login migrates legacy gateway-named credential store into provider store", async () => {
+  const root = await mkdtemp(join(tmpdir(), "atomistic-cli-auth-migration-"))
+  const previousHome = process.env["HOME"]
+  process.env["HOME"] = root
+
+  try {
+    const legacy = join(root, ".atomistic-sim-agent", "model-gateway-credentials.json")
+    await mkdir(join(root, ".atomistic-sim-agent"), { recursive: true })
+    await writeFile(
+      legacy,
+      `${JSON.stringify({
+        anthropic: {
+          provider: "anthropic",
+          credentials: {
+            access: "legacy-access",
+            refresh: "legacy-refresh",
+            expires: 4_102_444_800_000,
+          },
+          updatedAtMs: 1,
+        },
+      })}\n`,
+      "utf8",
+    )
+
+    const status = await runModelGatewayCli(["auth", "status", "--provider", "anthropic", "--json"])
+    const login = await runModelGatewayCli([
+      "auth",
+      "login",
+      "--provider",
+      "openai-codex",
+      "--access-token",
+      "new-provider-token",
+    ])
+    const migrated = jsonRecord(await readFile(join(root, ".asa", "provider-credentials.json"), "utf8"))
+
+    assert.equal(status.code, 0)
+    assert.match(status.stdout, /"logged_in":true/)
+    assert.equal(login.code, 0)
+    assert.ok(migrated["anthropic"])
+    assert.ok(migrated["openai-codex"])
+  } finally {
+    restoreHome(previousHome)
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -131,4 +203,12 @@ function jsonRecord(raw: string): Record<string, unknown> {
     throw new TypeError("json_object_required")
   }
   return Object.fromEntries(Object.entries(value))
+}
+
+function restoreHome(value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env["HOME"]
+    return
+  }
+  process.env["HOME"] = value
 }

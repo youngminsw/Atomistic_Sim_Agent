@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING
 
 from sim_agent.agent_harness.tool_types import ToolRegistry
 from sim_agent.llm_endpoints import ModelProviderConfig
@@ -10,9 +10,10 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_registry import AgentSessionHandle
 from .agent_specs import SubagentPresetSpec
+from .live_agent_context import live_turn_project_guidance, live_turn_workflow_policy
 
-
-PLACEHOLDER_GATEWAY_BASE_URL: Final = "https://model-gateway.local/v1"
+if TYPE_CHECKING:
+    from sim_agent.agents_sdk_runtime import AsaAgentSession
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,17 +34,9 @@ def run_subagent_agent_loop(
     depth: int,
     subagent_dir: Path,
 ) -> SubagentLoopRun:
-    from sim_agent.agents_sdk_runtime import AgentLoop, AsaAgentSession
+    from sim_agent.agents_sdk_runtime import AgentLoop
 
-    session = AsaAgentSession(
-        run_id=f"subagent-{task_id}",
-        session_id=f"{handle.agent_session_id}:subagent:{preset.name}:{task_id}",
-        agent_id=f"{handle.agent_id}.{preset.name}.{task_id}",
-        user_goal=_subagent_goal(handle, preset, task, depth),
-        endpoint=_endpoint(handle),
-        output_dir=subagent_dir,
-        registry=_preset_tool_registry(preset),
-    )
+    session = _subagent_agent_session(handle, preset, task_id, task, depth, subagent_dir)
     result = AgentLoop(session, _subagent_model(handle, preset, task_id, task, session)).run()
     return SubagentLoopRun(
         status=result.status,
@@ -55,6 +48,32 @@ def run_subagent_agent_loop(
             for event in result.trace
         ),
         tool_result_refs=tuple(tool_result.artifact_ref for tool_result in result.tool_results),
+    )
+
+
+def _subagent_agent_session(
+    handle: AgentSessionHandle,
+    preset: SubagentPresetSpec,
+    task_id: str,
+    task: str,
+    depth: int,
+    subagent_dir: Path,
+) -> AsaAgentSession:
+    from sim_agent.agents_sdk_runtime import AsaAgentSession
+
+    return AsaAgentSession(
+        run_id=f"subagent-{task_id}",
+        session_id=f"{handle.agent_session_id}:subagent:{preset.name}:{task_id}",
+        agent_id=f"{handle.agent_id}.{preset.name}.{task_id}",
+        user_goal=_subagent_goal(handle, preset, task, depth),
+        endpoint=_endpoint(handle),
+        output_dir=subagent_dir,
+        registry=_preset_tool_registry(preset),
+        role_prompt=_subagent_role_prompt(preset),
+        role_prompt_kind="subagent_role",
+        workflow_policy=live_turn_workflow_policy(),
+        project_guidance=live_turn_project_guidance(handle),
+        workflow_state=_subagent_workflow_state(handle, preset, task_id, depth, subagent_dir),
     )
 
 
@@ -97,12 +116,31 @@ def _subagent_goal(handle: AgentSessionHandle, preset: SubagentPresetSpec, task:
         (
             f"Caller agent: {handle.agent_id}",
             f"Bounded preset: {preset.name}",
-            f"Role: {preset.role_prompt}",
-            f"Scope: {preset.scope_notes}",
             f"Depth: {depth}",
             f"Task: {task}",
         )
     )
+
+
+def _subagent_role_prompt(preset: SubagentPresetSpec) -> str:
+    return "\n".join((preset.role_prompt, f"Scope: {preset.scope_notes}"))
+
+
+def _subagent_workflow_state(
+    handle: AgentSessionHandle,
+    preset: SubagentPresetSpec,
+    task_id: str,
+    depth: int,
+    subagent_dir: Path,
+) -> JsonMap:
+    return {
+        "caller_agent": handle.agent_id,
+        "caller_agent_session_id": handle.agent_session_id,
+        "preset": preset.name,
+        "task_id": task_id,
+        "depth": depth,
+        "subagent_dir": str(subagent_dir),
+    }
 
 
 def _static_subagent_report(handle: AgentSessionHandle, preset: SubagentPresetSpec, task_id: str, task: str) -> str:
@@ -120,17 +158,14 @@ def _static_subagent_report(handle: AgentSessionHandle, preset: SubagentPresetSp
 
 
 def _uses_static_fallback(handle: AgentSessionHandle) -> bool:
-    return (
-        handle.model.auth_mode == "none"
-        or handle.model.provider in {"local_gateway", "offline", "static"}
-        or handle.model.base_url == PLACEHOLDER_GATEWAY_BASE_URL
-    )
+    return handle.model.provider in {"offline", "static"}
 
 
 def _endpoint(handle: AgentSessionHandle) -> ModelProviderConfig:
+    provider = "local_gateway" if _uses_static_fallback(handle) else handle.model.provider
     return ModelProviderConfig.from_mapping(
         {
-            "provider": handle.model.provider,
+            "provider": provider,
             "model": handle.model.name,
             "reasoning_effort": handle.model.reasoning_effort,
             "base_url": handle.model.base_url,

@@ -100,6 +100,9 @@ export function parseCredentialSource(value: string): CredentialSource {
 }
 
 export function defaultApiKeyEnv(provider: string): string {
+  if (provider === "openai-codex") {
+    return "ASA_OPENAI_CODEX_TOKEN"
+  }
   if (provider === "openai") {
     return "OPENAI_API_KEY"
   }
@@ -109,17 +112,26 @@ export function defaultApiKeyEnv(provider: string): string {
   if (provider === "openclaw") {
     return "OPENCLAW_OAUTH_TOKEN"
   }
-  return "MODEL_GATEWAY_TOKEN"
+  if (provider === "oauth_gateway" || provider === "anthropic_gateway") {
+    return "MODEL_GATEWAY_TOKEN"
+  }
+  return "RUNTIME_GATEWAY_TOKEN"
 }
 
 export function defaultAuthMode(provider: string): AuthMode {
+  if (provider === "openai-codex") {
+    return "oauth"
+  }
   if (provider === "openclaw") {
     return "oauth"
   }
   if (provider === "openai" || provider === "anthropic") {
     return "api_key"
   }
-  if (provider.endsWith("_gateway") || provider === "local_gateway") {
+  if (provider === "local_gateway") {
+    return "none"
+  }
+  if (provider.endsWith("_gateway")) {
     return "gateway"
   }
   return "gateway"

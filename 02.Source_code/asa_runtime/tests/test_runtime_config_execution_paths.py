@@ -44,9 +44,10 @@ def test_asa_chat_defaults_to_saved_runtime_model_and_compute_resource(tmp_path:
     worker = json.loads((output_dir / "worker_bundle.json").read_text(encoding="utf-8"))
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert request["llm_endpoint"]["provider"] == "local_gateway"
-    assert request["llm_endpoint"]["model"] == "configured-gpt-5.5"
-    assert request["llm_endpoint"]["base_url"] == "https://configured.gateway/v1"
+    assert "llm_endpoint" not in request
+    assert request["model_provider"]["provider"] == "local_gateway"
+    assert request["model_provider"]["model"] == "configured-gpt-5.5"
+    assert request["model_provider"]["base_url"] == "https://configured.gateway/v1"
     assert worker["host_alias"] == "controller-gpu"
     assert worker["environment_name"] == "configured-env"
 
@@ -72,7 +73,7 @@ def test_tui_plain_goal_uses_team_mode_default_and_writes_team_runtime_ledger(tm
     assert "team_runtime_primary=true" in result.stdout
     assert "run_prepared=true" in result.stdout
     assert ledger["execution_mode"] == "team_contract_runtime"
-    assert ledger["call_matrix"]["md_agent"] == ["orchestrator", "research_graphdb_agent", "qa_agent"]
+    assert ledger["call_matrix"]["md_agent"] == ["orchestrator", "research_agent", "qa_agent"]
     assert any(event["event_type"] == "team_runtime_primary" for event in ledger["events"])
 
 

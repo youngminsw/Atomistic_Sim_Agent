@@ -23,7 +23,7 @@ This ledger is the acceptance anchor for the ASA TUI/runtime rebuild. Do not clo
 | Selector controller | Partial: arrow-key menus exist and now clear nested menus. | One controller surface for provider onboarding, model profile/model selection, settings, agent dashboard, plugins, sessions, and post-login recommendation. |
 | Model profiles | Partial: `codex-eco`, `codex-medium`, and `codex-pro` now save default model plus agent overrides. | Grouped provider tabs, profile recommendation after login, profile editing, saved active profile display in HUD/status. |
 | Thinking levels | Partial: ASA recognizes `inherit`, `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. | Provider-specific mapping/clamping before real model calls, plus UI explanation for unsupported provider levels. |
-| Provider login | Partial: browser OAuth URL/callback and credential store exist. | Clean user-facing success screen, no debug key dump, copy-open fallback when browser is invisible, provider-specific login flows beyond OpenAI path. |
+| Provider login | Partial: browser OAuth URL/callback and provider credential store exist. | Clean user-facing success screen, no debug key dump, copy-open fallback when browser is invisible, provider-specific login flows beyond OpenAI path. |
 | Model/provider catalog | Partial: grouped company catalog exists. | Gajae-like compact provider tabs, model search/filter, authenticated/provider availability badges, and separate login vs model configuration surface. |
 | Agent dashboard | Partial: static workboard and `/model agents` rows exist. | Interactive dashboard, per-agent model editing, live activity, subagent run receipts, and custom agent creation. |
 | Status/HUD | Partial: welcome panel, `/hud`, `/status`, and workboard exist. | Two-layer status line with active profile, token/context usage, background jobs, blockers, and active workflow state. |
@@ -36,7 +36,7 @@ This ledger is the acceptance anchor for the ASA TUI/runtime rebuild. Do not clo
 
 - Model profile commands: `/model profiles`, `/model profile <name>`, and interactive `/model set` profile landing.
 - Profile presets: `codex-eco`, `codex-medium`, `codex-pro`.
-- Role assignments: `md_agent`, `ml_mdn_agent`, `feature_scale_agent`, `research_graphdb_agent`, `qa_agent`.
+- Role assignments: `md_agent`, `ml_agent`, `feature_scale_agent`, `research_agent`, `qa_agent`.
 - Thinking vocabulary: `inherit`, `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
 
 ## Next Priority

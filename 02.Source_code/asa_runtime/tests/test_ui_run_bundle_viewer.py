@@ -62,11 +62,11 @@ def test_run_bundle_live_model_surfaces_production_readiness() -> None:
     script = "\n".join(
         [
             f"const model = require({str(js)!r});",
-            'const response = {"run_status":"complete","production_readiness":{"production_ready":false,"hard_blockers":["model_endpoint_smoke_required"],"user_actions":["login_to_model_gateway_or_provide_token"],"action_plan":[{"action":"run_model_endpoint_smoke_after_credentials","actor":"agent","status":"ready_after_user_action","command":["python3","smoke.py"]}]},"bundle":{"manifest":{"run_id":"ui-fixture","feature_type":"hole","run_status":"complete"},"timeline":{"states":[]},"diagnostics":{"clicks":[]},"active_learning_plan":{},"qa_report":{"status":"pass","hard_blockers":[]}}};',
+            'const response = {"run_status":"complete","production_readiness":{"production_ready":false,"hard_blockers":["model_endpoint_smoke_required"],"user_actions":["login_to_model_provider_or_provide_token"],"action_plan":[{"action":"run_model_endpoint_smoke_after_credentials","actor":"agent","status":"ready_after_user_action","command":["python3","smoke.py"]}]},"bundle":{"manifest":{"run_id":"ui-fixture","feature_type":"hole","run_status":"complete"},"timeline":{"states":[]},"diagnostics":{"clicks":[]},"active_learning_plan":{},"qa_report":{"status":"pass","hard_blockers":[]}}};',
             "const state = model.displayStateFromRunResponse(response, 0, 0);",
             "if (state.productionReadiness.productionReady !== false) throw new Error('bad productionReady');",
             "if (state.productionReadiness.hardBlockers[0] !== 'model_endpoint_smoke_required') throw new Error('bad blockers');",
-            "if (state.productionReadiness.userActions[0] !== 'login_to_model_gateway_or_provide_token') throw new Error('bad actions');",
+            "if (state.productionReadiness.userActions[0] !== 'login_to_model_provider_or_provide_token') throw new Error('bad actions');",
             "if (state.productionReadiness.actionPlan[0].action !== 'run_model_endpoint_smoke_after_credentials') throw new Error('bad action plan');",
         ],
     )

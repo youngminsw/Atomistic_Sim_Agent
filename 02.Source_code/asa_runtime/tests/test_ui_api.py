@@ -201,9 +201,9 @@ def test_ui_http_server_serves_agent_graphdb_context() -> None:
     assert "password" not in body["connection"]
     assert {item["agent_id"] for item in body["role_queries"]} == {
         "orchestrator",
-        "research_graphdb_agent",
+        "research_agent",
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
         "qa_agent",
         "infra_agent",
@@ -388,9 +388,9 @@ def test_ui_http_server_executes_valid_offline_3d_run(tmp_path: Path) -> None:
     assert body["artifact_links"]["qa_report"] == f"evidence/{run_id}/qa_report.json"
     assert {item["agent_id"] for item in body["agent_statuses"]} == {
         "orchestrator",
-        "research_graphdb_agent",
+        "research_agent",
         "md_agent",
-        "ml_mdn_agent",
+        "ml_agent",
         "feature_scale_agent",
         "qa_agent",
         "production_gate",

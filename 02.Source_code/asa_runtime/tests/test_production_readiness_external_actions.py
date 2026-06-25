@@ -29,7 +29,7 @@ def test_production_readiness_requests_endpoint_and_graphdb_actions() -> None:
     )
     endpoint_action = action_plan["run_model_endpoint_smoke_after_credentials"]
     assert endpoint_action["status"] == "ready_after_user_action"
-    assert endpoint_action["requires_user_action"] == "login_to_model_gateway_or_provide_token"
+    assert endpoint_action["requires_user_action"] == "login_to_model_provider_or_provide_token"
     assert string_list(endpoint_action, "command") == [
         "python3",
         "02.Source_code/asa_runtime/scripts/smoke_production_gateway_client.py",
@@ -54,7 +54,7 @@ def test_production_readiness_requests_endpoint_and_graphdb_actions() -> None:
         "graphdb_import_bundle_dir"
     ]
     assert string_list(graphdb_action, "next_actions") == [
-        "build_research_graphdb_import_bundle",
+        "build_graphdb_import_bundle",
         "request_empty_neo4j_write_approval",
         "apply_graphdb_import_after_approval",
     ]
@@ -63,7 +63,7 @@ def test_production_readiness_requests_endpoint_and_graphdb_actions() -> None:
 def test_production_readiness_builds_graphdb_apply_command_when_bundle_exists() -> None:
     ledger = amorphous_blocked_ledger()
     ledger["artifact_paths"] = {
-        "graphdb_import_bundle_dir": "/tmp/run/research_graphdb",
+        "graphdb_import_bundle_dir": "/tmp/run/research_graph",
     }
 
     report = assess_production_readiness_from_payloads(ledger)
@@ -76,7 +76,7 @@ def test_production_readiness_builds_graphdb_apply_command_when_bundle_exists() 
         "python3",
         "02.Source_code/asa_runtime/scripts/apply_graphdb_import_bundle.py",
         "--bundle-dir",
-        "/tmp/run/research_graphdb",
+        "/tmp/run/research_graph",
         "--database-name",
         "atomistic_sim_agent_knowledge",
         "--approve-write",
@@ -105,6 +105,6 @@ def test_production_readiness_missing_remote_and_endpoint_actions_have_recovery_
     ]
     assert string_list(endpoint_action, "next_actions") == [
         "persist_validated_request_from_agent_plan",
-        "login_to_model_gateway_or_provide_token",
+        "login_to_model_provider_or_provide_token",
         "run_model_endpoint_smoke_after_credentials",
     ]

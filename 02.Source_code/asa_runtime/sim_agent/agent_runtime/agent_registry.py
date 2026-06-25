@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Final
 
 from sim_agent.agents_sdk_runtime.roles import AGENT_ROLES
+from sim_agent.agents_sdk_runtime.prompt_assets import load_domain_role_prompt
 from sim_agent.schemas._parse import JsonMap, as_mapping, as_str
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -174,7 +175,7 @@ def _role_seeds() -> tuple[AgentRoleSeed, ...]:
         ORCHESTRATOR_AGENT_ID,
         "Orchestrator",
         "routes work, approvals, and final run assembly",
-        "Coordinate the ASA runtime, preserve evidence, and route specialist work without bypassing gates.",
+        load_domain_role_prompt(ORCHESTRATOR_AGENT_ID),
     )
     specialists = tuple(
         AgentRoleSeed(role.role_id, role.display_name, role.boundary, role.instructions)

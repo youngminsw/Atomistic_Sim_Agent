@@ -8,14 +8,17 @@ from sim_agent.agents_sdk_runtime.spine_contract import runtime_spine_contract
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_gajae_like_gap_contract_marks_provider_session_loop_and_subagent_blockers() -> None:
+def test_gajae_like_runtime_contract_marks_all_spines_closed() -> None:
     contract = runtime_spine_contract()
+    spines = {spine.spine_id: spine for spine in contract.spines}
     gap_text = "\n".join(spine.current_gap for spine in contract.spines)
 
-    assert "fixed /v1/responses" in gap_text
-    assert "frozen DTO" in gap_text
-    assert "one-shot" in gap_text
-    assert "detached controllable job runtime" in gap_text
+    assert spines["provider_transport"].status.value == "complete"
+    assert "protocol-specific endpoints" in spines["provider_transport"].current_gap
+    assert all(spine.status.value == "complete" for spine in contract.spines)
+    assert "persistent per-domain agent sessions" in gap_text
+    assert "model/tool/runtime events" in gap_text
+    assert "bounded planner, architect, critic, and executor subagent jobs" in gap_text
 
 
 def test_gajae_like_gap_current_runtime_reports_gap_or_closed_state() -> None:
@@ -35,9 +38,12 @@ def test_gajae_like_gap_detectors_are_connected_to_runtime_sources() -> None:
     provider_model = (
         SOURCE_ROOT / "sim_agent" / "agents_sdk_runtime" / "provider_tool_choice_model.py"
     ).read_text(encoding="utf-8")
+    agent_loop_contract = (
+        SOURCE_ROOT / "sim_agent" / "agents_sdk_runtime" / "agent_loop_contract.py"
+    ).read_text(encoding="utf-8")
     live_turn = (SOURCE_ROOT / "sim_agent" / "agent_runtime" / "live_agent_turn.py").read_text(encoding="utf-8")
 
-    assert "class AsaAgentSession" in agent_loop
+    assert "class AsaAgentSession" in agent_loop_contract
     assert "ToolChoiceModel" in agent_loop
     assert "session.endpoint" in provider_model
-    assert "StaticToolChoiceModel" in live_turn or "offline" in live_turn
+    assert "tool_registry_for_agent" in live_turn

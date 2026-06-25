@@ -27,8 +27,11 @@ def test_agent_cli_writes_planned_run_ledger(tmp_path: Path) -> None:
     assert "agent_run_ledger_path=" in result.stdout
     assert ledger["request_id"] == "cli_ar_si_amorphous_hole"
     assert ledger["overall_status"] == "md_action_required"
-    assert ledger["model_provider"]["provider"] == "oauth_gateway"
+    assert ledger["model_provider"]["provider"] == "openai-codex"
     assert ledger["model_provider"]["model"] == "gpt-5-codex"
+    assert ledger["model_provider"]["base_url"] == "https://chatgpt.com/backend-api"
+    assert ledger["model_provider"]["auth_mode"] == "oauth"
+    assert ledger["model_provider"]["api_key_env"] == "ASA_OPENAI_CODEX_TOKEN"
     assert "agent_plan" in ledger["pipeline_stages"]
     assert ledger["artifact_paths"]["md_campaign_plan_path"].endswith("md_campaign_plan.json")
     assert ledger["artifact_paths"]["amorphous_structure_prep_manifest_path"].endswith(
@@ -47,10 +50,10 @@ def test_agent_cli_writes_planned_run_ledger(tmp_path: Path) -> None:
         "amorphous_structure_prep_remote_plan.json"
     )
     assert ledger["artifact_paths"]["graphdb_agent_report_path"].endswith(
-        "research_graphdb_agent.json"
+        "research_agent.json"
     )
     assert ledger["artifact_paths"]["graphdb_import_bundle_dir"].endswith(
-        "research_graphdb"
+        "research_graph"
     )
     assert ledger["artifact_paths"]["graphdb_ingest_report_path"].endswith(
         "ingest_report.json"
@@ -121,14 +124,14 @@ def test_agent_cli_records_user_configured_model_endpoint(tmp_path: Path) -> Non
     assert model["api_key_env"] == "OPENAI_API_KEY"
 
 
-def test_agent_cli_records_canonical_gateway_auth_mode(tmp_path: Path) -> None:
+def test_agent_cli_records_local_gateway_auth_mode(tmp_path: Path) -> None:
     output_dir = tmp_path / "agent-ledger-gateway"
 
     result = subprocess.run(
         _agent_cli_args(output_dir)
         + [
             "--model-provider",
-            "oauth_gateway",
+            "local_gateway",
             "--model-name",
             "gpt-5.5",
             "--model-base-url",
@@ -136,7 +139,7 @@ def test_agent_cli_records_canonical_gateway_auth_mode(tmp_path: Path) -> None:
             "--model-auth-mode",
             "gateway",
             "--model-api-key-env",
-            "MODEL_GATEWAY_TOKEN",
+            "RUNTIME_GATEWAY_TOKEN",
         ],
         cwd=PROJECT_ROOT,
         text=True,
@@ -147,10 +150,10 @@ def test_agent_cli_records_canonical_gateway_auth_mode(tmp_path: Path) -> None:
     ledger = json.loads((output_dir / "agent_run_ledger.json").read_text(encoding="utf-8"))
     model = ledger["model_provider"]
     assert result.returncode == 0, result.stdout + result.stderr
-    assert model["provider"] == "oauth_gateway"
+    assert model["provider"] == "local_gateway"
     assert model["base_url"] == "http://127.0.0.1:8787/v1"
     assert model["auth_mode"] == "gateway"
-    assert model["api_key_env"] == "MODEL_GATEWAY_TOKEN"
+    assert model["api_key_env"] == "RUNTIME_GATEWAY_TOKEN"
 
 
 def test_agent_cli_run_ledger_records_remote_chain_failure(tmp_path: Path) -> None:

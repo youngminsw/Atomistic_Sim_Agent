@@ -20,6 +20,7 @@ from sim_agent.agent_cli_remote_actions import (
     run_requested_remote_actions,
 )
 from sim_agent.compute import ComputePolicyError
+from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV
 from sim_agent.schemas._parse import JsonMap, as_str, require
 from sim_agent.schemas.errors import SchemaValidationError
 from sim_agent.ui.agent_compute import (
@@ -121,12 +122,12 @@ def _parser() -> argparse.ArgumentParser:
         "--lammps-structure-preparation",
         default="user_supplied_relaxed_structure",
     )
-    parser.add_argument("--model-provider", default="oauth_gateway")
+    parser.add_argument("--model-provider", default="openai-codex")
     parser.add_argument("--model-name", default="gpt-5-codex")
     parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default="high")
-    parser.add_argument("--model-base-url", default="https://model-gateway.local/v1")
-    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="gateway")
-    parser.add_argument("--model-api-key-env", default="MODEL_GATEWAY_TOKEN")
+    parser.add_argument("--model-base-url", default=OPENAI_CODEX_BASE_URL)
+    parser.add_argument("--model-auth-mode", choices=("api_key", "oauth", "gateway", "none"), default="oauth")
+    parser.add_argument("--model-api-key-env", default=OPENAI_CODEX_TOKEN_ENV)
     parser.add_argument("--host", required=True)
     parser.add_argument("--environment-name", required=True)
     parser.add_argument("--remote-user", default="swym")
