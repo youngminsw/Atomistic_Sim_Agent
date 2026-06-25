@@ -27,8 +27,6 @@ from sim_agent.schemas._parse import JsonMap, as_sequence, as_str, require
 from sim_agent.schemas.errors import SchemaValidationError
 from sim_agent.agents_sdk_runtime.invocation_artifacts import skill_invocation_payload
 from sim_agent.agents_sdk_runtime.skill_registry import run_registered_agent_skill
-from sim_agent.agents_sdk_runtime.workflow_harness import run_workflow_harness_smoke
-from sim_agent.agents_sdk_runtime.workflow_runtime import respond_workflow_gate
 
 from .tool_types import RuntimeToolCall, RuntimeToolError, RuntimeToolResult
 
@@ -142,75 +140,6 @@ def execute_skill_invoke(call: RuntimeToolCall, session_dir: Path) -> RuntimeToo
     )
 
 
-def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
-    if not call.caller_agent_id:
-        return _blocked(
-            call,
-            session_dir,
-            ToolBlockRequest("workflow_start_trusted_caller_required", {"tool_name": call.tool_name}),
-        )
-    try:
-        workflow_id = as_str(require(call.arguments, "workflow_id"), "workflow_id")
-        payload = _optional_mapping(call.arguments, "payload")
-    except SchemaValidationError as exc:
-        return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
-    identity_blocker = _workflow_start_identity_blocker(call, payload)
-    if identity_blocker:
-        return _blocked(
-            call,
-            session_dir,
-            ToolBlockRequest(identity_blocker, {"caller_agent_id": call.caller_agent_id}),
-        )
-    payload = _workflow_start_payload(call, payload)
-    result = run_workflow_harness_smoke(workflow_id, payload, session_dir / "workflows")
-    output: JsonMap = {
-        "workflow_id": result.workflow_id,
-        "status": result.status,
-        "current_state": result.current_state,
-        "verification_gate": result.verification_gate,
-        "gate_status": result.gate_status,
-        "evidence_keys": list(result.evidence_keys),
-        "missing_evidence": list(result.missing_evidence),
-        "resumable": result.resumable,
-        "ledger_ref": f"workflows/{result.ledger_ref}",
-        "blockers": list(result.blockers),
-        "artifact_refs": [f"workflows/{artifact_ref}" for artifact_ref in result.artifact_refs],
-        "actor_agent_id": result.actor_agent_id,
-        "owner_agent_id": result.owner_agent_id,
-        "target_agent_id": result.target_agent_id,
-        "goal_id": result.goal_id,
-    }
-    if result.gate is not None:
-        output["gate"] = result.gate
-    blocker = result.blockers[0] if result.blockers else None
-    return _write_result(
-        call,
-        session_dir,
-        RuntimeToolResult(call.tool_name, result.status, output, _ledger_ref(call), blocker),
-    )
-
-
-def execute_workflow_gate_response(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
-    if not call.caller_agent_id:
-        return _blocked(
-            call,
-            session_dir,
-            ToolBlockRequest("workflow_gate_trusted_caller_required", {"tool_name": call.tool_name}),
-        )
-    result = respond_workflow_gate(
-        session_dir / "workflows",
-        dict(call.arguments) | {"responder_agent_id": call.caller_agent_id},
-    )
-    blocker = result.blockers[0] if result.blockers else None
-    output = result.to_json()
-    output = dict(output) | {"ledger_ref": f"workflows/{result.ledger_ref}"}
-    return _write_result(
-        call,
-        session_dir,
-        RuntimeToolResult(call.tool_name, result.status, output, _ledger_ref(call), blocker),
-    )
-
-
 def _send_message_request(call: RuntimeToolCall) -> SendAgentMessageRequest:
     return SendAgentMessageRequest(
         from_agent=as_str(require(call.arguments, "from_agent"), "from_agent"),
@@ -299,28 +228,6 @@ def _optional_mapping(arguments: JsonMap, field: str) -> JsonMap:
     if isinstance(value, dict):
         return value
     raise SchemaValidationError(f"{field} must be an object")
-
-
-def _workflow_start_payload(call: RuntimeToolCall, payload: JsonMap) -> JsonMap:
-    output = dict(payload)
-    output["actor_agent_id"] = call.caller_agent_id
-    output["caller_agent_id"] = call.caller_agent_id
-    for field in ("owner_agent_id", "target_agent_id", "goal_id"):
-        value = call.arguments.get(field)
-        if isinstance(value, str) and value:
-            output[field] = value
-    return output
-
-
-def _workflow_start_identity_blocker(call: RuntimeToolCall, payload: JsonMap) -> str:
-    for source in (call.arguments, payload):
-        for field in ("actor_agent_id", "caller_agent_id"):
-            value = source.get(field)
-            if value is None:
-                continue
-            if not isinstance(value, str) or value != call.caller_agent_id:
-                return "workflow_start_identity_mismatch"
-    return ""
 
 
 def _runtime_session_dir(session_dir: Path) -> Path:
