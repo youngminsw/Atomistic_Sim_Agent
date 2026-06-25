@@ -115,11 +115,11 @@ def test_workflow_gate_response_tool_accepts_gate_and_writes_metadata_ledger(tmp
             arguments={
                 "workflow_id": "ralplan",
                 "gate_id": "approval",
-                "responder_agent_id": "qa_agent",
                 "value": "approve",
             },
             run_id="workflow-gate-response",
             session_id=state.session_id,
+            caller_agent_id="qa_agent",
         ),
         registry,
         state.session_dir,
@@ -175,11 +175,11 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
             arguments={
                 "workflow_id": "deep-interview",
                 "gate_id": "clarify",
-                "responder_agent_id": "qa_agent",
                 "value": {"decision": "clear"},
             },
             run_id="workflow-schema-gate-response",
             session_id=state.session_id,
+            caller_agent_id="qa_agent",
         ),
         registry,
         state.session_dir,
@@ -190,6 +190,71 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
     assert result.status == "accepted"
     assert result.output["workflow_id"] == "deep-interview"
     assert result.output["target_agent_id"] == "qa_agent"
+
+
+def test_workflow_gate_response_tool_rejects_spoofed_responder_agent_id(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+    registry = default_tool_registry()
+    execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ralplan",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "qa_agent",
+                "goal_id": "goal-spoof-gate",
+                "payload": {
+                    "request_id": "workflow-spoof-gate",
+                    "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
+                    "gate": {"gate_id": "approval", "gate_kind": "enum", "allowed_values": ["approve"]},
+                },
+            },
+            run_id="workflow-spoof-start",
+            session_id=state.session_id,
+            caller_agent_id="orchestrator",
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_gate_response",
+            arguments={
+                "workflow_id": "ralplan",
+                "gate_id": "approval",
+                "responder_agent_id": "qa_agent",
+                "value": "approve",
+            },
+            run_id="workflow-spoof-response",
+            session_id=state.session_id,
+            caller_agent_id="md_agent",
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_gate_responder_denied"
+    assert result.output["target_agent_id"] == "qa_agent"
+
+
+def test_workflow_gate_response_tool_requires_trusted_caller(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_gate_response",
+            arguments={"workflow_id": "ralplan", "gate_id": "approval", "value": "approve"},
+            run_id="workflow-missing-caller",
+            session_id=state.session_id,
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_gate_trusted_caller_required"
 
 
 def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp_path: Path) -> None:
@@ -265,9 +330,9 @@ def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> No
     assert tools["workflow_gate_response"]["parameters"]["required"] == [
         "workflow_id",
         "gate_id",
-        "responder_agent_id",
         "value",
     ]
+    assert "responder_agent_id" not in tools["workflow_gate_response"]["parameters"]["properties"]
     value_schema = tools["workflow_gate_response"]["parameters"]["properties"]["value"]
     assert {"type": "object", "additionalProperties": True} in value_schema["anyOf"]
 

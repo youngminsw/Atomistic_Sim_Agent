@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TextIO
 
 from sim_agent.agents_sdk_runtime import respond_workflow_gate, run_workflow_harness_smoke, workflow_harness_catalog
+from sim_agent.agents_sdk_runtime.workflow_gate_protocol import safe_id
 
 from .tui_parse import parse_options
 from .tui_state import TuiState, append_event
@@ -48,6 +49,8 @@ def handle_workflow(args: Sequence[str], state: TuiState, output_stream: TextIO)
         output_stream.write(f"workflow_gate_ledger_ref={result.gate.get('ledger_ref', '')}\n")
     if result.evidence_keys:
         output_stream.write(f"workflow_evidence_keys={','.join(result.evidence_keys)}\n")
+    if result.artifact_refs:
+        output_stream.write(f"workflow_artifact_refs={','.join(result.artifact_refs)}\n")
     if result.missing_evidence:
         output_stream.write(f"workflow_missing_evidence={','.join(result.missing_evidence)}\n")
     output_stream.write(f"workflow_ledger_path={output_dir / result.ledger_ref}\n")
@@ -78,7 +81,7 @@ def handle_workflow_response(args: Sequence[str], state: TuiState, output_stream
             "workflow_id": workflow_id,
             "gate_id": gate_id,
             "responder_agent_id": responder_agent_id,
-            "value": _response_value(value_text),
+            "value": _response_value(value_text, output_dir, workflow_id, gate_id),
         },
     )
     append_event(state, "workflow_gate_response", f"{result.workflow_id}:{result.gate_id}:{result.status}")
@@ -179,14 +182,30 @@ def _response_schema(raw: str) -> dict[str, object]:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def _response_value(raw: str) -> object:
+def _response_value(raw: str, output_dir: Path, workflow_id: str, gate_id: str) -> object:
     stripped = raw.strip()
+    if _stored_gate_kind(output_dir, workflow_id, gate_id) == "response_schema":
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return raw
     if not stripped.startswith(("{", "[", '"')):
         return raw
     try:
         return json.loads(stripped)
     except json.JSONDecodeError:
         return raw
+
+
+def _stored_gate_kind(output_dir: Path, workflow_id: str, gate_id: str) -> str:
+    gate_path = output_dir / safe_id(workflow_id) / "gates" / f"{safe_id(gate_id)}.json"
+    try:
+        payload = json.loads(gate_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if isinstance(payload, dict) and isinstance(payload.get("gate_kind"), str):
+        return payload["gate_kind"]
+    return ""
 
 
 def _flag_enabled(options: dict[str, str], flags: tuple[str, ...], key: str) -> bool:

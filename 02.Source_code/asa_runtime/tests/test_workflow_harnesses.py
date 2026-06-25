@@ -38,7 +38,10 @@ def test_workflow_harness_smoke_writes_resumable_state_machine_ledger(tmp_path: 
     assert ledger["resumable"] is True
     assert ledger["gate_status"] == "passed"
     assert ledger["missing_evidence"] == []
+    assert ledger["artifact_refs"] == ["deep-interview/transcript.jsonl", "deep-interview/handoff.md"]
     assert [event["state"] for event in ledger["events"]][-1] == "handoff_ready"
+    assert (tmp_path / "deep-interview" / "transcript.jsonl").is_file()
+    assert (tmp_path / "deep-interview" / "handoff.md").is_file()
 
 
 def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: Path) -> None:
@@ -69,10 +72,15 @@ def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: 
     assert "current_state=handoff_ready" in result.stdout
     assert "current_state=verification_plan_ready" in result.stdout
     assert "workflow_gate_status=passed" in result.stdout
+    assert "workflow_artifact_refs=deep-interview/transcript.jsonl,deep-interview/handoff.md" in result.stdout
+    assert "workflow_artifact_refs=ralplan/prd.md,ralplan/test-spec.md,ralplan/consensus.json" in result.stdout
     assert "/workflow <name>" in result.stdout
     assert "/ralplan" in result.stdout
     assert (workflow_dir / "deep-interview" / "workflow_harness_ledger.json").is_file()
     assert (workflow_dir / "ralplan" / "workflow_harness_ledger.json").is_file()
+    assert (workflow_dir / "ralplan" / "prd.md").is_file()
+    assert (workflow_dir / "ralplan" / "test-spec.md").is_file()
+    assert (workflow_dir / "ralplan" / "consensus.json").is_file()
 
 
 def test_workflow_harness_unknown_ids_write_only_fixed_unknown_ledger(tmp_path: Path) -> None:

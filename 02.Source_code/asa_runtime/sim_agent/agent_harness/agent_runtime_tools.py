@@ -161,6 +161,7 @@ def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeT
         "resumable": result.resumable,
         "ledger_ref": f"workflows/{result.ledger_ref}",
         "blockers": list(result.blockers),
+        "artifact_refs": [f"workflows/{artifact_ref}" for artifact_ref in result.artifact_refs],
         "actor_agent_id": result.actor_agent_id,
         "owner_agent_id": result.owner_agent_id,
         "target_agent_id": result.target_agent_id,
@@ -177,7 +178,16 @@ def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeT
 
 
 def execute_workflow_gate_response(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
-    result = respond_workflow_gate(session_dir / "workflows", call.arguments)
+    if not call.caller_agent_id:
+        return _blocked(
+            call,
+            session_dir,
+            ToolBlockRequest("workflow_gate_trusted_caller_required", {"tool_name": call.tool_name}),
+        )
+    result = respond_workflow_gate(
+        session_dir / "workflows",
+        dict(call.arguments) | {"responder_agent_id": call.caller_agent_id},
+    )
     blocker = result.blockers[0] if result.blockers else None
     output = result.to_json()
     output = dict(output) | {"ledger_ref": f"workflows/{result.ledger_ref}"}

@@ -29,7 +29,7 @@ REQUIRED_ROW_IDS = {
     "ultragoal_signoff_checkpoint_gate",
     "tui_tool_persistence_coverage",
 }
-ALLOWED_STATUSES = {"planned", "pending_implementation", "implemented"}
+ALLOWED_STATUSES = {"implemented"}
 
 
 def test_gajae_workflow_parity_matrix_has_required_rows_and_fields() -> None:
@@ -52,6 +52,9 @@ def test_gajae_workflow_parity_matrix_has_required_rows_and_fields() -> None:
         assert row["asa_target"], row_id
         assert row["tests"], row_id
         assert row["verification_evidence"], row_id
+        assert not any("planned:" in item for item in row["asa_target"]), row_id
+        assert not any("planned:" in item for item in row["tests"]), row_id
+        assert row["verification_evidence"] == [".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"], row_id
 
 
 def test_gajae_workflow_parity_matrix_markdown_mentions_every_required_row() -> None:

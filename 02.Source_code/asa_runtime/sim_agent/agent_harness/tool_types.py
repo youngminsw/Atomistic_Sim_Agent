@@ -24,6 +24,7 @@ class RuntimeToolCall:
     arguments: JsonMap
     run_id: str
     session_id: str
+    caller_agent_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -418,7 +418,6 @@ def default_tool_registry() -> ToolRegistry:
                     {
                         "workflow_id": {"type": "string"},
                         "gate_id": {"type": "string"},
-                        "responder_agent_id": {"type": "string"},
                         "value": {
                             "anyOf": [
                                 {"type": "string"},
@@ -431,7 +430,7 @@ def default_tool_registry() -> ToolRegistry:
                             ]
                         },
                     },
-                    ("workflow_id", "gate_id", "responder_agent_id", "value"),
+                    ("workflow_id", "gate_id", "value"),
                 ),
                 side_effect_class="session_workflow_ledger",
                 executor=execute_workflow_gate_response,

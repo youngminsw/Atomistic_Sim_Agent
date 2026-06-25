@@ -12,16 +12,16 @@
       "behavioral_contract": "A workflow gate may be delivered as a flat non-event notification with type, gate_id, stage, kind, schema, schema_hash, context, created_at, and options. Clients parse it as a workflow gate without requiring an event envelope.",
       "asa_target": [
         "sim_agent/agents_sdk_runtime/workflow_harness.py",
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: tests/test_workflow_gate_protocol.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "tests/test_workflow_gate_protocol.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_workflow_gate_protocol.py::test_flat_workflow_gate_shape"
+        "tests/test_workflow_runtime_parity.py::test_rich_gate_blocks_until_runtime_response_and_persists_flat_shape"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -33,15 +33,15 @@
       "asa_target": [
         "sim_agent/agents_sdk_runtime/agent_loop.py",
         "sim_agent/agents_sdk_runtime/provider_tool_choice_model.py",
-        "planned: tests/test_workflow_gate_protocol.py"
+        "tests/test_workflow_gate_protocol.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_workflow_gate_protocol.py::test_event_envelope_and_flat_gate_frames"
+        "tests/test_workflow_runtime_parity.py::test_workflow_gate_schema_hash_includes_goal_identity"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -51,17 +51,17 @@
       ],
       "behavioral_contract": "A ralplan approval gate carries stage ralplan:approval, kind approval, boolean schema, options, and context identifying the ralplan approval phase. ASA must preserve the gate fields for approval response handling.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: tests/test_ralplan_runtime.py",
-        "planned: tests/test_workflow_gate_protocol.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "tests/test_workflow_runtime_parity.py",
+        "tests/test_workflow_gate_protocol.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_ralplan_runtime.py::test_ralplan_approval_gate_blocks_handoff_until_resolved"
+        "tests/test_workflow_runtime_parity.py::test_rich_gate_blocks_until_runtime_response_and_persists_flat_shape"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -72,17 +72,17 @@
       ],
       "behavioral_contract": "A select/question gate with a string enum rejects an out-of-enum response with invalid_workflow_gate_response and accepts a valid enum value, after which the client returns to idle.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
-        "planned: tests/test_workflow_gate_protocol.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/agent_harness/agent_runtime_tools.py",
+        "tests/test_workflow_gate_protocol.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_workflow_gate_protocol.py::test_enum_gate_rejects_invalid_and_accepts_valid_response"
+        "tests/test_workflow_gate_protocol.py::test_workflow_gate_response_rejects_invalid_enum_accepts_valid_once"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -92,16 +92,17 @@
       ],
       "behavioral_contract": "Interactive input is represented as a workflow_gate with kind question and context describing the UI/request. ASA deep-interview must create one pending question gate per round rather than batching multiple rounds.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: tests/test_deep_interview_runtime.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "tests/test_workflow_harnesses.py",
+        "tests/test_tui_workflow_activity.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_deep_interview_runtime.py::test_initial_run_blocks_on_one_question_gate"
+        "tests/test_workflow_runtime_parity.py::test_workflow_runtime_resumes_existing_gate_record"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -111,17 +112,17 @@
       ],
       "behavioral_contract": "Action replies follow first-valid-resolution-wins semantics. Duplicate replies with a matching idempotency key and answer may be accepted, while conflicting idempotency, already answered, unknown action, unauthorized, and resolver-unavailable paths are rejected with explicit reasons.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
-        "planned: tests/test_workflow_gate_protocol.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/agent_harness/agent_runtime_tools.py",
+        "tests/test_workflow_gate_protocol.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_workflow_gate_protocol.py::test_gate_response_lifecycle_rejects_duplicate_unknown_and_unavailable"
+        "tests/test_workflow_gate_protocol.py::test_workflow_gate_response_rejects_unknown_gate_and_malformed_payload"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -131,17 +132,17 @@
       ],
       "behavioral_contract": "Session context updates may include last assistant message, current task/todo summary, and goal status summary. ASA workflow state must expose task and goal summaries for prompts, tools, and TUI activity.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: sim_agent/cli/tui_agent_activity.py",
-        "planned: tests/test_tui_workflow_activity.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/cli/tui_workflow.py",
+        "tests/test_tui_workflow_activity.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_tui_workflow_activity.py::test_workflow_activity_renders_task_and_goal_context"
+        "tests/test_tui_workflow_activity.py::test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -152,17 +153,17 @@
       ],
       "behavioral_contract": "An ultragoal-style signoff/checkpoint gate uses a workflow_gate stage such as ultragoal:signoff with execution or approval semantics and context identifying the skill/goal. ASA must persist goal/checkpoint context and block or resolve through the shared gate protocol.",
       "asa_target": [
-        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "planned: tests/test_ultragoal_runtime.py",
-        "planned: tests/test_workflow_goal_authority.py"
+        "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "tests/test_workflow_runtime_parity.py",
+        "tests/test_workflow_goal_authority.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_ultragoal_runtime.py::test_ultragoal_checkpoint_gate_records_owner_and_goal_context"
+        "tests/test_tui_workflow_activity.py::test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     },
     {
@@ -174,20 +175,20 @@
       ],
       "behavioral_contract": "Workflow gates, replies, task/goal summaries, and runtime events must remain observable through shared tool and TUI surfaces with durable ledger/artifact references rather than prompt-only state.",
       "asa_target": [
-        "planned: sim_agent/agent_harness/tools.py",
-        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
-        "planned: sim_agent/cli/tui_workflow.py",
-        "planned: sim_agent/cli/tui_activity_render.py"
+        "sim_agent/agent_harness/tools.py",
+        "sim_agent/agent_harness/agent_runtime_tools.py",
+        "sim_agent/cli/tui_workflow.py",
+        "tests/test_skill_workflow_runtime.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "planned: tests/test_skill_workflow_runtime.py",
-        "planned: tests/test_agents_sdk_tool_gateway_runtime.py",
-        "planned: tests/test_tui_workflow_activity.py"
+        "tests/test_skill_workflow_runtime.py",
+        "tests/test_workflow_goal_authority.py",
+        "tests/test_tui_workflow_activity.py"
       ],
-      "status": "pending_implementation",
+      "status": "implemented",
       "verification_evidence": [
-        ".omo/evidence/task-2-parity-green.log"
+        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
       ]
     }
   ]

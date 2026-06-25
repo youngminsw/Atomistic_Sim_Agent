@@ -48,12 +48,19 @@ def test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger(tmp_path
     assert "workflow_target_agent_id=qa_agent" in result.stdout
     assert "workflow=ultragoal" in result.stdout
     assert "workflow_goal_id=goal-ultra" in result.stdout
+    assert "workflow_artifact_refs=ultragoal/brief.md,ultragoal/goals.json,ultragoal/ledger.jsonl" in result.stdout
     assert "/workflow-response <gate-id> <value>" in result.stdout
 
     deep_gate = workflow_dir / "deep-interview" / "gates" / "clarify.json"
     ralplan_gate = workflow_dir / "ralplan" / "gates" / "approval.json"
     assert deep_gate.is_file()
     assert ralplan_gate.is_file()
+    assert (workflow_dir / "deep-interview" / "handoff.md").is_file()
+    assert (workflow_dir / "ralplan" / "prd.md").is_file()
+    assert (workflow_dir / "ralplan" / "test-spec.md").is_file()
+    assert (workflow_dir / "ultragoal" / "brief.md").is_file()
+    assert (workflow_dir / "ultragoal" / "goals.json").is_file()
+    assert (workflow_dir / "ultragoal" / "ledger.jsonl").is_file()
     assert json.loads(deep_gate.read_text(encoding="utf-8"))["status"] == "accepted"
     assert json.loads(ralplan_gate.read_text(encoding="utf-8"))["target_agent_id"] == "qa_agent"
 
@@ -101,6 +108,25 @@ def test_tui_workflow_response_preserves_cli_enum_values_as_strings(tmp_path: Pa
     assert "workflow_response_status=accepted" in result.stdout
     gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "numeric.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] == "1"
+
+
+def test_tui_workflow_response_parses_response_schema_json_scalars(tmp_path: Path) -> None:
+    workflow_dir = tmp_path / "workflows"
+    result = _run_tui(
+        tmp_path,
+        (
+            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            "--gate-id confirmed --gate-kind response_schema --response-schema '{\"type\":\"boolean\"}' "
+            f"--output-dir {workflow_dir}\n"
+            f"/workflow-response confirmed true --workflow-id deep-interview --output-dir {workflow_dir}\n"
+            "/exit\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "workflow_response_status=accepted" in result.stdout
+    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "confirmed.json").read_text(encoding="utf-8"))
+    assert gate_payload["response_value"] is True
 
 
 def _run_tui(tmp_path: Path, input_text: str) -> subprocess.CompletedProcess[str]:

@@ -79,6 +79,7 @@ class AsaAgentSession:
             arguments=selected.arguments,
             run_id=self.run_id,
             session_id=self.session_id,
+            caller_agent_id=self.agent_id,
         )
 
 
