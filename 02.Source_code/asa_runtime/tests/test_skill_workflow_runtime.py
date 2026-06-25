@@ -73,6 +73,7 @@ def test_workflow_start_tool_writes_resumable_workflow_ledger(tmp_path: Path) ->
             },
             run_id="workflow-run",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         default_tool_registry(),
         state.session_dir,
@@ -104,6 +105,7 @@ def test_workflow_gate_response_tool_accepts_gate_and_writes_metadata_ledger(tmp
             },
             run_id="workflow-gate-start",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         registry,
         state.session_dir,
@@ -164,6 +166,7 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
             },
             run_id="workflow-schema-gate-start",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         registry,
         state.session_dir,
@@ -257,7 +260,83 @@ def test_workflow_gate_response_tool_requires_trusted_caller(tmp_path: Path) -> 
     assert result.blocker == "workflow_gate_trusted_caller_required"
 
 
-def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp_path: Path) -> None:
+def test_workflow_start_tool_requires_trusted_caller(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ultragoal",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "orchestrator",
+                "payload": {"request_id": "workflow-start-missing-caller", "evidence": {"codex_goal_snapshot": "ok"}},
+            },
+            run_id="workflow-start-missing-caller",
+            session_id=state.session_id,
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_start_trusted_caller_required"
+
+
+def test_workflow_start_tool_rejects_model_supplied_actor_spoof(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ultragoal",
+                "actor_agent_id": "orchestrator",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "orchestrator",
+                "payload": {"request_id": "workflow-start-spoof", "evidence": {"codex_goal_snapshot": "ok"}},
+            },
+            run_id="workflow-start-spoof",
+            session_id=state.session_id,
+            caller_agent_id="md_agent",
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_start_identity_mismatch"
+
+
+def test_workflow_start_tool_rejects_payload_actor_spoof(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ultragoal",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "orchestrator",
+                "payload": {
+                    "request_id": "workflow-start-payload-spoof",
+                    "actor_agent_id": "orchestrator",
+                    "evidence": {"codex_goal_snapshot": "ok"},
+                },
+            },
+            run_id="workflow-start-payload-spoof",
+            session_id=state.session_id,
+            caller_agent_id="md_agent",
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_start_identity_mismatch"
+
+
+def test_workflow_start_tool_blocks_domain_peer_start_when_trusted_caller_is_domain(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
 
     result = execute_runtime_tool(
@@ -265,7 +344,6 @@ def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp
             tool_name="workflow_start",
             arguments={
                 "workflow_id": "ralplan",
-                "actor_agent_id": "md_agent",
                 "owner_agent_id": "md_agent",
                 "target_agent_id": "qa_agent",
                 "payload": {
@@ -275,6 +353,7 @@ def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp
             },
             run_id="workflow-peer-denied",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         default_tool_registry(),
         state.session_dir,
@@ -285,7 +364,7 @@ def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp
     assert result.output["blockers"] == ["workflow_authority_peer_denied"]
 
 
-def test_workflow_start_tool_blocks_domain_to_orchestrator_start_when_actor_is_provided(tmp_path: Path) -> None:
+def test_workflow_start_tool_blocks_domain_to_orchestrator_start_when_trusted_caller_is_domain(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
 
     result = execute_runtime_tool(
@@ -293,7 +372,6 @@ def test_workflow_start_tool_blocks_domain_to_orchestrator_start_when_actor_is_p
             tool_name="workflow_start",
             arguments={
                 "workflow_id": "ultraqa",
-                "actor_agent_id": "qa_agent",
                 "owner_agent_id": "qa_agent",
                 "target_agent_id": "orchestrator",
                 "payload": {
@@ -303,6 +381,7 @@ def test_workflow_start_tool_blocks_domain_to_orchestrator_start_when_actor_is_p
             },
             run_id="workflow-orchestrator-denied",
             session_id=state.session_id,
+            caller_agent_id="qa_agent",
         ),
         default_tool_registry(),
         state.session_dir,
@@ -327,6 +406,8 @@ def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> No
     assert "workflow_gate_response" in tools
     assert "qa_physics_and_runtime_evidence" in tools["skill_invoke"]["parameters"]["properties"]["skill_id"]["enum"]
     assert "ultragoal" in tools["workflow_start"]["parameters"]["properties"]["workflow_id"]["enum"]
+    assert "actor_agent_id" not in tools["workflow_start"]["parameters"]["properties"]
+    assert "caller_agent_id" not in tools["workflow_start"]["parameters"]["properties"]
     assert tools["workflow_gate_response"]["parameters"]["required"] == [
         "workflow_id",
         "gate_id",

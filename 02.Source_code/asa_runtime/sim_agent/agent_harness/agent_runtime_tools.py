@@ -143,12 +143,25 @@ def execute_skill_invoke(call: RuntimeToolCall, session_dir: Path) -> RuntimeToo
 
 
 def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
+    if not call.caller_agent_id:
+        return _blocked(
+            call,
+            session_dir,
+            ToolBlockRequest("workflow_start_trusted_caller_required", {"tool_name": call.tool_name}),
+        )
     try:
         workflow_id = as_str(require(call.arguments, "workflow_id"), "workflow_id")
         payload = _optional_mapping(call.arguments, "payload")
-        payload = _workflow_start_payload(call, payload)
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
+    identity_blocker = _workflow_start_identity_blocker(call, payload)
+    if identity_blocker:
+        return _blocked(
+            call,
+            session_dir,
+            ToolBlockRequest(identity_blocker, {"caller_agent_id": call.caller_agent_id}),
+        )
+    payload = _workflow_start_payload(call, payload)
     result = run_workflow_harness_smoke(workflow_id, payload, session_dir / "workflows")
     output: JsonMap = {
         "workflow_id": result.workflow_id,
@@ -290,15 +303,24 @@ def _optional_mapping(arguments: JsonMap, field: str) -> JsonMap:
 
 def _workflow_start_payload(call: RuntimeToolCall, payload: JsonMap) -> JsonMap:
     output = dict(payload)
-    caller = call.arguments.get("caller_agent_id")
-    actor = call.arguments.get("actor_agent_id") or caller
-    if isinstance(actor, str) and actor:
-        output["actor_agent_id"] = actor
+    output["actor_agent_id"] = call.caller_agent_id
+    output["caller_agent_id"] = call.caller_agent_id
     for field in ("owner_agent_id", "target_agent_id", "goal_id"):
         value = call.arguments.get(field)
         if isinstance(value, str) and value:
             output[field] = value
     return output
+
+
+def _workflow_start_identity_blocker(call: RuntimeToolCall, payload: JsonMap) -> str:
+    for source in (call.arguments, payload):
+        for field in ("actor_agent_id", "caller_agent_id"):
+            value = source.get(field)
+            if value is None:
+                continue
+            if not isinstance(value, str) or value != call.caller_agent_id:
+                return "workflow_start_identity_mismatch"
+    return ""
 
 
 def _runtime_session_dir(session_dir: Path) -> Path:

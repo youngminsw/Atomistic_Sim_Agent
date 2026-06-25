@@ -119,14 +119,26 @@ def test_tui_workflow_response_parses_response_schema_json_scalars(tmp_path: Pat
             "--gate-id confirmed --gate-kind response_schema --response-schema '{\"type\":\"boolean\"}' "
             f"--output-dir {workflow_dir}\n"
             f"/workflow-response confirmed true --workflow-id deep-interview --output-dir {workflow_dir}\n"
+            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            "--gate-id score --gate-kind response_schema --response-schema '{\"type\":\"number\"}' "
+            f"--output-dir {workflow_dir}\n"
+            f"/workflow-response score 1 --workflow-id deep-interview --output-dir {workflow_dir}\n"
+            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            "--gate-id optional --gate-kind response_schema --response-schema '{\"type\":\"null\"}' "
+            f"--output-dir {workflow_dir}\n"
+            f"/workflow-response optional null --workflow-id deep-interview --output-dir {workflow_dir}\n"
             "/exit\n"
         ),
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "workflow_response_status=accepted" in result.stdout
+    assert result.stdout.count("workflow_response_status=accepted") == 3
     gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "confirmed.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] is True
+    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "score.json").read_text(encoding="utf-8"))
+    assert gate_payload["response_value"] == 1
+    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "optional.json").read_text(encoding="utf-8"))
+    assert gate_payload["response_value"] is None
 
 
 def _run_tui(tmp_path: Path, input_text: str) -> subprocess.CompletedProcess[str]:

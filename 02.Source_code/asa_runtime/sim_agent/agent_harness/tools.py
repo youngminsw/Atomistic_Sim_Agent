@@ -393,8 +393,6 @@ def default_tool_registry() -> ToolRegistry:
                             "type": "string",
                             "enum": ["deep-interview", "ralplan", "ultrawork", "ultraqa", "ultragoal"],
                         },
-                        "actor_agent_id": {"type": "string"},
-                        "caller_agent_id": {"type": "string"},
                         "owner_agent_id": {"type": "string"},
                         "target_agent_id": {"type": "string"},
                         "goal_id": {"type": "string"},
