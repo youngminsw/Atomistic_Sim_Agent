@@ -36,6 +36,14 @@ def test_compaction_smoke_cli_writes_compaction_resume_evidence(tmp_path: Path) 
     assert matrix["checks"]["orphan_tool_result_blocked"] is True
     assert matrix["checks"]["prompt_manifest_has_compact_summary_layer"] is True
     assert matrix["checks"]["prompt_manifest_has_validated_summary"] is True
+    assert matrix["checks"]["old_raw_retained_on_disk"] is True
+    assert matrix["checks"]["old_raw_absent_from_prompt_manifest"] is True
+    assert matrix["checks"]["old_raw_absent_from_provider_protocol"] is True
+    assert matrix["checks"]["tail_visible_in_prompt_manifest"] is True
+    assert matrix["checks"]["current_turn_visible_in_prompt_manifest"] is True
+    assert matrix["checks"]["summary_visible_in_provider_protocol"] is True
+    assert matrix["checks"]["tail_visible_in_provider_protocol"] is True
+    assert matrix["checks"]["current_turn_visible_in_provider_protocol"] is True
     assert matrix["poison"]["blocker"] == "compact_summary_poisoned"
     assert matrix["stale_cursor"]["blocker"] == "stale_compact_cursor"
     assert matrix["orphan_tool_result"]["blocker"] == "orphan_tool_result"
@@ -45,6 +53,7 @@ def test_compaction_smoke_cli_writes_compaction_resume_evidence(tmp_path: Path) 
     assert "prompt_manifest_layer_kinds=" in transcript
     assert e2e["status"] == "succeeded"
     assert e2e["provider_prompt_manifest"]["has_compact_summary_layer"] is True
+    assert e2e["provider_protocol"]["old_raw_absent"] is True
 
 
 def _run_compaction_smoke(output_dir: Path) -> subprocess.CompletedProcess[str]:

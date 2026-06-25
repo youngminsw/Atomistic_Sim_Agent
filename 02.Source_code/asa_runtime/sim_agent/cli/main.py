@@ -156,6 +156,8 @@ def _run_adversarial_e2e_smoke(args: argparse.Namespace) -> int:
 
 
 def _run_tui_control_room_smoke(args: argparse.Namespace) -> int:
+    from sim_agent.cli.tui_control_room_smoke import TuiControlRoomSmokeRequest, run_tui_control_room_smoke
+
     if args.output_dir is None:
         print("tui_control_room_smoke_error=output_dir_required")
         return 2

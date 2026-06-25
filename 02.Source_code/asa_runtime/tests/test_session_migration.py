@@ -17,7 +17,7 @@ from sim_agent.agent_runtime import (
 from sim_agent.agent_runtime.global_session_store import SCHEMA_BACKUP_SUFFIX, paths_for
 
 
-def test_new_session_writes_v2_markers_and_v3_compaction_cursor(tmp_path: Path) -> None:
+def test_new_session_writes_v2_markers_and_v4_compaction_cursor(tmp_path: Path) -> None:
     created = open_global_session(GlobalSessionOpenRequest(requested_dir=tmp_path, default_root=tmp_path, model=_model()))
     append_global_session_event(created.record.session_dir, "user_turn", "hello")
     append_agent_message(created.record.session_dir, "md_agent", "user", "etch silicon")
@@ -41,9 +41,9 @@ def test_new_session_writes_v2_markers_and_v3_compaction_cursor(tmp_path: Path) 
     assert agent_session["schema_version"] == "asa_agent_session_v2"
     assert messages[-1]["schema_version"] == "asa_agent_chat_message_v2"
     assert agent_events[-1]["schema_version"] == "asa_agent_session_event_v2"
-    assert compact_summary["schema_version"] == "asa_agent_compact_summary_v3"
+    assert compact_summary["schema_version"] == "asa_agent_compact_summary_v4"
     assert compact_summary["first_kept_message_sequence"] == 1
-    assert compact_ledger[-1]["schema_version"] == "asa_agent_compact_summary_v3"
+    assert compact_ledger[-1]["schema_version"] == "asa_agent_compact_summary_v4"
 
 
 def test_resume_v1_global_session_from_latest_id_and_path_backs_up_before_v2_write(tmp_path: Path) -> None:
@@ -119,7 +119,7 @@ def test_chat_transcript_reader_keeps_old_lines_and_appends_v2_message(tmp_path:
     assert json.loads(lines[-1])["sequence"] == 2
 
 
-def test_replay_v1_compaction_summary_backs_up_before_v3_rewrite(tmp_path: Path) -> None:
+def test_replay_v1_compaction_summary_backs_up_before_v4_rewrite(tmp_path: Path) -> None:
     created = open_global_session(GlobalSessionOpenRequest(requested_dir=tmp_path, default_root=tmp_path, model=_model()))
     append_agent_message(created.record.session_dir, "feature_scale_agent", "user", "legacy compact seed")
     agent_dir = created.record.session_dir / "agent_sessions" / "feature_scale_agent"
@@ -145,7 +145,7 @@ def test_replay_v1_compaction_summary_backs_up_before_v3_rewrite(tmp_path: Path)
     migrated = _json(summary_path)
     assert replayed.status == "succeeded"
     assert backup_path.read_bytes() == old_bytes
-    assert migrated["schema_version"] == "asa_agent_compact_summary_v3"
+    assert migrated["schema_version"] == "asa_agent_compact_summary_v4"
     assert migrated["first_kept_message_sequence"] == 1
     assert migrated["manual_replay_status"] == "passed"
 
@@ -173,7 +173,7 @@ def _write_json(path: Path, payload: dict[str, object]) -> bytes:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     path.write_text(content, encoding="utf-8")
-    return content.encode()
+    return path.read_bytes()
 
 
 def _append_jsonl(path: Path, payload: dict[str, object]) -> None:

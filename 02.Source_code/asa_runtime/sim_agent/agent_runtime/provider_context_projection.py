@@ -13,6 +13,7 @@ from .compaction_policy import (
     int_value,
     str_value,
 )
+from .compaction_semantic import render_provider_compaction_summary
 from .compaction_store import read_json, read_jsonl
 
 
@@ -50,8 +51,11 @@ def provider_visible_agent_context(handle: AgentSessionHandle) -> ProviderVisibl
         provider_visible_message_count=len(visible),
         recent_message_count=int_value(summary, "recent_message_count"),
         compacted_message_count=int_value(summary, "compacted_message_count"),
+        short_summary=str_value(summary, "short_summary"),
+        provider_cache_invalidated=_bool_value(summary, "provider_cache_invalidated"),
+        preserve_data_openai_remote=_preserve_data_openai_remote(summary),
     )
-    return ProviderVisibleAgentContext(visible, str_value(summary, "summary"), compaction, len(records))
+    return ProviderVisibleAgentContext(visible, render_provider_compaction_summary(str_value(summary, "summary")), compaction, len(records))
 
 
 def bounded_caller_context(handle: AgentSessionHandle) -> str:
@@ -91,3 +95,15 @@ def _kept(record: JsonMap, first_kept_sequence: int) -> bool:
     if not isinstance(sequence, int) or isinstance(sequence, bool):
         raise ProviderContextCompactionBlocked("missing_compaction_message_sequence")
     return sequence >= first_kept_sequence
+
+
+def _bool_value(payload: JsonMap, field: str) -> bool:
+    value = payload.get(field)
+    return value if isinstance(value, bool) else False
+
+
+def _preserve_data_openai_remote(payload: JsonMap) -> bool:
+    preserve_data = payload.get("preserve_data")
+    if not isinstance(preserve_data, dict):
+        return False
+    return "openaiRemoteCompaction" in preserve_data

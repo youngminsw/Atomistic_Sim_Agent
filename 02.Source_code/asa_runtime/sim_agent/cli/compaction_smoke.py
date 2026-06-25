@@ -22,10 +22,16 @@ from sim_agent.agent_runtime import (
     replay_agent_compaction,
 )
 from sim_agent.agent_runtime.compaction_store import read_json
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.live_agent_turn import run_live_agent_turn
 from sim_agent.cli.tui_compaction import handle_compact
 from sim_agent.cli.tui_state import ModelSettings, TuiState, persist_state
 from sim_agent.schemas._parse import JsonMap
+
+SMOKE_OLD_RAW_SENTINEL = "SMOKE_OLD_RAW_MUST_STAY_ON_DISK_ONLY"
+SMOKE_TAIL_SENTINEL = "SMOKE_TAIL_CONTEXT_STAYS_VISIBLE"
+SMOKE_CURRENT_TURN_SENTINEL = "SMOKE_CURRENT_TURN_STAYS_VISIBLE"
+SMOKE_SUMMARY_SENTINEL = "SMOKE_COMPACT_SUMMARY_REPLACES_OLD_CONTEXT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,14 @@ class CompactionSmokeResult:
     transcript_path: Path
     e2e_path: Path
     blockers: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class _SmokeSemanticSummarizer:
+    summary: str
+
+    def summarize(self, _request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        return SemanticSummaryResult(summary=self.summary, short_summary="Smoke semantic compaction checkpoint.")
 
 
 def run_compaction_smoke(request: CompactionSmokeRequest) -> CompactionSmokeResult:
@@ -69,7 +83,7 @@ def run_compaction_smoke(request: CompactionSmokeRequest) -> CompactionSmokeResu
                 resume="latest",
             )
         )
-        turn = run_live_agent_turn(resumed.record.session_dir, "md_agent", "After compact resume, write manifest evidence.")
+        turn = run_live_agent_turn(resumed.record.session_dir, "md_agent", SMOKE_CURRENT_TURN_SENTINEL)
         manifest_path = state.session_dir / "agent_sessions" / "md_agent" / "prompt_assembly_manifest.json"
         manifest = read_json(manifest_path) or {}
         matrix = _matrix_payload(
@@ -84,6 +98,7 @@ def run_compaction_smoke(request: CompactionSmokeRequest) -> CompactionSmokeResu
             manifest_path,
             manifest,
             gateway.request_count,
+            gateway.request_bodies,
         )
     transcript_path = request.output_dir / "task-9-compaction.txt"
     matrix_path = request.output_dir / "task-9-compaction-parity-matrix.json"
@@ -132,10 +147,13 @@ def _tui_state(session_id: str, session_dir: Path, model: GlobalSessionModel) ->
 
 
 def _manual_compact_via_tui(state: TuiState) -> str:
-    append_agent_message(state.session_dir, "md_agent", "user", "manual compact seed")
-    append_agent_message(state.session_dir, "md_agent", "assistant", "manual compact response")
+    append_agent_message(state.session_dir, "md_agent", "user", SMOKE_OLD_RAW_SENTINEL)
+    for index in range(29):
+        role = "assistant" if index % 2 else "user"
+        content = SMOKE_TAIL_SENTINEL if index == 28 else f"manual compact tail {index}"
+        append_agent_message(state.session_dir, "md_agent", role, content)
     stream = StringIO()
-    handle_compact(("md_agent", "Validated compact summary should reach provider manifest."), state, stream)
+    handle_compact(("md_agent", f"## Goal\n- {SMOKE_SUMMARY_SENTINEL}"), state, stream)
     return stream.getvalue()
 
 
@@ -148,12 +166,12 @@ def _auto_compaction_case(session_dir: Path) -> JsonMap:
     replay_agent_compaction(session_dir, "qa_agent")
     for index in range(AutoCompactionPolicy().new_message_threshold):
         append_agent_message(session_dir, "qa_agent", "user", f"auto update {index}")
-    summary = read_json(session_dir / "agent_sessions" / "qa_agent" / "compact_summary.json") or {}
-    result = (
-        auto_compact_agent_session(session_dir, "qa_agent")
-        if summary.get("compact_mode") != "auto"
-        else None
+    result = auto_compact_agent_session(
+        session_dir,
+        "qa_agent",
+        summarizer=_SmokeSemanticSummarizer("## Goal\n- Auto smoke semantic checkpoint."),
     )
+    summary = read_json(session_dir / "agent_sessions" / "qa_agent" / "compact_summary.json") or {}
     return {
         "status": "succeeded" if summary.get("compact_mode") == "auto" else (result.status if result else "blocked"),
         "compact_status": "auto_compacted" if summary.get("compact_mode") == "auto" else (result.compact_status if result else "blocked"),
@@ -214,9 +232,12 @@ def _matrix_payload(
     manifest_path: Path,
     manifest: JsonMap,
     request_count: int,
+    request_bodies: tuple[JsonMap, ...],
 ) -> JsonMap:
     layer_kinds = manifest.get("layer_kinds", [])
     manifest_text = json.dumps(manifest, sort_keys=True)
+    request_bodies_text = json.dumps(request_bodies, sort_keys=True)
+    raw_messages_text = (state.session_dir / "agent_sessions" / "md_agent" / "messages.jsonl").read_text(encoding="utf-8")
     blockers: list[str] = []
     checks = {
         "manual_compact_replayed": "compact_replay_status=replayed" in manual_transcript,
@@ -228,7 +249,15 @@ def _matrix_payload(
         "provider_turn_succeeded": turn.get("status") == "succeeded",
         "prompt_manifest_exists": manifest_path.is_file(),
         "prompt_manifest_has_compact_summary_layer": isinstance(layer_kinds, list) and "compact_summary" in layer_kinds,
-        "prompt_manifest_has_validated_summary": "Validated compact summary should reach provider manifest." in manifest_text,
+        "prompt_manifest_has_validated_summary": SMOKE_SUMMARY_SENTINEL in manifest_text,
+        "old_raw_retained_on_disk": SMOKE_OLD_RAW_SENTINEL in raw_messages_text,
+        "old_raw_absent_from_prompt_manifest": SMOKE_OLD_RAW_SENTINEL not in manifest_text,
+        "old_raw_absent_from_provider_protocol": SMOKE_OLD_RAW_SENTINEL not in request_bodies_text,
+        "tail_visible_in_prompt_manifest": SMOKE_TAIL_SENTINEL in manifest_text,
+        "current_turn_visible_in_prompt_manifest": SMOKE_CURRENT_TURN_SENTINEL in manifest_text,
+        "summary_visible_in_provider_protocol": SMOKE_SUMMARY_SENTINEL in request_bodies_text,
+        "tail_visible_in_provider_protocol": SMOKE_TAIL_SENTINEL in request_bodies_text,
+        "current_turn_visible_in_provider_protocol": SMOKE_CURRENT_TURN_SENTINEL in request_bodies_text,
         "fake_provider_request_count": request_count >= 1,
     }
     for name, ok in checks.items():
@@ -250,6 +279,16 @@ def _matrix_payload(
             "layer_kinds": layer_kinds if isinstance(layer_kinds, list) else [],
             "has_compact_summary_layer": checks["prompt_manifest_has_compact_summary_layer"],
             "has_validated_summary": checks["prompt_manifest_has_validated_summary"],
+            "old_raw_absent": checks["old_raw_absent_from_prompt_manifest"],
+            "tail_visible": checks["tail_visible_in_prompt_manifest"],
+            "current_turn_visible": checks["current_turn_visible_in_prompt_manifest"],
+        },
+        "provider_protocol": {
+            "request_count": request_count,
+            "old_raw_absent": checks["old_raw_absent_from_provider_protocol"],
+            "summary_visible": checks["summary_visible_in_provider_protocol"],
+            "tail_visible": checks["tail_visible_in_provider_protocol"],
+            "current_turn_visible": checks["current_turn_visible_in_provider_protocol"],
         },
         "checks": checks,
     }
@@ -268,6 +307,9 @@ def _transcript_text(matrix: JsonMap) -> str:
         f"resume_opened_as={matrix['resume']['opened_as']}",
         f"prompt_manifest_path={matrix['provider_prompt_manifest']['path']}",
         f"prompt_manifest_layer_kinds={','.join(matrix['provider_prompt_manifest']['layer_kinds'])}",
+        f"old_raw_retained_on_disk={matrix['checks']['old_raw_retained_on_disk']}",
+        f"old_raw_absent_from_prompt_manifest={matrix['checks']['old_raw_absent_from_prompt_manifest']}",
+        f"old_raw_absent_from_provider_protocol={matrix['checks']['old_raw_absent_from_provider_protocol']}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -286,13 +328,14 @@ def _write_e2e_compaction_surface(path: Path, matrix: JsonMap) -> None:
         },
         "resume": matrix["resume"],
         "provider_prompt_manifest": matrix["provider_prompt_manifest"],
+        "provider_protocol": matrix["provider_protocol"],
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 class _PromptGateway:
     def __init__(self) -> None:
-        self._handler = type("_CompactionPromptGatewayHandler", (_PromptGatewayHandler,), {"request_count": 0})
+        self._handler = type("_CompactionPromptGatewayHandler", (_PromptGatewayHandler,), {"request_count": 0, "request_bodies": []})
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler)
         self._thread = Thread(target=self._server.serve_forever, daemon=True)
 
@@ -303,6 +346,10 @@ class _PromptGateway:
     @property
     def request_count(self) -> int:
         return int(self._handler.request_count)
+
+    @property
+    def request_bodies(self) -> tuple[JsonMap, ...]:
+        return tuple(self._handler.request_bodies)
 
     def __enter__(self) -> "_PromptGateway":
         self._thread.start()
@@ -321,6 +368,7 @@ class _PromptGateway:
 
 class _PromptGatewayHandler(BaseHTTPRequestHandler):
     request_count = 0
+    request_bodies: list[JsonMap] = []
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -330,8 +378,9 @@ class _PromptGatewayHandler(BaseHTTPRequestHandler):
             self._write({"error": {"code": "not_found"}}, status=404)
             return
         length = int(self.headers["content-length"])
-        self.rfile.read(length)
+        body = self.rfile.read(length)
         self.__class__.request_count += 1
+        self.__class__.request_bodies.append(json.loads(body.decode("utf-8")))
         self._write(
             {
                 "output": [

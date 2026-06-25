@@ -10,6 +10,7 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_registry import AgentSessionHandle
 from .agent_specs import SubagentPresetSpec
+from .compaction_boundary import global_session_dir_for_handle, provider_boundary_compaction_blocker
 from .compaction_policy import ProviderContextCompactionBlocked
 from .live_agent_context import live_turn_project_guidance, live_turn_workflow_policy
 from .provider_context_projection import bounded_caller_context
@@ -64,11 +65,12 @@ def _subagent_agent_session(
     from sim_agent.agents_sdk_runtime import AsaAgentSession
 
     caller_context = ""
-    blocker = ""
-    try:
-        caller_context = bounded_caller_context(handle)
-    except ProviderContextCompactionBlocked as exc:
-        blocker = str(exc)
+    blocker = provider_boundary_compaction_blocker(global_session_dir_for_handle(handle), handle)
+    if not blocker:
+        try:
+            caller_context = bounded_caller_context(handle)
+        except ProviderContextCompactionBlocked as exc:
+            blocker = str(exc)
     return AsaAgentSession(
         run_id=f"subagent-{task_id}",
         session_id=f"{handle.agent_session_id}:subagent:{preset.name}:{task_id}",

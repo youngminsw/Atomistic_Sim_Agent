@@ -28,7 +28,7 @@ def test_manual_compaction_writes_summary_and_replays_cursor(tmp_path: Path) -> 
     compactions = _jsonl(state.session_dir / "agent_sessions" / "md_agent" / "compactions.jsonl")
     assert compacted.status == "succeeded"
     assert replayed.status == "succeeded"
-    assert summary["schema_version"] == "asa_agent_compact_summary_v3"
+    assert summary["schema_version"] == "asa_agent_compact_summary_v4"
     assert summary["compact_id"] == "compact-md-001"
     assert summary["raw_message_count"] == 2
     assert summary["first_kept_message_sequence"] == 1

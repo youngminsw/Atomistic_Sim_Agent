@@ -78,5 +78,8 @@ def test_live_agent_session_ignores_unreplayed_manual_compaction_until_replayed(
     replayed_session = _agent_loop_session(replayed_handle, "next QA turn")
 
     assert unreplayed_session.compact_summary == ""
+    assert unreplayed_session.messages == []
+    assert unreplayed_session.provider_context_blocker == "manual_replay_required"
     assert replayed.status == "succeeded"
-    assert replayed_session.compact_summary == "validated QA summary"
+    assert "validated QA summary" in replayed_session.compact_summary
+    assert "Another language model started to solve this problem" in replayed_session.compact_summary

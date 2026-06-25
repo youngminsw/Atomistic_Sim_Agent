@@ -8,8 +8,9 @@ from sim_agent.schemas._parse import JsonMap
 
 from .compaction_store import read_jsonl
 
-COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v3"
-LEGACY_COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v2"
+COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v4"
+LEGACY_COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v3"
+LEGACY_COMPACT_SCHEMA_VERSIONS: Final = ("asa_agent_compact_summary_v2", "asa_agent_compact_summary_v3")
 COMPACT_SUMMARY_NAME: Final = "compact_summary.json"
 COMPACT_LEDGER_NAME: Final = "compactions.jsonl"
 RETAINED_TAIL_POLICY: Final = "max_context_messages_with_minimum_turns"
@@ -17,7 +18,7 @@ MIN_RETAINED_MESSAGES: Final = 8
 MIN_RETAINED_TURNS: Final = 4
 
 CompactionMode = Literal["manual", "auto"]
-CompactionSummarySource = Literal["manual_supplied", "manual_generated", "auto_generated"]
+CompactionSummarySource = Literal["manual_supplied", "manual_generated", "auto_generated", "llm_semantic"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,9 @@ class ProviderContextCompaction:
     provider_visible_message_count: int
     recent_message_count: int
     compacted_message_count: int
+    short_summary: str
+    provider_cache_invalidated: bool
+    preserve_data_openai_remote: bool
 
     def to_json(self) -> JsonMap:
         return {
@@ -71,6 +75,10 @@ class ProviderContextCompaction:
             "provider_visible_message_count": self.provider_visible_message_count,
             "recent_message_count": self.recent_message_count,
             "compacted_message_count": self.compacted_message_count,
+            "short_summary": self.short_summary,
+            "provider_cache_invalidated": self.provider_cache_invalidated,
+            "provider_session_reset": self.provider_cache_invalidated,
+            "preserve_data_openai_remote": self.preserve_data_openai_remote,
             "rewrite_active": True,
         }
 
@@ -139,7 +147,7 @@ def replay_blocker(messages_path: Path, events_path: Path, counts: LedgerCounts,
 
 def activation_blocker(payload: JsonMap, messages_path: Path, events_path: Path) -> str | None:
     schema = str_value(payload, "schema_version")
-    if schema == LEGACY_COMPACT_SCHEMA_VERSION:
+    if schema in LEGACY_COMPACT_SCHEMA_VERSIONS:
         return "legacy_summary"
     if schema != COMPACT_SCHEMA_VERSION:
         return "corrupt_summary"

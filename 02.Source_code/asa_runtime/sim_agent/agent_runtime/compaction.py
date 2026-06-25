@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, assert_never
@@ -27,6 +28,14 @@ from .compaction_policy import (
     replay_blocker,
     str_value,
     summary_poison_blocker,
+)
+from .compaction_semantic import (
+    CompactionSemanticSummarizer,
+    SemanticSummaryUnavailable,
+    build_semantic_summary_request,
+    extract_semantic_file_operations,
+    semantic_prompt_contract,
+    upsert_file_operations,
 )
 from .compaction_store import append_jsonl, atomic_write_json, read_json, read_jsonl
 from .global_session_store import backup_legacy_json
@@ -71,7 +80,12 @@ class AutoCompactionResult:
     blocker: str | None = None
 
 
-def compact_agent_session(session_dir: Path, request: CompactionRequest) -> CompactionResult:
+def compact_agent_session(
+    session_dir: Path,
+    request: CompactionRequest,
+    *,
+    summarizer: CompactionSemanticSummarizer | None = None,
+) -> CompactionResult:
     handle = load_agent_registry(session_dir).handles[request.agent_id]
     counts = ledger_counts(handle.messages_path, handle.events_path)
     if counts is None:
@@ -83,8 +97,15 @@ def compact_agent_session(session_dir: Path, request: CompactionRequest) -> Comp
     preparation = prepare_compaction(tuple(messages), tuple(events), 24)
     if preparation is None:
         return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
-    payload = _summary_payload(request, handle.agent_session_id, counts, preparation)
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
+    previous_payload = read_json(summary_path)
+    try:
+        semantic = _semantic_summary_payload(request, tuple(messages), preparation, previous_payload, summarizer)
+    except SemanticSummaryUnavailable as exc:
+        return _blocked(handle.session_dir, request, str(exc))
+    if semantic is None:
+        return _blocked(handle.session_dir, request, "semantic_summarizer_unavailable")
+    payload = _summary_payload(request, handle.agent_session_id, counts, preparation, semantic)
     backup_legacy_json(summary_path, COMPACT_SCHEMA_VERSION)
     atomic_write_json(summary_path, payload)
     append_jsonl(handle.session_dir / COMPACT_LEDGER_NAME, payload)
@@ -118,7 +139,8 @@ def replay_agent_compaction(session_dir: Path, agent_id: str) -> CompactionResul
         preparation = prepare_compaction(tuple(messages), tuple(events), 24)
         if preparation is None:
             return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
-        payload = _summary_payload(request, handle.agent_session_id, counts, preparation)
+        semantic = _manual_summary_payload(request.summary, payload)
+        payload = _summary_payload(request, handle.agent_session_id, counts, preparation, semantic)
     _mark_replay_passed(summary_path, payload, counts)
     return CompactionResult("succeeded", "replayed", agent_id, request.compact_id, summary_path)
 
@@ -127,6 +149,8 @@ def auto_compact_agent_session(
     session_dir: Path,
     agent_id: str,
     policy: AutoCompactionPolicy = AutoCompactionPolicy(),
+    *,
+    summarizer: CompactionSemanticSummarizer | None = None,
 ) -> AutoCompactionResult:
     handle = load_agent_registry(session_dir).handles[agent_id]
     counts = ledger_counts(handle.messages_path, handle.events_path)
@@ -148,7 +172,7 @@ def auto_compact_agent_session(
                 summary_path,
             )
         request = _auto_request(agent_id, compact_id, counts)
-        compacted = compact_agent_session(session_dir, request)
+        compacted = compact_agent_session(session_dir, request, summarizer=summarizer)
         return _auto_result(compacted, counts.message_count, counts.message_count, compact_status="auto_compacted")
     if summary == {}:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_summary")
@@ -161,7 +185,7 @@ def auto_compact_agent_session(
     if new_message_count < policy.new_message_threshold:
         return AutoCompactionResult("skipped", "below_threshold", agent_id, compact_id, counts.message_count, new_message_count, summary_path)
     request = _auto_request(agent_id, compact_id, counts)
-    compacted = compact_agent_session(session_dir, request)
+    compacted = compact_agent_session(session_dir, request, summarizer=summarizer)
     return _auto_result(compacted, counts.message_count, new_message_count, compact_status="auto_compacted")
 
 
@@ -170,6 +194,7 @@ def _summary_payload(
     agent_session_id: str,
     counts: LedgerCounts,
     preparation: CompactionPreparation,
+    semantic: JsonMap,
 ) -> JsonMap:
     return {
         "schema_version": COMPACT_SCHEMA_VERSION,
@@ -177,9 +202,15 @@ def _summary_payload(
         "agent_id": request.agent_id,
         "agent_session_id": agent_session_id,
         "compact_mode": request.compact_mode,
-        "summary_source": request.summary_source,
+        "summary_source": str_value(semantic, "summary_source") or request.summary_source,
         "manual_replay_status": "passed" if request.compact_mode == "auto" else "required",
-        "summary": request.summary,
+        "summary": str_value(semantic, "summary"),
+        "short_summary": str_value(semantic, "short_summary"),
+        "semantic_prompt_contract": semantic.get("semantic_prompt_contract", {}),
+        "semantic_details": semantic.get("semantic_details", {}),
+        "preserve_data": semantic.get("preserve_data", {}),
+        "provider_cache_invalidated": True,
+        "provider_session_reset": True,
         "message_count": counts.message_count,
         "event_count": counts.event_count,
         "raw_message_count": preparation.raw_message_count,
@@ -199,6 +230,75 @@ def _summary_payload(
         "turn_boundary_preserved": preparation.turn_boundary_preserved,
         "created_at": time.time(),
     }
+
+
+def _semantic_summary_payload(
+    request: CompactionRequest,
+    messages: tuple[JsonMap, ...],
+    preparation: CompactionPreparation,
+    previous_payload: JsonMap | None,
+    summarizer: CompactionSemanticSummarizer | None,
+) -> JsonMap | None:
+    if request.summary and summarizer is None:
+        return _manual_summary_payload(request.summary, previous_payload)
+    if summarizer is None:
+        return None
+    previous_summary = str_value(previous_payload, "summary") if previous_payload else ""
+    summary_request = build_semantic_summary_request(
+        agent_id=request.agent_id,
+        compact_id=request.compact_id,
+        compact_mode=request.compact_mode,
+        summary_source=request.summary_source,
+        messages=messages,
+        first_kept_sequence=preparation.first_kept_message_sequence,
+        summary_cutoff_sequence=preparation.summary_cutoff_message_sequence,
+        previous_summary=previous_summary,
+    )
+    result = summarizer.summarize(summary_request)
+    semantic_details = extract_semantic_file_operations(messages, _semantic_details(previous_payload))
+    read_files = tuple(_string_sequence(semantic_details.get("readFiles")))
+    modified_files = tuple(_string_sequence(semantic_details.get("modifiedFiles")))
+    summary = upsert_file_operations(result.summary, read_files, modified_files)
+    preserve_data = dict(result.preserve_data) if result.preserve_data is not None else _preserve_data(previous_payload)
+    return {
+        "summary": summary,
+        "short_summary": result.short_summary,
+        "summary_source": "llm_semantic",
+        "semantic_prompt_contract": semantic_prompt_contract(),
+        "semantic_details": semantic_details,
+        "preserve_data": preserve_data,
+    }
+
+
+def _manual_summary_payload(summary: str, previous_payload: JsonMap | None) -> JsonMap:
+    return {
+        "summary": summary,
+        "short_summary": str_value(previous_payload, "short_summary") if previous_payload else "",
+        "summary_source": "manual_supplied",
+        "semantic_prompt_contract": semantic_prompt_contract(),
+        "semantic_details": _semantic_details(previous_payload),
+        "preserve_data": _preserve_data(previous_payload),
+    }
+
+
+def _semantic_details(payload: JsonMap | None) -> JsonMap:
+    if payload is None:
+        return {}
+    value = payload.get("semantic_details")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _preserve_data(payload: JsonMap | None) -> JsonMap:
+    if payload is None:
+        return {}
+    value = payload.get("preserve_data")
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _string_sequence(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
 
 
 def _blocked(agent_dir: Path, request: CompactionRequest, blocker: str) -> CompactionResult:
@@ -234,8 +334,7 @@ def _auto_result(
 
 
 def _auto_request(agent_id: str, compact_id: str, counts: LedgerCounts | None = None) -> CompactionRequest:
-    summary = "" if counts is None else f"Auto compacted {agent_id}; session has {counts.message_count} messages and {counts.event_count} events."
-    return CompactionRequest(agent_id, compact_id, summary, compact_mode="auto", summary_source="auto_generated")
+    return CompactionRequest(agent_id, compact_id, "", compact_mode="auto", summary_source="auto_generated")
 
 
 def _mark_replay_passed(path: Path, payload: JsonMap, counts: LedgerCounts) -> None:
