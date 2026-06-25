@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "matrix": "gajae_workflow_parity",
+  "scope": "Wave 1 behavioral/protocol inventory for ASA runtime workflow harness parity. This fixture does not copy Gajae source code.",
+  "rows": [
+    {
+      "id": "workflow_gate_flat_shape",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_protocol.py:200-217",
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_protocol.py:324-342"
+      ],
+      "behavioral_contract": "A workflow gate may be delivered as a flat non-event notification with type, gate_id, stage, kind, schema, schema_hash, context, created_at, and options. Clients parse it as a workflow gate without requiring an event envelope.",
+      "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_harness.py",
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: tests/test_workflow_gate_protocol.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_workflow_gate_protocol.py::test_flat_workflow_gate_shape"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "wrapped_event_envelope",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/README.md:260-273"
+      ],
+      "behavioral_contract": "Canonical runtime events are wrapped with type=event, protocol_version, session_id, seq, frame_id, and an inner payload event. Non-event frames, including workflow_gate, stay flat.",
+      "asa_target": [
+        "sim_agent/agents_sdk_runtime/agent_loop.py",
+        "sim_agent/agents_sdk_runtime/provider_tool_choice_model.py",
+        "planned: tests/test_workflow_gate_protocol.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_workflow_gate_protocol.py::test_event_envelope_and_flat_gate_frames"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "ralplan_approval_gate_parsing",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_protocol.py:304-342"
+      ],
+      "behavioral_contract": "A ralplan approval gate carries stage ralplan:approval, kind approval, boolean schema, options, and context identifying the ralplan approval phase. ASA must preserve the gate fields for approval response handling.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: tests/test_ralplan_runtime.py",
+        "planned: tests/test_workflow_gate_protocol.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_ralplan_runtime.py::test_ralplan_approval_gate_blocks_handoff_until_resolved"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "response_validation_enum_rejection_acceptance",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_client.py:360-376",
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_client.py:872-891"
+      ],
+      "behavioral_contract": "A select/question gate with a string enum rejects an out-of-enum response with invalid_workflow_gate_response and accepts a valid enum value, after which the client returns to idle.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
+        "planned: tests/test_workflow_gate_protocol.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_workflow_gate_protocol.py::test_enum_gate_rejects_invalid_and_accepts_valid_response"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "deep_interview_one_question_gate",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_client.py:360-376"
+      ],
+      "behavioral_contract": "Interactive input is represented as a workflow_gate with kind question and context describing the UI/request. ASA deep-interview must create one pending question gate per round rather than batching multiple rounds.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: tests/test_deep_interview_runtime.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_deep_interview_runtime.py::test_initial_run_blocks_on_one_question_gate"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "action_lifecycle_first_valid_resolution",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/crates/gjc-notifications/src/actions.rs:52-237"
+      ],
+      "behavioral_contract": "Action replies follow first-valid-resolution-wins semantics. Duplicate replies with a matching idempotency key and answer may be accepted, while conflicting idempotency, already answered, unknown action, unauthorized, and resolver-unavailable paths are rejected with explicit reasons.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
+        "planned: tests/test_workflow_gate_protocol.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_workflow_gate_protocol.py::test_gate_response_lifecycle_rejects_duplicate_unknown_and_unavailable"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "task_goal_context_summaries",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/crates/gjc-notifications/src/protocol.rs:242-256"
+      ],
+      "behavioral_contract": "Session context updates may include last assistant message, current task/todo summary, and goal status summary. ASA workflow state must expose task and goal summaries for prompts, tools, and TUI activity.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: sim_agent/cli/tui_agent_activity.py",
+        "planned: tests/test_tui_workflow_activity.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_tui_workflow_activity.py::test_workflow_activity_renders_task_and_goal_context"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "ultragoal_signoff_checkpoint_gate",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/tests/test_protocol.py:200-217",
+        "//wsl$/Ubuntu/tmp/gajae-code/crates/gjc-notifications/src/protocol.rs:242-256"
+      ],
+      "behavioral_contract": "An ultragoal-style signoff/checkpoint gate uses a workflow_gate stage such as ultragoal:signoff with execution or approval semantics and context identifying the skill/goal. ASA must persist goal/checkpoint context and block or resolve through the shared gate protocol.",
+      "asa_target": [
+        "planned: sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "planned: tests/test_ultragoal_runtime.py",
+        "planned: tests/test_workflow_goal_authority.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_ultragoal_runtime.py::test_ultragoal_checkpoint_gate_records_owner_and_goal_context"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    },
+    {
+      "id": "tui_tool_persistence_coverage",
+      "gajae_reference": [
+        "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/README.md:260-273",
+        "//wsl$/Ubuntu/tmp/gajae-code/crates/gjc-notifications/src/actions.rs:52-237",
+        "//wsl$/Ubuntu/tmp/gajae-code/crates/gjc-notifications/src/protocol.rs:242-256"
+      ],
+      "behavioral_contract": "Workflow gates, replies, task/goal summaries, and runtime events must remain observable through shared tool and TUI surfaces with durable ledger/artifact references rather than prompt-only state.",
+      "asa_target": [
+        "planned: sim_agent/agent_harness/tools.py",
+        "planned: sim_agent/agent_harness/agent_runtime_tools.py",
+        "planned: sim_agent/cli/tui_workflow.py",
+        "planned: sim_agent/cli/tui_activity_render.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "planned: tests/test_skill_workflow_runtime.py",
+        "planned: tests/test_agents_sdk_tool_gateway_runtime.py",
+        "planned: tests/test_tui_workflow_activity.py"
+      ],
+      "status": "pending_implementation",
+      "verification_evidence": [
+        ".omo/evidence/task-2-parity-green.log"
+      ]
+    }
+  ]
+}
