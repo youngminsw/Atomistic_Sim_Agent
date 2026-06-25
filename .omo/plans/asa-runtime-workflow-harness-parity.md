@@ -27,10 +27,12 @@ Your next move: approve this plan for worker execution in the new worktree, or r
   - Each row maps: Gajae source reference, behavioral contract, ASA target file/API, tests, implementation status, verification evidence.
 - Replace smoke-only behavior with an ASA-native typed workflow runtime:
   - shared agent capability available through the common ASA runtime/tool registry for all domain agents unless an explicit tool policy disables it.
+  - owner-scoped mutation authority: domain agents may create/update/respond only for their own workflow/goals; no domain agent may mutate peer/equal-rank, higher-rank/orchestrator, or other subordinate-agent goals; only `orchestrator` may set or adjust subordinate domain-agent goals.
   - `WorkflowRuntime` or equivalent state-machine layer.
-  - `WorkflowGate` model with stable id, stage, kind, schema, schema_hash, options, context, created_at, pending/resolved status.
+  - `WorkflowGate` model with stable id, owner_agent_id, caller_agent_id, stage, kind, schema, schema_hash, options, context, created_at, pending/resolved status.
   - response validation for boolean/string/enum/object gates with explicit rejection reasons.
   - append-only workflow ledger/events that are resumable and inspectable from TUI/tool outputs.
+  - TUI-visible loop state for active workflow/goal loops, including owner_agent_id, workflow_id, goal_id, loop_state, gate_id, checkpoint count, blocker, and ledger path in the activity rail and semantic output.
   - deterministic state/artifact/gate runtime first; do not add hidden provider/LLM calls inside the workflow runtime unless a later plan explicitly adds an agent-execution adapter.
 - Preserve `run_workflow_harness_smoke(...)` as a compatibility wrapper for existing imports/tests while making its "ready" state come from the new runtime, not from evidence-key presence alone.
 - Implement real ASA runtime artifacts for:
@@ -42,6 +44,7 @@ Your next move: approve this plan for worker execution in the new worktree, or r
   - model-visible `workflow_gate_response` (or clearly named equivalent) tool so any agent can answer pending workflow gates, with schema validation and idempotency handling.
   - executor in `sim_agent/agent_harness/agent_runtime_tools.py`.
   - `/workflow`, `/deep-interview`, `/ralplan`, `/ultragoal`, plus a TUI gate-response path such as `/workflow-response <gate-id> <json-value>` in `sim_agent/cli/tui_workflow.py` and catalog/help text.
+  - TUI activity rendering through `sim_agent/cli/tui_agent_activity.py` and `sim_agent/cli/tui_activity_render.py` so loops are visible while running.
   - provider payload schema/regression tests.
 - Use Gajae behavioral references as the contract:
   - `workflow_gate` may be a flat non-event notification with `gate_id`, `stage`, `kind`, `schema`, `schema_hash`, `context`, `created_at`, `options` (`python/gjc-rpc/tests/test_protocol.py:200-217`, `324-342`).
@@ -56,6 +59,7 @@ Your next move: approve this plan for worker execution in the new worktree, or r
 - Do not make OMO, omx, or the local Codex skill directory a production runtime dependency.
 - Do not keep the current "provided evidence keys == workflow ready" behavior as the new truth; it may exist only as a legacy input path that feeds the new runtime.
 - Do not implement workflow behavior separately per domain agent. Domain prompts may describe when to use workflows, but the executable workflow runtime and response path must be shared.
+- Do not rely on prompts for goal authority. The runtime/executor must enforce owner-scoped workflow goal mutations.
 - Do not add hidden provider calls, background LLM orchestration, or agent recursion inside the first workflow runtime pass; this plan is for deterministic workflow state, gates, artifacts, and shared tool surfaces.
 - Do not reintroduce root-level runtime packages outside `02.Source_code/asa_runtime`.
 - Do not hide durable domain-agent behavior in slash skills; runtime workflow behavior belongs in Python source and file-backed artifacts.
@@ -69,6 +73,7 @@ Your next move: approve this plan for worker execution in the new worktree, or r
 - Required focused tests from `02.Source_code/asa_runtime`:
   - `python3 -m pytest -q tests/test_workflow_harnesses.py tests/test_skill_workflow_runtime.py tests/test_agents_sdk_tool_gateway_runtime.py`
   - new tests: `tests/test_workflow_runtime_parity.py`, `tests/test_workflow_gate_protocol.py`, `tests/test_deep_interview_runtime.py`, `tests/test_ralplan_runtime.py`, `tests/test_ultragoal_runtime.py`, `tests/test_workflow_parity_matrix.py`
+  - new authority/visibility tests: `tests/test_workflow_goal_authority.py`, `tests/test_tui_workflow_activity.py` or equivalent focused test names.
 - Required compile check:
   - `python3 -m compileall -q sim_agent scripts`
 - Required real-surface smoke:
@@ -76,6 +81,8 @@ Your next move: approve this plan for worker execution in the new worktree, or r
 - Failure QA scenarios:
   - invalid enum response to a select gate is rejected with `invalid_workflow_gate_response` or ASA equivalent.
   - any domain agent with the shared `workflow_start` and `workflow_gate_response` tools can start a workflow, receive a pending gate, and submit a response through the same runtime path.
+  - domain agents can mutate only their own goal/workflow records; peer/equal-rank and domain-to-orchestrator mutations are blocked; orchestrator-to-domain goal assignment succeeds.
+  - active domain-agent workflow loops appear in the TUI activity rail and semantic lines with owner/workflow/goal/gate/checkpoint fields.
   - duplicate/already-resolved gate response is rejected or idempotently accepted according to idempotency key.
   - missing deep-interview answer blocks with a pending gate, not a fake ready state.
   - missing RALPlan PRD/test-spec blocks handoff readiness.
