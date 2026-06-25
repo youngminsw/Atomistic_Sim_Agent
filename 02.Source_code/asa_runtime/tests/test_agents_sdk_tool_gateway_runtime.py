@@ -68,6 +68,7 @@ def test_fake_local_gateway_dispatches_attached_runtime_tools_and_sessions(tmp_p
         "subagent_control",
         "skill_invoke",
         "workflow_start",
+        "workflow_gate_response",
     ]
     assert ledger["gateway_policy_id"] == "local-tool-gateway-smoke-v1"
     assert ledger["gateway_mode"] == "local_smoke"
