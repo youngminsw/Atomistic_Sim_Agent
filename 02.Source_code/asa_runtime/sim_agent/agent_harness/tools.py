@@ -419,7 +419,17 @@ def default_tool_registry() -> ToolRegistry:
                         "workflow_id": {"type": "string"},
                         "gate_id": {"type": "string"},
                         "responder_agent_id": {"type": "string"},
-                        "value": {"type": "string"},
+                        "value": {
+                            "anyOf": [
+                                {"type": "string"},
+                                {"type": "number"},
+                                {"type": "integer"},
+                                {"type": "boolean"},
+                                {"type": "object", "additionalProperties": True},
+                                {"type": "array", "items": {}},
+                                {"type": "null"},
+                            ]
+                        },
                     },
                     ("workflow_id", "gate_id", "responder_agent_id", "value"),
                 ),

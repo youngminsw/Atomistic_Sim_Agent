@@ -137,6 +137,61 @@ def test_workflow_gate_response_tool_accepts_gate_and_writes_metadata_ledger(tmp
     assert (state.session_dir / result.artifact_ref).is_file()
 
 
+def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+    registry = default_tool_registry()
+    start = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "deep-interview",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "qa_agent",
+                "goal_id": "goal-schema-gate",
+                "payload": {
+                    "request_id": "workflow-schema-gate-tool",
+                    "evidence": {"question_answer": "provided", "ambiguity_score": "provided"},
+                    "gate": {
+                        "gate_id": "clarify",
+                        "gate_kind": "response_schema",
+                        "response_schema": {
+                            "type": "object",
+                            "required": ["decision"],
+                            "properties": {"decision": {"type": "string"}},
+                        },
+                    },
+                },
+            },
+            run_id="workflow-schema-gate-start",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_gate_response",
+            arguments={
+                "workflow_id": "deep-interview",
+                "gate_id": "clarify",
+                "responder_agent_id": "qa_agent",
+                "value": {"decision": "clear"},
+            },
+            run_id="workflow-schema-gate-response",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    assert start.status == "blocked"
+    assert start.output["gate"]["gate_kind"] == "response_schema"
+    assert result.status == "accepted"
+    assert result.output["workflow_id"] == "deep-interview"
+    assert result.output["target_agent_id"] == "qa_agent"
+
+
 def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
 
@@ -213,6 +268,8 @@ def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> No
         "responder_agent_id",
         "value",
     ]
+    value_schema = tools["workflow_gate_response"]["parameters"]["properties"]["value"]
+    assert {"type": "object", "additionalProperties": True} in value_schema["anyOf"]
 
 
 def test_domain_agent_registry_exposes_workflow_tools_for_self_loops() -> None:
