@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool
+from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool, tool_registry_for_agent
 from sim_agent.agents_sdk_runtime import AsaAgentSession
 from sim_agent.agents_sdk_runtime.provider_transport import provider_transport_request
 from sim_agent.cli.tui_state import initial_state
@@ -85,6 +85,114 @@ def test_workflow_start_tool_writes_resumable_workflow_ledger(tmp_path: Path) ->
     assert (state.session_dir / result.output["ledger_ref"]).is_file()
 
 
+def test_workflow_gate_response_tool_accepts_gate_and_writes_metadata_ledger(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+    registry = default_tool_registry()
+    start = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ralplan",
+                "owner_agent_id": "orchestrator",
+                "target_agent_id": "qa_agent",
+                "goal_id": "goal-tool-gate",
+                "payload": {
+                    "request_id": "workflow-gate-tool",
+                    "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
+                    "gate": {"gate_id": "approval", "gate_kind": "enum", "allowed_values": ["approve", "revise"]},
+                },
+            },
+            run_id="workflow-gate-start",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_gate_response",
+            arguments={
+                "workflow_id": "ralplan",
+                "gate_id": "approval",
+                "responder_agent_id": "qa_agent",
+                "value": "approve",
+            },
+            run_id="workflow-gate-response",
+            session_id=state.session_id,
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    assert start.status == "blocked"
+    assert start.output["owner_agent_id"] == "orchestrator"
+    assert start.output["target_agent_id"] == "qa_agent"
+    assert start.output["goal_id"] == "goal-tool-gate"
+    assert result.status == "accepted"
+    assert result.output["workflow_id"] == "ralplan"
+    assert result.output["gate_id"] == "approval"
+    assert result.output["target_agent_id"] == "qa_agent"
+    assert result.output["ledger_ref"]
+    assert (state.session_dir / result.artifact_ref).is_file()
+
+
+def test_workflow_start_tool_blocks_domain_peer_start_when_actor_is_provided(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ralplan",
+                "actor_agent_id": "md_agent",
+                "owner_agent_id": "md_agent",
+                "target_agent_id": "qa_agent",
+                "payload": {
+                    "request_id": "workflow-peer-denied",
+                    "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
+                },
+            },
+            run_id="workflow-peer-denied",
+            session_id=state.session_id,
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_authority_peer_denied"
+    assert result.output["blockers"] == ["workflow_authority_peer_denied"]
+
+
+def test_workflow_start_tool_blocks_domain_to_orchestrator_start_when_actor_is_provided(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+
+    result = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="workflow_start",
+            arguments={
+                "workflow_id": "ultraqa",
+                "actor_agent_id": "qa_agent",
+                "owner_agent_id": "qa_agent",
+                "target_agent_id": "orchestrator",
+                "payload": {
+                    "request_id": "workflow-orchestrator-denied",
+                    "evidence": {"adversarial_scenarios": ["scenario"]},
+                },
+            },
+            run_id="workflow-orchestrator-denied",
+            session_id=state.session_id,
+        ),
+        default_tool_registry(),
+        state.session_dir,
+    )
+
+    assert result.status == "blocked"
+    assert result.blocker == "workflow_authority_orchestrator_denied"
+    assert result.output["blockers"] == ["workflow_authority_orchestrator_denied"]
+
+
 def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> None:
     session = _session(tmp_path)
 
@@ -96,8 +204,22 @@ def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> No
     tools = {tool["name"]: tool for tool in request.payload["tools"]}
     assert "skill_invoke" in tools
     assert "workflow_start" in tools
+    assert "workflow_gate_response" in tools
     assert "qa_physics_and_runtime_evidence" in tools["skill_invoke"]["parameters"]["properties"]["skill_id"]["enum"]
     assert "ultragoal" in tools["workflow_start"]["parameters"]["properties"]["workflow_id"]["enum"]
+    assert tools["workflow_gate_response"]["parameters"]["required"] == [
+        "workflow_id",
+        "gate_id",
+        "responder_agent_id",
+        "value",
+    ]
+
+
+def test_domain_agent_registry_exposes_workflow_tools_for_self_loops() -> None:
+    registry = tool_registry_for_agent("md_agent")
+
+    assert "workflow_start" in registry.tool_names
+    assert "workflow_gate_response" in registry.tool_names
 
 
 def _session(tmp_path: Path) -> AsaAgentSession:

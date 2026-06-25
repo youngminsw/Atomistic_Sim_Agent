@@ -28,6 +28,7 @@ from sim_agent.schemas.errors import SchemaValidationError
 from sim_agent.agents_sdk_runtime.invocation_artifacts import skill_invocation_payload
 from sim_agent.agents_sdk_runtime.skill_registry import run_registered_agent_skill
 from sim_agent.agents_sdk_runtime.workflow_harness import run_workflow_harness_smoke
+from sim_agent.agents_sdk_runtime.workflow_runtime import respond_workflow_gate
 
 from .tool_types import RuntimeToolCall, RuntimeToolError, RuntimeToolResult
 
@@ -145,6 +146,7 @@ def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeT
     try:
         workflow_id = as_str(require(call.arguments, "workflow_id"), "workflow_id")
         payload = _optional_mapping(call.arguments, "payload")
+        payload = _workflow_start_payload(call, payload)
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
     result = run_workflow_harness_smoke(workflow_id, payload, session_dir / "workflows")
@@ -159,8 +161,26 @@ def execute_workflow_start(call: RuntimeToolCall, session_dir: Path) -> RuntimeT
         "resumable": result.resumable,
         "ledger_ref": f"workflows/{result.ledger_ref}",
         "blockers": list(result.blockers),
+        "actor_agent_id": result.actor_agent_id,
+        "owner_agent_id": result.owner_agent_id,
+        "target_agent_id": result.target_agent_id,
+        "goal_id": result.goal_id,
     }
+    if result.gate is not None:
+        output["gate"] = result.gate
     blocker = result.blockers[0] if result.blockers else None
+    return _write_result(
+        call,
+        session_dir,
+        RuntimeToolResult(call.tool_name, result.status, output, _ledger_ref(call), blocker),
+    )
+
+
+def execute_workflow_gate_response(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
+    result = respond_workflow_gate(session_dir / "workflows", call.arguments)
+    blocker = result.blockers[0] if result.blockers else None
+    output = result.to_json()
+    output = dict(output) | {"ledger_ref": f"workflows/{result.ledger_ref}"}
     return _write_result(
         call,
         session_dir,
@@ -256,6 +276,19 @@ def _optional_mapping(arguments: JsonMap, field: str) -> JsonMap:
     if isinstance(value, dict):
         return value
     raise SchemaValidationError(f"{field} must be an object")
+
+
+def _workflow_start_payload(call: RuntimeToolCall, payload: JsonMap) -> JsonMap:
+    output = dict(payload)
+    caller = call.arguments.get("caller_agent_id")
+    actor = call.arguments.get("actor_agent_id") or caller
+    if isinstance(actor, str) and actor:
+        output["actor_agent_id"] = actor
+    for field in ("owner_agent_id", "target_agent_id", "goal_id"):
+        value = call.arguments.get(field)
+        if isinstance(value, str) and value:
+            output[field] = value
+    return output
 
 
 def _runtime_session_dir(session_dir: Path) -> Path:

@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Final
 
 from sim_agent.schemas._parse import JsonMap
+from sim_agent.agents_sdk_runtime.workflow_runtime import (
+    WorkflowRuntimeStartRequest,
+    start_workflow_runtime,
+    workflow_authority_blocker,
+)
 
 
 WORKFLOW_HARNESS_LEDGER_NAME: Final = "workflow_harness_ledger.json"
@@ -49,6 +54,11 @@ class WorkflowHarnessResult:
     ledger_ref: str
     blockers: tuple[str, ...]
     events: tuple[WorkflowHarnessEvent, ...]
+    actor_agent_id: str = "orchestrator"
+    owner_agent_id: str = "orchestrator"
+    target_agent_id: str = "orchestrator"
+    goal_id: str = ""
+    gate: JsonMap | None = None
 
 
 WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
@@ -115,6 +125,46 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         return _blocked_result(workflow_id, output_dir, "unknown_workflow")
     workflow_dir = output_dir / workflow.workflow_id
     ledger_ref = f"{workflow.workflow_id}/{WORKFLOW_HARNESS_LEDGER_NAME}"
+    owner_agent_id = _agent_id(payload, "owner_agent_id", "orchestrator")
+    target_agent_id = _agent_id(payload, "target_agent_id", owner_agent_id)
+    actor_agent_id = _agent_id(payload, "actor_agent_id", _agent_id(payload, "caller_agent_id", owner_agent_id))
+    goal_id = _agent_id(payload, "goal_id", "")
+    authority_blocker = workflow_authority_blocker(actor_agent_id, owner_agent_id, target_agent_id)
+    if authority_blocker:
+        events = (
+            _event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:authority_blocked",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status="blocked",
+            evidence_keys=_evidence_keys(payload),
+            missing_evidence=(),
+            resumable=True,
+            ledger_ref=ledger_ref,
+            blockers=(authority_blocker,),
+            events=events,
+            actor_agent_id=actor_agent_id,
+            owner_agent_id=owner_agent_id,
+            target_agent_id=target_agent_id,
+            goal_id=goal_id,
+        )
+        workflow_dir.mkdir(parents=True, exist_ok=True)
+        (workflow_dir / WORKFLOW_HARNESS_LEDGER_NAME).write_text(
+            json.dumps(_ledger_payload(result, workflow, payload), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return result
     evidence_keys = _evidence_keys(payload)
     missing = tuple(key for key in workflow.required_evidence if key not in evidence_keys)
     if missing:
@@ -141,6 +191,58 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
             ledger_ref=ledger_ref,
             blockers=("workflow_gate_missing_evidence",),
             events=events,
+            actor_agent_id=actor_agent_id,
+            owner_agent_id=owner_agent_id,
+            target_agent_id=target_agent_id,
+            goal_id=goal_id,
+        )
+        workflow_dir.mkdir(parents=True, exist_ok=True)
+        (workflow_dir / WORKFLOW_HARNESS_LEDGER_NAME).write_text(
+            json.dumps(_ledger_payload(result, workflow, payload), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return result
+    runtime = start_workflow_runtime(
+        WorkflowRuntimeStartRequest(
+            output_dir,
+            workflow.workflow_id,
+            actor_agent_id,
+            owner_agent_id,
+            target_agent_id,
+            goal_id,
+            payload,
+            _optional_gate(payload),
+        )
+    )
+    if runtime.status == "blocked":
+        events = (
+            _event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:{runtime.gate_status}",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status=runtime.gate_status,
+            evidence_keys=evidence_keys,
+            missing_evidence=runtime.missing_evidence,
+            resumable=True,
+            ledger_ref=ledger_ref,
+            blockers=runtime.blockers,
+            events=events,
+            actor_agent_id=actor_agent_id,
+            owner_agent_id=owner_agent_id,
+            target_agent_id=target_agent_id,
+            goal_id=goal_id,
+            gate=runtime.gate.to_json() if runtime.gate is not None else None,
         )
         workflow_dir.mkdir(parents=True, exist_ok=True)
         (workflow_dir / WORKFLOW_HARNESS_LEDGER_NAME).write_text(
@@ -161,6 +263,11 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         ledger_ref=ledger_ref,
         blockers=(),
         events=events,
+        actor_agent_id=actor_agent_id,
+        owner_agent_id=owner_agent_id,
+        target_agent_id=target_agent_id,
+        goal_id=goal_id,
+        gate=runtime.gate.to_json() if runtime.gate is not None else None,
     )
     workflow_dir.mkdir(parents=True, exist_ok=True)
     (workflow_dir / WORKFLOW_HARNESS_LEDGER_NAME).write_text(
@@ -222,11 +329,15 @@ def _event(workflow: WorkflowDefinition, state: str, terminal: bool) -> Workflow
 
 
 def _ledger_payload(result: WorkflowHarnessResult, workflow: WorkflowDefinition, payload: JsonMap) -> JsonMap:
-    return {
+    ledger: JsonMap = {
         "ledger_version": "workflow_harness_v1",
         "workflow_id": result.workflow_id,
         "display_name": workflow.display_name,
         "request_id": _request_id(payload),
+        "actor_agent_id": result.actor_agent_id,
+        "owner_agent_id": result.owner_agent_id,
+        "target_agent_id": result.target_agent_id,
+        "goal_id": result.goal_id,
         "status": result.status,
         "current_state": result.current_state,
         "verification_gate": result.verification_gate,
@@ -240,6 +351,9 @@ def _ledger_payload(result: WorkflowHarnessResult, workflow: WorkflowDefinition,
         "blockers": list(result.blockers),
         "events": [_event_payload(event) for event in result.events],
     }
+    if result.gate is not None:
+        ledger = dict(ledger) | {"gate": result.gate}
+    return ledger
 
 
 def _blocked_payload(result: WorkflowHarnessResult) -> JsonMap:
@@ -275,6 +389,20 @@ def _request_id(payload: JsonMap) -> str:
     if isinstance(value, str) and value:
         return value
     return "anonymous"
+
+
+def _agent_id(payload: JsonMap, field: str, fallback: str) -> str:
+    value = payload.get(field)
+    if isinstance(value, str) and value:
+        return value
+    return fallback
+
+
+def _optional_gate(payload: JsonMap) -> JsonMap | None:
+    gate = payload.get("gate")
+    if isinstance(gate, dict):
+        return gate
+    return None
 
 
 def _evidence_keys(payload: JsonMap) -> tuple[str, ...]:

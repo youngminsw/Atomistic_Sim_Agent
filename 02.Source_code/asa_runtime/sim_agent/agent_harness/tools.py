@@ -11,6 +11,7 @@ from .agent_runtime_tools import (
     execute_subagent_control,
     execute_subagent_inspect,
     execute_subagent_task,
+    execute_workflow_gate_response,
     execute_workflow_start,
 )
 from .tool_policy import DEFAULT_RUNTIME_TOOL_POLICY
@@ -392,12 +393,38 @@ def default_tool_registry() -> ToolRegistry:
                             "type": "string",
                             "enum": ["deep-interview", "ralplan", "ultrawork", "ultraqa", "ultragoal"],
                         },
+                        "actor_agent_id": {"type": "string"},
+                        "caller_agent_id": {"type": "string"},
+                        "owner_agent_id": {"type": "string"},
+                        "target_agent_id": {"type": "string"},
+                        "goal_id": {"type": "string"},
                         "payload": {"type": "object", "additionalProperties": True},
                     },
                     ("workflow_id",),
                 ),
                 side_effect_class="session_workflow_ledger",
                 executor=execute_workflow_start,
+            ),
+            ToolDefinition(
+                "workflow_gate_response",
+                "agent_workflow",
+                family="agent_runtime",
+                safety="session_local",
+                approval_required=False,
+                executable=True,
+                policy_id="workflow-gate-response-v1",
+                policy_summary="session_local_workflow_gate_response",
+                parameters=_object_schema(
+                    {
+                        "workflow_id": {"type": "string"},
+                        "gate_id": {"type": "string"},
+                        "responder_agent_id": {"type": "string"},
+                        "value": {"type": "string"},
+                    },
+                    ("workflow_id", "gate_id", "responder_agent_id", "value"),
+                ),
+                side_effect_class="session_workflow_ledger",
+                executor=execute_workflow_gate_response,
             ),
             ToolDefinition("validate_simulation_request", "schema"),
             ToolDefinition("geometry_ingestion", "geometry"),
@@ -437,6 +464,8 @@ COMMON_DOMAIN_TOOL_NAMES: Final = frozenset(
         "subagent_task",
         "subagent_inspect",
         "subagent_control",
+        "workflow_start",
+        "workflow_gate_response",
     )
 )
 
@@ -493,6 +522,7 @@ DOMAIN_AGENT_TOOL_NAMES: Final[dict[str, frozenset[str]]] = {
             "skill_invoke",
             "subagent_control",
             "workflow_start",
+            "workflow_gate_response",
         )
     )
     | COMMON_DOMAIN_TOOL_NAMES,
