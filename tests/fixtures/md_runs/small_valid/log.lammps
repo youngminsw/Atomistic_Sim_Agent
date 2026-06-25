@@ -1,9 +1,0 @@
-LAMMPS fixture log
-LAMMPS (29 Aug 2024)
-units metal
-atom_style atomic
-Step Temp PotEng KinEng TotEng Press
-0 300.0 -1024.0 12.0 -1012.0 0.0
-1000 315.0 -1018.0 14.0 -1004.0 0.1
-Loop time of 0.12 on 1 procs for 1000 steps with 512 atoms
-Total wall time: 0:00:01

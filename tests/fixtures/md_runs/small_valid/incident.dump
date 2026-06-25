@@ -1,3 +1,0 @@
-event_id,ion,material_id,energy_eV,polar_deg,azimuth_deg
-evt-0001,Ar,Si,100.0,30.0,120.0
-evt-0002,Ar,Si,80.0,45.0,240.0

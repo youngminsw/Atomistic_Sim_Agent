@@ -1,7 +1,0 @@
-{
-  "provider": "oauth_gateway",
-  "model": "gpt-5.5",
-  "reasoning_effort": "high",
-  "base_url": "http://127.0.0.1:8787/v1",
-  "auth_mode": "gateway_token"
-}
