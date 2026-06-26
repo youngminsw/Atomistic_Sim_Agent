@@ -28,6 +28,7 @@ REQUIRED_ROW_IDS = {
     "task_goal_context_summaries",
     "ultragoal_signoff_checkpoint_gate",
     "visual_qa_evidence_workflow",
+    "ultraresearch_insane_search_evidence_boundary",
     "tui_tool_persistence_coverage",
 }
 ALLOWED_STATUSES = {"implemented"}
@@ -41,6 +42,10 @@ ROW_VERIFICATION_EVIDENCE = {
     "visual_qa_evidence_workflow": [
         ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-green.txt",
         ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-transcript.txt",
+    ],
+    "ultraresearch_insane_search_evidence_boundary": [
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-green.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-transcript.txt",
     ],
 }
 

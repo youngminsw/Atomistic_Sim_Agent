@@ -213,6 +213,35 @@
       ]
     },
     {
+      "id": "ultraresearch_insane_search_evidence_boundary",
+      "gajae_reference": [
+        "C:/Users/swym4/.codex/plugins/cache/sisyphuslabs/omo/4.12.0/skills/ultraresearch/SKILL.md",
+        "//wsl$/Ubuntu/tmp/insane-search-readonly/skills/insane-search/SKILL.md",
+        "//wsl$/Ubuntu/tmp/insane-search-readonly/skills/insane-search/engine/fetch_chain.py",
+        "//wsl$/Ubuntu/tmp/insane-search-readonly/skills/insane-search/engine/safety.py"
+      ],
+      "behavioral_contract": "Ultraresearch is an ASA/OMO extension workflow, not a Gajae-native default. It may become synthesis_ready only after a parsed insane_search trace proves public-only acquisition, SSRF-safe boundaries, no auth/paywall requirement, failure-exhaustion semantics, and at least one public source ledger entry. Web content is stored as untrusted evidence, never model instructions; private/internal URLs, credentialed sources, non-exhausted failed traces, and artifact tampering fail closed with typed blockers.",
+      "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_ultraresearch.py",
+        "sim_agent/agents_sdk_runtime/workflow_ultraresearch_trace.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness_artifacts.py",
+        "sim_agent/cli/tui_workflow_payload.py",
+        "tests/test_ultraresearch_runtime.py",
+        "tests/test_workflow_extension_surfaces.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "tests/test_ultraresearch_runtime.py",
+        "tests/test_workflow_extension_surfaces.py"
+      ],
+      "status": "implemented",
+      "verification_evidence": [
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-green.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-transcript.txt"
+      ]
+    },
+    {
       "id": "tui_tool_persistence_coverage",
       "gajae_reference": [
         "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/README.md:260-273",

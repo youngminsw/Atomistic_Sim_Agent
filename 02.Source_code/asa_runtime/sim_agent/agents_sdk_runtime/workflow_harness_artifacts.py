@@ -11,6 +11,10 @@ from sim_agent.agents_sdk_runtime.workflow_ultragoal import (
     UltragoalArtifactError,
     materialize_ultragoal_artifacts,
 )
+from sim_agent.agents_sdk_runtime.workflow_ultraresearch import (
+    UltraresearchArtifactError,
+    materialize_ultraresearch_artifacts,
+)
 from sim_agent.agents_sdk_runtime.workflow_visual_qa import VisualQaArtifactError, materialize_visual_qa_artifacts
 from sim_agent.agents_sdk_runtime.workflow_harness_types import WorkflowDefinition
 
@@ -138,55 +142,7 @@ def _materialize_visual_qa(workflow_dir: Path, context: JsonMap, payload: JsonMa
 
 
 def _materialize_ultraresearch(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:
-    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
-    acquisition_plan = workflow_dir / "acquisition-plan.json"
-    journal = workflow_dir / "research-journal.jsonl"
-    research_question = text_value(evidence.get("research_question"), context["user_goal"])
-    insane_search_trace = evidence.get("insane_search_trace") if isinstance(evidence.get("insane_search_trace"), dict) else {}
-    _write_json(
-        acquisition_plan,
-        context
-        | {
-            "artifact_kind": "ultraresearch_acquisition_plan",
-            "research_question": research_question,
-            "source_journal": evidence.get("source_journal", "ultraresearch/research-journal.jsonl"),
-            "insane_search": {
-                "surface": "skill",
-                "skill_id": "insane_search",
-                "public_only": True,
-                "ssrf_safe": True,
-                "auth_required": False,
-                "trace": insane_search_trace,
-            },
-            "content_policy": {
-                "untrusted_web_content_is_evidence_only": True,
-                "credentialed_or_paywalled_sources_denied": True,
-            },
-        },
-    )
-    rows = (
-        context
-        | {
-            "artifact_kind": "ultraresearch_question_decomposition",
-            "research_question": research_question,
-            "axes": ["source_discovery", "claim_verification", "synthesis"],
-        },
-        context
-        | {
-            "artifact_kind": "ultraresearch_acquisition_wave",
-            "route": "insane_search",
-            "trace": insane_search_trace,
-            "source_journal": evidence.get("source_journal", "ultraresearch/research-journal.jsonl"),
-        },
-        context
-        | {
-            "artifact_kind": "ultraresearch_synthesis_checkpoint",
-            "status": "synthesis_ready",
-            "citation_required": True,
-        },
-    )
-    journal.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
-    return ("ultraresearch/acquisition-plan.json", "ultraresearch/research-journal.jsonl")
+    return materialize_ultraresearch_artifacts(workflow_dir, context, payload).refs
 
 
 def _write_json(path: Path, payload: JsonMap) -> None:

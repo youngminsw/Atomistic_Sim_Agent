@@ -8,6 +8,7 @@ from sim_agent.schemas._parse import JsonMap
 from sim_agent.agents_sdk_runtime.workflow_harness_artifacts import (
     RalplanArtifactError,
     UltragoalArtifactError,
+    UltraresearchArtifactError,
     VisualQaArtifactError,
     WorkflowArtifactRequest,
     materialize_workflow_artifacts,
@@ -118,7 +119,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         return result
     try:
         artifact_refs = _artifact_refs(workflow, payload, context)
-    except (RalplanArtifactError, UltragoalArtifactError, VisualQaArtifactError) as exc:
+    except (RalplanArtifactError, UltragoalArtifactError, UltraresearchArtifactError, VisualQaArtifactError) as exc:
         events = (
             workflow_event(workflow, "initialized", False),
             WorkflowHarnessEvent(

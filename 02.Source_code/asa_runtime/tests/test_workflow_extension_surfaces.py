@@ -32,7 +32,7 @@ def test_visual_qa_and_ultraresearch_are_runtime_workflows_with_artifacts(tmp_pa
             "evidence": {
                 "surface_ref": "tui://workflow-panel",
                 "screenshot_ref": "screenshots/workflow-panel.txt",
-                "oracle_verdict": {"status": "passed", "issues": []},
+                "oracle_verdict": {"passed": True, "summary": "clean", "checks": ["workflow-panel"]},
             },
         },
         tmp_path / "ready",
@@ -40,11 +40,16 @@ def test_visual_qa_and_ultraresearch_are_runtime_workflows_with_artifacts(tmp_pa
     verdict_path = tmp_path / "ready" / "visual-qa" / "verdict.json"
 
     assert visual_ready.status == "ready"
-    assert visual_ready.artifact_refs == ("visual-qa/surface-capture.json", "visual-qa/verdict.json")
+    assert visual_ready.artifact_refs == (
+        "visual-qa/surface-capture.json",
+        "visual-qa/verdict.json",
+        "visual-qa/evidence-ledger.jsonl",
+    )
     assert verdict_path.is_file()
     verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
     assert verdict["artifact_kind"] == "visual_qa_verdict"
-    assert verdict["oracle_verdict"]["status"] == "passed"
+    assert verdict["passed"] is True
+    assert verdict["oracle_verdict"]["summary"] == "clean"
 
     research_ready = run_workflow_harness_smoke(
         "ultraresearch",
@@ -54,26 +59,63 @@ def test_visual_qa_and_ultraresearch_are_runtime_workflows_with_artifacts(tmp_pa
             "evidence": {
                 "research_question": "What public evidence supports ASA workflow parity?",
                 "source_journal": "journals/workflow-research.jsonl",
-                "insane_search_trace": {"skill_id": "insane_search", "grid_exhausted": False},
+                "insane_search_trace": {
+                    "skill_id": "insane_search",
+                    "surface": "skill",
+                    "ok": True,
+                    "public_only": True,
+                    "ssrf_safe": True,
+                    "auth_required": False,
+                    "grid_exhausted": False,
+                    "untried_routes": [],
+                    "must_invoke_playwright_mcp": False,
+                    "stop_reason": "success",
+                    "routes": ["phase0", "fetch_chain"],
+                    "sources": [
+                        {
+                            "url": "https://example.com/public/asa-workflows",
+                            "route": "fetch_chain",
+                            "title": "ASA workflow public evidence",
+                            "evidence_ref": "trace[0]",
+                        }
+                    ],
+                    "trace": [
+                        {
+                            "phase": "probe",
+                            "executor": "curl_cffi",
+                            "url": "https://example.com/public/asa-workflows",
+                            "status": 200,
+                            "verdict": "weak_ok",
+                        }
+                    ],
+                },
             },
         },
         tmp_path / "research",
     )
     acquisition_plan_path = tmp_path / "research" / "ultraresearch" / "acquisition-plan.json"
     journal_path = tmp_path / "research" / "ultraresearch" / "research-journal.jsonl"
+    source_ledger_path = tmp_path / "research" / "ultraresearch" / "source-ledger.jsonl"
 
     assert research_ready.status == "ready"
     assert research_ready.artifact_refs == (
         "ultraresearch/acquisition-plan.json",
         "ultraresearch/research-journal.jsonl",
+        "ultraresearch/source-ledger.jsonl",
+        "ultraresearch/expansion-log.md",
+        "ultraresearch/synthesis-checkpoint.md",
     )
     assert acquisition_plan_path.is_file()
     assert journal_path.is_file()
+    assert source_ledger_path.is_file()
     acquisition_plan = json.loads(acquisition_plan_path.read_text(encoding="utf-8"))
     assert acquisition_plan["artifact_kind"] == "ultraresearch_acquisition_plan"
     assert acquisition_plan["insane_search"]["surface"] == "skill"
     assert acquisition_plan["insane_search"]["skill_id"] == "insane_search"
     assert acquisition_plan["insane_search"]["public_only"] is True
+    source_ledger = [json.loads(line) for line in source_ledger_path.read_text(encoding="utf-8").splitlines() if line]
+    assert source_ledger[0]["content_trust"] == "untrusted_evidence"
+    assert source_ledger[0]["model_instruction_allowed"] is False
 
 
 def test_public_workflow_and_insane_search_surfaces_are_model_and_tui_visible(tmp_path: Path) -> None:
@@ -124,6 +166,24 @@ def test_public_workflow_and_insane_search_surfaces_are_model_and_tui_visible(tm
     assert adapter_output["surface"] == "skill"
     assert adapter_output["public_only"] is True
     assert adapter_output["ssrf_safe"] is True
+
+    private_invocation = execute_runtime_tool(
+        RuntimeToolCall(
+            tool_name="skill_invoke",
+            arguments={
+                "skill_id": "insane_search",
+                "payload": {"request_id": "insane-private", "query": "http://127.0.0.1/internal"},
+            },
+            run_id="insane-search-private-run",
+            session_id=state.session_id,
+            caller_agent_id="research_agent",
+        ),
+        registry,
+        state.session_dir,
+    )
+
+    assert private_invocation.status == "blocked"
+    assert private_invocation.output["result"]["adapter_blockers"] == ["insane_search_public_content_only"]
 
     for agent_id in ("orchestrator", "md_agent", "ml_agent", "feature_scale_agent", "research_agent", "qa_agent"):
         registry = tool_registry_for_agent(agent_id)
