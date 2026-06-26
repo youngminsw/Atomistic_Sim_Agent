@@ -11,9 +11,14 @@ from typing import Final, assert_never
 
 from sim_agent.schemas._parse import JsonMap
 
+from .workflow_authority import ORCHESTRATOR_AGENT_ID, response_schema_blocker, workflow_authority_blocker
+
 WORKFLOW_GATE_SCHEMA_VERSION: Final = "workflow_gate_v1"
 SAFE_RUNTIME_ID_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
-ORCHESTRATOR_AGENT_ID: Final = "orchestrator"
+
+type WorkflowGateJsonValue = str | int | float | bool | None | JsonMap | list["WorkflowGateJsonValue"] | tuple[
+    "WorkflowGateJsonValue", ...
+]
 
 
 class WorkflowGateKind(StrEnum):
@@ -40,7 +45,7 @@ class WorkflowGate:
     deep_interview: JsonMap | None = None
 
     def to_json(self) -> JsonMap:
-        payload: dict[str, object] = {
+        payload: dict[str, WorkflowGateJsonValue] = {
             "schema_version": WORKFLOW_GATE_SCHEMA_VERSION,
             "workflow_id": self.workflow_id,
             "goal_id": self.goal_id,
@@ -80,7 +85,7 @@ class WorkflowGateResponseResult:
     action_lifecycle: JsonMap | None = None
 
     def to_json(self) -> JsonMap:
-        payload: dict[str, object] = {
+        payload: dict[str, WorkflowGateJsonValue] = {
             "workflow_id": self.workflow_id,
             "gate_id": self.gate_id,
             "status": self.status,
@@ -122,7 +127,7 @@ class WorkflowGoalAuthorityResult:
 
 
 def workflow_gate_schema_hash(gate: WorkflowGate) -> str:
-    shape: dict[str, object] = {
+    shape: dict[str, WorkflowGateJsonValue] = {
         "schema_version": WORKFLOW_GATE_SCHEMA_VERSION,
         "workflow_id": gate.workflow_id,
         "goal_id": gate.goal_id,
@@ -216,84 +221,7 @@ def gate_response_blocked(workflow_id: str, gate_id: str, blocker: str) -> Workf
     return WorkflowGateResponseResult(workflow_id, gate_id, "blocked", "", "", gate_ledger_ref(workflow_id, gate_id), (blocker,))
 
 
-def workflow_authority_blocker(actor: str, owner: str, target: str) -> str:
-    if actor == ORCHESTRATOR_AGENT_ID:
-        return ""
-    if target == ORCHESTRATOR_AGENT_ID:
-        return "workflow_authority_orchestrator_denied"
-    if actor == owner and actor == target:
-        return ""
-    return "workflow_authority_peer_denied"
-
-
-def response_schema_blocker(value: object, schema: JsonMap) -> str:
-    schema_type = schema.get("type")
-    if schema_type is not None and not matches_schema_type(value, schema_type):
-        return "workflow_gate_response_schema_mismatch"
-    enum_values = schema.get("enum")
-    if isinstance(enum_values, list) and value not in enum_values:
-        return "workflow_gate_response_schema_mismatch"
-    required = schema.get("required")
-    if isinstance(required, list):
-        if not isinstance(value, dict):
-            return "workflow_gate_response_schema_mismatch"
-        for field in required:
-            if isinstance(field, str) and field not in value:
-                return "workflow_gate_response_schema_mismatch"
-    if schema.get("additionalProperties") is False and isinstance(value, dict):
-        properties = schema.get("properties")
-        allowed = {field for field in properties if isinstance(field, str)} if isinstance(properties, dict) else set()
-        if any(not isinstance(field, str) or field not in allowed for field in value):
-            return "workflow_gate_response_schema_mismatch"
-    properties = schema.get("properties")
-    if isinstance(properties, dict) and isinstance(value, dict):
-        for field, field_schema in properties.items():
-            if not isinstance(field, str) or field not in value or not isinstance(field_schema, dict):
-                continue
-            blocker = response_schema_blocker(value[field], field_schema)
-            if blocker:
-                return blocker
-    if isinstance(value, list):
-        min_items = schema.get("minItems")
-        max_items = schema.get("maxItems")
-        if isinstance(min_items, int) and len(value) < min_items:
-            return "workflow_gate_response_schema_mismatch"
-        if isinstance(max_items, int) and len(value) > max_items:
-            return "workflow_gate_response_schema_mismatch"
-        items_schema = schema.get("items")
-        if isinstance(items_schema, dict):
-            for item in value:
-                blocker = response_schema_blocker(item, items_schema)
-                if blocker:
-                    return blocker
-    return ""
-
-
-def matches_schema_type(value: object, schema_type: object) -> bool:
-    if isinstance(schema_type, list):
-        return any(matches_schema_type(value, item) for item in schema_type)
-    if not isinstance(schema_type, str):
-        return True
-    match schema_type:
-        case "object":
-            return isinstance(value, dict)
-        case "array":
-            return isinstance(value, list)
-        case "string":
-            return isinstance(value, str)
-        case "number":
-            return isinstance(value, int | float) and not isinstance(value, bool)
-        case "integer":
-            return isinstance(value, int) and not isinstance(value, bool)
-        case "boolean":
-            return isinstance(value, bool)
-        case "null":
-            return value is None
-        case _:
-            return True
-
-
-def gate_kind(value: object) -> WorkflowGateKind | None:
+def gate_kind(value: WorkflowGateJsonValue) -> WorkflowGateKind | None:
     if not isinstance(value, str):
         return None
     try:

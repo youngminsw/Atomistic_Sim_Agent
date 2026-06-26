@@ -8,6 +8,8 @@ from typing import Final
 from sim_agent.schemas._parse import JsonMap, as_float, as_mapping, as_sequence, as_str, require
 from sim_agent.schemas.errors import SchemaValidationError
 
+from .workflow_evidence_hashes import artifact_hashes, verify_artifact_hash
+
 
 type JsonValue = str | int | float | bool | None | JsonMap | list["JsonValue"] | tuple["JsonValue", ...]
 
@@ -119,11 +121,18 @@ def _verify_e2e_scenario(scenario: JsonMap, evidence_dir: Path, run_id: str, blo
         for token in _string_items(scenario, "required_transcript", blockers, "e2e_transcript_missing_required"):
             if token not in transcript:
                 blockers.append("e2e_transcript_missing_required")
-    _verify_artifacts(scenario, evidence_dir, run_id, blockers)
+    _verify_artifacts(scenario, ledger, evidence_dir, run_id, blockers)
 
 
-def _verify_artifacts(scenario: JsonMap, evidence_dir: Path, run_id: str, blockers: list[str]) -> None:
+def _verify_artifacts(
+    scenario: JsonMap,
+    ledger: JsonMap | None,
+    evidence_dir: Path,
+    run_id: str,
+    blockers: list[str],
+) -> None:
     started_at = _optional_float(scenario, "started_at_epoch", blockers, "artifact_started_at_invalid")
+    hashes = artifact_hashes(ledger)
     for raw_path in _sequence_field(scenario, "artifacts", blockers, "artifact_missing"):
         artifact_text = _path_text(raw_path, blockers, "artifact_missing")
         if artifact_text is None:
@@ -136,6 +145,7 @@ def _verify_artifacts(scenario: JsonMap, evidence_dir: Path, run_id: str, blocke
             blockers.append("artifact_run_id_mismatch")
         if started_at is not None and artifact_path.stat().st_mtime < started_at:
             blockers.append("artifact_stale")
+        verify_artifact_hash(artifact_path, artifact_text, hashes, blockers)
 
 
 def _verify_sabotage_cases(manifest: JsonMap, blockers: list[str]) -> None:

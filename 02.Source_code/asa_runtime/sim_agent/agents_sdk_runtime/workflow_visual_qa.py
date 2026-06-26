@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,7 @@ def materialize_visual_qa_artifacts(workflow_dir: Path, context: JsonMap, payloa
     screenshot_ref = text_value(evidence.get("screenshot_ref"), "")
     if not surface_ref or not screenshot_ref:
         raise VisualQaArtifactError("visual_qa_surface_required")
+    screenshot = _screenshot_evidence(workflow_dir, screenshot_ref)
     verdict = _oracle_verdict(evidence.get("oracle_verdict"))
     surface_payload = {
         **context,
@@ -39,6 +41,8 @@ def materialize_visual_qa_artifacts(workflow_dir: Path, context: JsonMap, payloa
         "artifact_kind": "visual_qa_surface_capture",
         "surface_ref": surface_ref,
         "screenshot_ref": screenshot_ref,
+        "screenshot_size_bytes": screenshot.size_bytes,
+        "screenshot_sha256": screenshot.sha256,
         "capture_target": text_value(evidence.get("capture_target"), "rendered_surface"),
         "stale_artifact_guard": True,
     }
@@ -50,6 +54,7 @@ def materialize_visual_qa_artifacts(workflow_dir: Path, context: JsonMap, payloa
         "passed": verdict["passed"],
         "machine_checked": True,
         "surface_capture_path": "visual-qa/surface-capture.json",
+        "screenshot_sha256": screenshot.sha256,
         "surface_required_blocker": "visual_qa_surface_required",
     }
     ledger_payload = {
@@ -57,6 +62,7 @@ def materialize_visual_qa_artifacts(workflow_dir: Path, context: JsonMap, payloa
         "artifact_kind": "visual_qa_evidence_checkpoint",
         "surface_ref": surface_ref,
         "screenshot_ref": screenshot_ref,
+        "screenshot_sha256": screenshot.sha256,
         "passed": verdict["passed"],
         "summary": verdict["summary"],
     }
@@ -66,6 +72,12 @@ def materialize_visual_qa_artifacts(workflow_dir: Path, context: JsonMap, payloa
     return VisualQaArtifactResult(
         ("visual-qa/surface-capture.json", "visual-qa/verdict.json", "visual-qa/evidence-ledger.jsonl")
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenshotEvidence:
+    size_bytes: int
+    sha256: str
 
 
 def _oracle_verdict(value: JsonEvidenceValue) -> JsonMap:
@@ -81,7 +93,26 @@ def _oracle_verdict(value: JsonEvidenceValue) -> JsonMap:
     summary = loaded.get("summary")
     if not isinstance(passed, bool) or not isinstance(summary, str) or not summary.strip():
         raise VisualQaArtifactError("visual_qa_verdict_invalid")
+    if not passed:
+        raise VisualQaArtifactError("visual_qa_verdict_failed")
     return {"passed": passed, "summary": summary, "checks": loaded.get("checks", []) if isinstance(loaded.get("checks"), list) else []}
+
+
+def _screenshot_evidence(workflow_dir: Path, screenshot_ref: str) -> ScreenshotEvidence:
+    root = workflow_dir.parent.resolve()
+    raw_path = Path(screenshot_ref)
+    path = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
+    if path == root or root not in path.parents:
+        raise VisualQaArtifactError("visual_qa_screenshot_untrusted")
+    if not path.is_file():
+        raise VisualQaArtifactError("visual_qa_screenshot_missing")
+    try:
+        body = path.read_bytes()
+    except OSError as exc:
+        raise VisualQaArtifactError("visual_qa_screenshot_missing") from exc
+    if not body:
+        raise VisualQaArtifactError("visual_qa_screenshot_empty")
+    return ScreenshotEvidence(len(body), hashlib.sha256(body).hexdigest())
 
 
 def _write_once(path: Path, body: str) -> None:

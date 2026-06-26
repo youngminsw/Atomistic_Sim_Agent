@@ -15,7 +15,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1]
 def test_visual_qa_materializes_machine_checked_surface_and_verdict(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
 
-    result = run_workflow_harness_smoke("visual-qa", _payload(), tmp_path)
+    result = run_workflow_harness_smoke("visual-qa", _payload(tmp_path), tmp_path)
 
     assert result.status == "ready"
     assert result.gate_status == "passed"
@@ -30,6 +30,8 @@ def test_visual_qa_materializes_machine_checked_surface_and_verdict(tmp_path: Pa
     assert surface["schema_version"] == "visual_qa_surface_v1"
     assert surface["surface_ref"] == "app://asa/workflow"
     assert surface["screenshot_ref"] == "screenshots/workflow.png"
+    assert surface["screenshot_size_bytes"] > 0
+    assert isinstance(surface["screenshot_sha256"], str)
     assert verdict["schema_version"] == "visual_qa_verdict_v1"
     assert verdict["machine_checked"] is True
     assert verdict["passed"] is True
@@ -39,7 +41,7 @@ def test_visual_qa_materializes_machine_checked_surface_and_verdict(tmp_path: Pa
 def test_visual_qa_blocks_malformed_oracle_verdict(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
 
-    payload = _payload()
+    payload = _payload(tmp_path)
     payload["evidence"]["oracle_verdict"] = {"summary": "missing pass boolean"}
 
     result = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
@@ -50,15 +52,60 @@ def test_visual_qa_blocks_malformed_oracle_verdict(tmp_path: Path) -> None:
     assert not (tmp_path / "visual-qa" / "verdict.json").exists()
 
 
+def test_visual_qa_blocks_failed_oracle_verdict(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
+
+    payload = _payload(tmp_path)
+    payload["evidence"]["oracle_verdict"] = {"passed": False, "summary": "overlapping controls"}
+
+    result = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
+
+    assert result.status == "blocked"
+    assert result.gate_status == "blocked"
+    assert result.blockers == ("visual_qa_verdict_failed",)
+    assert not (tmp_path / "visual-qa" / "verdict.json").exists()
+
+
+def test_visual_qa_blocks_missing_screenshot_file(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
+
+    payload = _payload(tmp_path)
+    (tmp_path / "screenshots" / "workflow.png").unlink()
+
+    result = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
+
+    assert result.status == "blocked"
+    assert result.gate_status == "blocked"
+    assert result.blockers == ("visual_qa_screenshot_missing",)
+    assert not (tmp_path / "visual-qa" / "verdict.json").exists()
+
+
+def test_visual_qa_blocks_untrusted_screenshot_path(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
+
+    outside = tmp_path.parent / "outside-visual-capture.txt"
+    outside.write_text("outside capture\n", encoding="utf-8")
+    payload = _payload(tmp_path)
+    payload["evidence"]["screenshot_ref"] = str(outside)
+
+    result = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
+
+    assert result.status == "blocked"
+    assert result.gate_status == "blocked"
+    assert result.blockers == ("visual_qa_screenshot_untrusted",)
+    assert not (tmp_path / "visual-qa" / "verdict.json").exists()
+
+
 def test_visual_qa_artifacts_are_idempotent_and_block_tampered_surface(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
 
-    first = run_workflow_harness_smoke("visual-qa", _payload(), tmp_path)
+    payload = _payload(tmp_path)
+    first = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
     surface = tmp_path / "visual-qa" / "surface-capture.json"
     original_ledger = (tmp_path / "visual-qa" / "evidence-ledger.jsonl").read_text(encoding="utf-8")
     surface.write_text('{"tampered": true}\n', encoding="utf-8")
 
-    second = run_workflow_harness_smoke("visual-qa", _payload(), tmp_path)
+    second = run_workflow_harness_smoke("visual-qa", payload, tmp_path)
 
     assert first.status == "ready"
     assert second.status == "blocked"
@@ -70,6 +117,7 @@ def test_visual_qa_artifacts_are_idempotent_and_block_tampered_surface(tmp_path:
 
 def test_tui_visual_qa_accepts_structured_evidence_options(tmp_path: Path) -> None:
     workflow_dir = tmp_path / "workflows"
+    _write_capture(workflow_dir / "screenshots" / "workflow.png")
     result = _run_tui(
         tmp_path,
         (
@@ -90,7 +138,8 @@ def test_tui_visual_qa_accepts_structured_evidence_options(tmp_path: Path) -> No
     assert verdict["oracle_verdict"]["summary"] == "clean"
 
 
-def _payload() -> JsonMap:
+def _payload(root: Path) -> JsonMap:
+    _write_capture(root / "screenshots" / "workflow.png")
     return {
         "request_id": "visual-rich",
         "user_goal": "Verify rendered workflow UI",
@@ -103,6 +152,11 @@ def _payload() -> JsonMap:
             "oracle_verdict": {"passed": True, "summary": "clean", "checks": ["layout", "state"]},
         },
     }
+
+
+def _write_capture(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("visual capture bytes\n", encoding="utf-8")
 
 
 def _read_json(path: Path) -> JsonMap:

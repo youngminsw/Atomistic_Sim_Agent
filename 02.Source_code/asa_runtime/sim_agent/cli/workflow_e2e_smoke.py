@@ -51,6 +51,8 @@ def run_workflow_e2e_smoke(request: WorkflowE2ESmokeRequest) -> WorkflowE2ESmoke
 
 def _run_workflow(workflow_id: str, output_dir: Path, run_id: str) -> WorkflowHarnessResult:
     payload = _workflow_payload(workflow_id, run_id)
+    if workflow_id == "visual-qa":
+        _write_visual_capture(output_dir, run_id)
     result = run_workflow_harness_smoke(workflow_id, payload, output_dir)
     if workflow_id == "deep-interview" and result.gate is not None:
         respond_workflow_gate(
@@ -109,6 +111,12 @@ def _workflow_payload(workflow_id: str, run_id: str) -> JsonMap:
             return base | {"evidence": _ultraresearch_evidence(run_id)}
         case _:
             return base
+
+
+def _write_visual_capture(output_dir: Path, run_id: str) -> None:
+    capture = output_dir / "captures" / "workflow-panel.txt"
+    capture.parent.mkdir(parents=True, exist_ok=True)
+    capture.write_text(f"workflow panel capture for {run_id}\n", encoding="utf-8")
 
 
 def _ultraresearch_evidence(run_id: str) -> JsonMap:

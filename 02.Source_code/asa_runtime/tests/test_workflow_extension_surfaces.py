@@ -24,6 +24,9 @@ def test_visual_qa_and_ultraresearch_are_runtime_workflows_with_artifacts(tmp_pa
     assert missing_visual_surface.blockers == ("visual_qa_surface_required",)
     assert missing_visual_surface.missing_evidence == ("surface_ref", "screenshot_ref", "oracle_verdict")
 
+    capture_path = tmp_path / "ready" / "screenshots" / "workflow-panel.txt"
+    capture_path.parent.mkdir(parents=True, exist_ok=True)
+    capture_path.write_text("workflow panel capture\n", encoding="utf-8")
     visual_ready = run_workflow_harness_smoke(
         "visual-qa",
         {

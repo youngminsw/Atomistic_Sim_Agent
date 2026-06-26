@@ -136,6 +136,85 @@ def test_workflow_goal_operations_enforce_authority_and_known_actions(tmp_path: 
     assert missing.blockers == ("workflow_goal_unknown",)
 
 
+def test_workflow_goal_operations_authorize_against_stored_owner(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import operate_workflow_goal
+
+    create = operate_workflow_goal(
+        tmp_path,
+        {
+            "operation": "create",
+            "actor_agent_id": "md_agent",
+            "owner_agent_id": "md_agent",
+            "target_agent_id": "md_agent",
+            "workflow_id": "ultragoal",
+            "goal_id": "goal-owned",
+            "objective": "Self-owned MD goal",
+        },
+    )
+    duplicate = operate_workflow_goal(
+        tmp_path,
+        {
+            "operation": "create",
+            "actor_agent_id": "md_agent",
+            "owner_agent_id": "md_agent",
+            "target_agent_id": "md_agent",
+            "workflow_id": "ultragoal",
+            "goal_id": "goal-owned",
+            "objective": "Self-owned MD goal",
+        },
+    )
+    peer_get = operate_workflow_goal(
+        tmp_path,
+        {
+            "operation": "get",
+            "actor_agent_id": "qa_agent",
+            "owner_agent_id": "qa_agent",
+            "target_agent_id": "qa_agent",
+            "workflow_id": "ultragoal",
+            "goal_id": "goal-owned",
+        },
+    )
+    peer_complete = operate_workflow_goal(
+        tmp_path,
+        {
+            "operation": "complete",
+            "actor_agent_id": "qa_agent",
+            "owner_agent_id": "qa_agent",
+            "target_agent_id": "qa_agent",
+            "workflow_id": "ultragoal",
+            "goal_id": "goal-owned",
+        },
+    )
+    orchestrator_get = operate_workflow_goal(
+        tmp_path,
+        {
+            "operation": "get",
+            "actor_agent_id": "orchestrator",
+            "owner_agent_id": "md_agent",
+            "target_agent_id": "md_agent",
+            "workflow_id": "ultragoal",
+            "goal_id": "goal-owned",
+        },
+    )
+    goal_path = tmp_path / "ultragoal" / "goals" / "goal-owned.json"
+    goal = json.loads(goal_path.read_text(encoding="utf-8"))
+
+    assert create.status == "accepted"
+    assert duplicate.status == "accepted"
+    assert duplicate.goal == create.goal
+    assert peer_get.status == "blocked"
+    assert peer_get.blockers == ("workflow_authority_peer_denied",)
+    assert peer_complete.status == "blocked"
+    assert peer_complete.blockers == ("workflow_authority_peer_denied",)
+    assert orchestrator_get.status == "accepted"
+    assert orchestrator_get.owner_agent_id == "md_agent"
+    assert orchestrator_get.target_agent_id == "md_agent"
+    assert goal["owner_agent_id"] == "md_agent"
+    assert goal["target_agent_id"] == "md_agent"
+    assert goal["state"] == "active"
+    assert [event["operation"] for event in goal["history"]] == ["create"]
+
+
 def test_workflow_goal_tool_is_model_visible_and_uses_caller_identity(tmp_path: Path) -> None:
     from sim_agent.agent_harness.tools import RuntimeToolCall, default_tool_registry, execute_runtime_tool, tool_registry_for_agent
     from sim_agent.cli.tui_state import initial_state

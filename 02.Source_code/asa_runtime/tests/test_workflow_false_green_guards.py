@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -40,6 +41,7 @@ def test_workflow_gap_evidence_verifier_rejects_false_green_inputs(tmp_path: Pat
         "fake_stdout_no_ledger": (_remove_e2e_ledger, "e2e_ledger_missing"),
         "transcript_only_completion": (_remove_required_transcript_line, "e2e_transcript_missing_required"),
         "stale_artifact_run_id": (_write_stale_artifact, "artifact_run_id_mismatch"),
+        "artifact_hash_mismatch": (_write_tampered_artifact_with_run_id, "artifact_hash_mismatch"),
         "sabotage_not_detected": (_mark_sabotage_missed, "sabotage_case_not_detected"),
         "fake_live_provider": (_mark_live_provider_fake, "live_llm_fake_provider"),
         "provider_unavailable_not_success": (_mark_live_provider_unavailable, "live_llm_provider_unavailable"),
@@ -84,6 +86,7 @@ def _write_valid_fixture(root: Path) -> VerifierFixture:
     evidence_dir = root / "evidence"
     evidence_dir.mkdir(parents=True, exist_ok=True)
     _write_text(evidence_dir / "workflow-green.txt", f"{run_id}\n24 passed\n")
+    artifact_body = f'{{"run_id": "{run_id}"}}\n'
     _write_json(
         evidence_dir / "full-e2e" / "workflow-ledger.json",
         {
@@ -92,14 +95,14 @@ def _write_valid_fixture(root: Path) -> VerifierFixture:
             "status": "succeeded",
             "workflow_ids": ["/deep-interview"],
             "ledger_paths": ["full-e2e/workflow-ledger.json"],
-            "artifact_hashes": {"artifacts/workflow-state.json": "sha256:test"},
+            "artifact_hashes": {"artifacts/workflow-state.json": _sha256_text(artifact_body)},
         },
     )
     _write_text(
         evidence_dir / "full-e2e" / "workflow-transcript.txt",
         f"workflow_e2e_smoke_status=succeeded\nrun_id={run_id}\n/deep-interview\n",
     )
-    _write_text(evidence_dir / "artifacts" / "workflow-state.json", f'{{"run_id": "{run_id}"}}\n')
+    _write_text(evidence_dir / "artifacts" / "workflow-state.json", artifact_body)
     _write_text(
         evidence_dir / "live" / "provider-events.jsonl",
         json.dumps(
@@ -200,6 +203,13 @@ def _write_stale_artifact(fixture: VerifierFixture) -> None:
     _write_text(fixture.evidence_dir / "artifacts" / "workflow-state.json", '{"run_id": "old-run"}\n')
 
 
+def _write_tampered_artifact_with_run_id(fixture: VerifierFixture) -> None:
+    _write_text(
+        fixture.evidence_dir / "artifacts" / "workflow-state.json",
+        json.dumps({"run_id": fixture.run_id, "status": "forged"}, sort_keys=True) + "\n",
+    )
+
+
 def _mark_sabotage_missed(fixture: VerifierFixture) -> None:
     payload = _read_json(fixture.manifest)
     payload["sabotage_cases"][0]["status"] = "missed"
@@ -234,3 +244,7 @@ def _write_json(path: Path, payload: JsonMap) -> None:
 def _write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
