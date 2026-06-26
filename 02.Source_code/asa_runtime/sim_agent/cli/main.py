@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import assert_never
 
 from sim_agent.cli.auth import add_auth_parser, run_auth
 from sim_agent.cli.adversarial_e2e_smoke import AdversarialE2ESmokeRequest, run_adversarial_e2e_smoke
@@ -11,6 +12,8 @@ from sim_agent.cli.orchestrator import add_chat_parser, run_chat
 from sim_agent.cli.skill_workflow_smoke import SkillWorkflowSmokeRequest, run_skill_workflow_smoke
 from sim_agent.cli.tui import run_tui
 from sim_agent.cli.tui_control_room_smoke import TuiControlRoomSmokeRequest, run_tui_control_room_smoke
+from sim_agent.cli.workflow_e2e_smoke import WorkflowE2ESmokeRequest, run_workflow_e2e_smoke
+from sim_agent.cli.workflow_live_llm_e2e import WorkflowLiveLlmE2ERequest, run_workflow_live_llm_e2e
 from sim_agent.ui import build_ui_api_status
 from sim_agent.ui.server import build_ui_http_server
 
@@ -28,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_tui_control_room_smoke(args)
     if args.adversarial_e2e_smoke:
         return _run_adversarial_e2e_smoke(args)
+    if args.workflow_e2e_smoke:
+        return _run_workflow_e2e_smoke(args)
+    if args.workflow_live_llm_e2e:
+        return _run_workflow_live_llm_e2e(args)
     match args.command:
         case None:
             return run_tui(session_dir=Path(args.session_dir) if args.session_dir else None, resume=args.resume)
@@ -37,9 +44,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_auth(args)
         case "ui":
             return _run_ui(args)
-        case _:
-            parser.print_help()
-            return 1
+        case unreachable:
+            assert_never(unreachable)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -60,6 +66,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--compaction-smoke", action="store_true", help="Run a semantic compaction/resume smoke.")
     parser.add_argument("--tui-control-room-smoke", action="store_true", help="Run a live PTY TUI control-room smoke.")
     parser.add_argument("--adversarial-e2e-smoke", action="store_true", help="Run adversarial runtime blocker smoke.")
+    parser.add_argument("--workflow-e2e-smoke", action="store_true", help="Run canonical workflow command e2e smoke.")
+    parser.add_argument(
+        "--workflow-live-llm-e2e",
+        action="store_true",
+        help="Run live-LLM workflow e2e evidence, blocking when live providers are unavailable.",
+    )
     parser.add_argument("--model-profile", default="codex-pro")
     parser.add_argument("--scenario", default="orchestrator_subagent_tool_loop")
     parser.add_argument("--allow-hardgate-bypass", action="store_true")
@@ -155,6 +167,38 @@ def _run_tui_control_room_smoke(args: argparse.Namespace) -> int:
     print(f"tui_final_transcript={result.final_transcript_path}")
     for blocker in result.blockers:
         print(f"tui_control_room_smoke_blocker={blocker}")
+    return 0 if result.status == "succeeded" else 1
+
+
+def _run_workflow_e2e_smoke(args: argparse.Namespace) -> int:
+    if args.output_dir is None:
+        print("workflow_e2e_smoke_error=output_dir_required")
+        return 2
+    result = run_workflow_e2e_smoke(
+        WorkflowE2ESmokeRequest(output_dir=args.output_dir, scenario=args.scenario)
+    )
+    print("workflow_e2e_smoke=true")
+    print(f"workflow_e2e_smoke_status={result.status}")
+    print(f"workflow_e2e_smoke_json={result.output_json}")
+    print(f"workflow_e2e_transcript={result.transcript_path}")
+    for blocker in result.blockers:
+        print(f"workflow_e2e_smoke_blocker={blocker}")
+    return 0 if result.status == "succeeded" else 1
+
+
+def _run_workflow_live_llm_e2e(args: argparse.Namespace) -> int:
+    if args.output_dir is None:
+        print("workflow_live_llm_e2e_error=output_dir_required")
+        return 2
+    result = run_workflow_live_llm_e2e(
+        WorkflowLiveLlmE2ERequest(output_dir=args.output_dir, scenario=args.scenario)
+    )
+    print("workflow_live_llm_e2e=true")
+    print(f"workflow_live_llm_e2e_status={result.status}")
+    print(f"workflow_live_llm_e2e_json={result.output_json}")
+    print(f"workflow_live_llm_provider_events={result.provider_events_path}")
+    for blocker in result.blockers:
+        print(f"workflow_live_llm_e2e_blocker={blocker}")
     return 0 if result.status == "succeeded" else 1
 
 

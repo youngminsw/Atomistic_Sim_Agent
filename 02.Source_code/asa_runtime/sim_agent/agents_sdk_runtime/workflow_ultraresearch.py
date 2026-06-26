@@ -57,11 +57,11 @@ def materialize_ultraresearch_artifacts(workflow_dir: Path, context: JsonMap, pa
     _write_once(workflow_dir / "source-ledger.jsonl", _jsonl(source_rows))
     _write_once(
         workflow_dir / "expansion-log.md",
-        _expansion_log(artifact_data.research_question, artifact_data.trace, artifact_data.source_count),
+        _expansion_log(artifact_data),
     )
     _write_once(
         workflow_dir / "synthesis-checkpoint.md",
-        _synthesis_checkpoint(artifact_data.source_journal, artifact_data.source_count),
+        _synthesis_checkpoint(artifact_data),
     )
     return UltraresearchArtifactResult(_ARTIFACT_REFS)
 
@@ -140,33 +140,37 @@ def _source_row(context: JsonMap, source: UltraresearchSource, index: int) -> Js
     }
 
 
-def _expansion_log(research_question: str, trace: InsaneSearchTrace, source_count: int) -> str:
+def _expansion_log(data: UltraresearchArtifactData) -> str:
     return "\n".join(
         (
             "# Ultraresearch Expansion Log",
             "",
-            f"- research_question: {research_question}",
+            f"- request_id: {data.context['request_id']}",
+            f"- goal_id: {data.context['goal_id']}",
+            f"- research_question: {data.research_question}",
             "- acquisition_backend: insane_search",
-            f"- source_count: {source_count}",
-            f"- grid_exhausted: {str(trace.grid_exhausted).lower()}",
-            f"- untried_routes: {','.join(trace.untried_routes)}",
-            f"- must_invoke_playwright_mcp: {str(trace.must_invoke_playwright_mcp).lower()}",
+            f"- source_count: {data.source_count}",
+            f"- grid_exhausted: {str(data.trace.grid_exhausted).lower()}",
+            f"- untried_routes: {','.join(data.trace.untried_routes)}",
+            f"- must_invoke_playwright_mcp: {str(data.trace.must_invoke_playwright_mcp).lower()}",
             "- expansion_stop: public_sources_ready_for_cited_synthesis",
             "",
         )
     )
 
 
-def _synthesis_checkpoint(source_journal: str, source_count: int) -> str:
+def _synthesis_checkpoint(data: UltraresearchArtifactData) -> str:
     return "\n".join(
         (
             "# Ultraresearch Synthesis Checkpoint",
             "",
+            f"- request_id: {data.context['request_id']}",
+            f"- goal_id: {data.context['goal_id']}",
             "- status: synthesis_ready",
             "- citation_required: true",
             "- content_trust: untrusted_evidence_only",
-            f"- source_journal: {source_journal}",
-            f"- source_count: {source_count}",
+            f"- source_journal: {data.source_journal}",
+            f"- source_count: {data.source_count}",
             "",
         )
     )

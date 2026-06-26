@@ -111,6 +111,8 @@ def _materialize_ralplan(workflow_dir: Path, context: JsonMap, workflow: Workflo
             (
                 "# RALPlan Test Spec",
                 "",
+                f"- request_id: {context['request_id']}",
+                f"- goal_id: {context['goal_id']}",
                 "- happy_path: required workflow artifacts and gate metadata are present",
                 "- edge_path: missing PRD/test-spec artifacts block readiness",
                 "- regression_path: owner-scoped workflow authority still rejects peer mutation",
