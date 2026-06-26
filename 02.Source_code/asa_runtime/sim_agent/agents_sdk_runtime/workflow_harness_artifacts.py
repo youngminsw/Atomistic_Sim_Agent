@@ -7,6 +7,10 @@ from pathlib import Path
 from sim_agent.schemas._parse import JsonMap
 from sim_agent.agents_sdk_runtime.workflow_harness_payload import evidence_keys, request_id, text_value
 from sim_agent.agents_sdk_runtime.workflow_ralplan import RalplanArtifactError, materialize_ralplan_artifacts
+from sim_agent.agents_sdk_runtime.workflow_ultragoal import (
+    UltragoalArtifactError,
+    materialize_ultragoal_artifacts,
+)
 from sim_agent.agents_sdk_runtime.workflow_harness_types import WorkflowDefinition
 
 
@@ -125,55 +129,7 @@ def _write_once(path: Path, body: str) -> None:
 
 
 def _materialize_ultragoal(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:
-    brief = workflow_dir / "brief.md"
-    goals = workflow_dir / "goals.json"
-    ledger = workflow_dir / "ledger.jsonl"
-    goal_items = payload.get("goals")
-    if not isinstance(goal_items, list) or not goal_items:
-        goal_items = [
-            {
-                "id": text_value(context.get("goal_id"), "G001"),
-                "title": text_value(context.get("user_goal"), "ASA workflow goal"),
-                "status": "in_progress",
-            }
-        ]
-    brief.write_text(
-        "\n".join(
-            (
-                "# Ultragoal Brief",
-                "",
-                f"- request_id: {context['request_id']}",
-                f"- active_goal_id: {text_value(context.get('goal_id'), 'G001')}",
-                f"- objective: {context['user_goal']}",
-                "",
-            )
-        ),
-        encoding="utf-8",
-    )
-    _write_json(
-        goals,
-        context
-        | {
-            "artifact_kind": "ultragoal_goals",
-            "brief_path": "ultragoal/brief.md",
-            "ledger_path": "ultragoal/ledger.jsonl",
-            "goals": goal_items,
-        },
-    )
-    ledger.write_text(
-        json.dumps(
-            context
-            | {
-                "artifact_kind": "ultragoal_checkpoint",
-                "status": "checkpoint_ready",
-                "goals_path": "ultragoal/goals.json",
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    return ("ultragoal/brief.md", "ultragoal/goals.json", "ultragoal/ledger.jsonl")
+    return materialize_ultragoal_artifacts(workflow_dir, context, payload).refs
 
 
 def _materialize_visual_qa(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:

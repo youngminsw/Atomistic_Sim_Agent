@@ -169,13 +169,17 @@
       ],
       "behavioral_contract": "An ultragoal-style signoff/checkpoint gate uses a workflow_gate stage such as ultragoal:signoff with execution or approval semantics and context identifying the skill/goal. ASA must persist goal/checkpoint context and block or resolve through the shared gate protocol.",
       "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_ultragoal.py",
         "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness_artifacts.py",
+        "tests/test_ultragoal_runtime.py",
         "tests/test_workflow_runtime_parity.py",
         "tests/test_workflow_goal_authority.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "tests/test_tui_workflow_activity.py::test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger"
+        "tests/test_tui_workflow_activity.py::test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger",
+        "tests/test_ultragoal_runtime.py"
       ],
       "status": "implemented",
       "verification_evidence": [
