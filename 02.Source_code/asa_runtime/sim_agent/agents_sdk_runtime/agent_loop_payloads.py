@@ -5,11 +5,13 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop_contract import AsaAgentSession, ToolChoiceModel
 
+SUCCESS_TOOL_STATUSES = frozenset({"succeeded", "ready", "accepted"})
+
 
 def loop_status(tool_results: tuple[RuntimeToolResult, ...], blockers: tuple[str, ...]) -> str:
     if blockers:
         return "blocked"
-    if all(result.status == "succeeded" for result in tool_results):
+    if all(result.status in SUCCESS_TOOL_STATUSES for result in tool_results):
         return "succeeded"
     return "failed"
 
