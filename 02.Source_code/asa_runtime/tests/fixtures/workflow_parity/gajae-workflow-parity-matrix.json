@@ -187,6 +187,32 @@
       ]
     },
     {
+      "id": "visual_qa_evidence_workflow",
+      "gajae_reference": [
+        "C:/Users/swym4/.codex/plugins/cache/sisyphuslabs/omo/4.12.0/skills/visual-qa/SKILL.md"
+      ],
+      "behavioral_contract": "Visual QA is an ASA/OMO extension workflow, not a Gajae-native default. It must require rendered surface evidence, screenshot evidence, and an oracle verdict; malformed verdicts and tampered artifacts fail closed with typed blockers instead of producing prompt-only success.",
+      "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_visual_qa.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness_artifacts.py",
+        "sim_agent/cli/tui_workflow.py",
+        "tests/test_visual_qa_runtime.py"
+      ],
+      "tests": [
+        "tests/test_workflow_parity_matrix.py",
+        "tests/test_visual_qa_runtime.py",
+        "tests/test_workflow_harnesses.py",
+        "tests/test_tui_workflow_activity.py",
+        "tests/test_skill_workflow_runtime.py"
+      ],
+      "status": "implemented",
+      "verification_evidence": [
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-green.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-transcript.txt"
+      ]
+    },
+    {
       "id": "tui_tool_persistence_coverage",
       "gajae_reference": [
         "//wsl$/Ubuntu/tmp/gajae-code/python/gjc-rpc/README.md:260-273",

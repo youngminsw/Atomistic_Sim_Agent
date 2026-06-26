@@ -11,6 +11,7 @@ from sim_agent.agents_sdk_runtime.workflow_ultragoal import (
     UltragoalArtifactError,
     materialize_ultragoal_artifacts,
 )
+from sim_agent.agents_sdk_runtime.workflow_visual_qa import VisualQaArtifactError, materialize_visual_qa_artifacts
 from sim_agent.agents_sdk_runtime.workflow_harness_types import WorkflowDefinition
 
 
@@ -35,7 +36,7 @@ def materialize_workflow_artifacts(request: WorkflowArtifactRequest) -> tuple[st
         "user_goal": text_value(request.payload.get("user_goal"), "Interactive ASA workflow harness"),
         "evidence_keys": list(evidence_keys(request.payload)),
     }
-    match request.workflow.workflow_id:
+    match request.workflow.workflow_id:  # noqa: MATCH_OK - workflow IDs are plugin strings with a generic fallback.
         case "deep-interview":
             return _materialize_deep_interview(request.workflow_dir, context, request.payload)
         case "ralplan":
@@ -133,31 +134,7 @@ def _materialize_ultragoal(workflow_dir: Path, context: JsonMap, payload: JsonMa
 
 
 def _materialize_visual_qa(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:
-    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
-    surface_capture = workflow_dir / "surface-capture.json"
-    verdict = workflow_dir / "verdict.json"
-    _write_json(
-        surface_capture,
-        context
-        | {
-            "artifact_kind": "visual_qa_surface_capture",
-            "surface_ref": evidence.get("surface_ref", ""),
-            "screenshot_ref": evidence.get("screenshot_ref", ""),
-            "capture_target": evidence.get("capture_target", "rendered_surface"),
-            "stale_artifact_guard": True,
-        },
-    )
-    _write_json(
-        verdict,
-        context
-        | {
-            "artifact_kind": "visual_qa_verdict",
-            "oracle_verdict": evidence.get("oracle_verdict", {}),
-            "surface_capture_path": "visual-qa/surface-capture.json",
-            "surface_required_blocker": "visual_qa_surface_required",
-        },
-    )
-    return ("visual-qa/surface-capture.json", "visual-qa/verdict.json")
+    return materialize_visual_qa_artifacts(workflow_dir, context, payload).refs
 
 
 def _materialize_ultraresearch(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:

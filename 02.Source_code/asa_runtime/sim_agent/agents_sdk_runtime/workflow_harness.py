@@ -8,20 +8,18 @@ from sim_agent.schemas._parse import JsonMap
 from sim_agent.agents_sdk_runtime.workflow_harness_artifacts import (
     RalplanArtifactError,
     UltragoalArtifactError,
+    VisualQaArtifactError,
     WorkflowArtifactRequest,
     materialize_workflow_artifacts,
 )
-from sim_agent.agents_sdk_runtime.workflow_harness_ledger import (
-    write_blocked_workflow_ledger,
-    write_workflow_ledger,
-)
+from sim_agent.agents_sdk_runtime.workflow_harness_ledger import write_workflow_ledger
 from sim_agent.agents_sdk_runtime.workflow_harness_payload import agent_id, evidence_keys, optional_gate
+from sim_agent.agents_sdk_runtime.workflow_harness_results import blocked_result, missing_evidence_blocker
 from sim_agent.agents_sdk_runtime.workflow_harness_types import (
     WORKFLOW_HARNESS_LEDGER_NAME,
     WorkflowDefinition,
     WorkflowHarnessEvent,
     WorkflowHarnessResult,
-    normalize_workflow_id,
     workflow_definition,
     workflow_event,
     workflow_harness_catalog,
@@ -47,7 +45,7 @@ class HarnessContext:
 def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: Path) -> WorkflowHarnessResult:
     workflow = workflow_definition(workflow_id)
     if workflow is None:
-        return _blocked_result(workflow_id, output_dir, "unknown_workflow")
+        return blocked_result(workflow_id, output_dir, "unknown_workflow")
     context = _harness_context(workflow, payload, output_dir)
     authority_blocker = workflow_authority_blocker(
         context.actor_agent_id,
@@ -109,7 +107,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
             missing_evidence=missing,
             resumable=True,
             ledger_ref=context.ledger_ref,
-            blockers=(_missing_evidence_blocker(workflow),),
+            blockers=(missing_evidence_blocker(workflow),),
             events=events,
             actor_agent_id=context.actor_agent_id,
             owner_agent_id=context.owner_agent_id,
@@ -120,7 +118,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         return result
     try:
         artifact_refs = _artifact_refs(workflow, payload, context)
-    except (RalplanArtifactError, UltragoalArtifactError) as exc:
+    except (RalplanArtifactError, UltragoalArtifactError, VisualQaArtifactError) as exc:
         events = (
             workflow_event(workflow, "initialized", False),
             WorkflowHarnessEvent(
@@ -219,17 +217,6 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
     write_workflow_ledger(context.workflow_dir, result, workflow, payload)
     return result
 
-
-def _missing_evidence_blocker(workflow: WorkflowDefinition) -> str:
-    match workflow.workflow_id:
-        case "visual-qa":
-            return "visual_qa_surface_required"
-        case "ultraresearch":
-            return "ultraresearch_evidence_required"
-        case _:
-            return "workflow_gate_missing_evidence"
-
-
 def _artifact_refs(workflow: WorkflowDefinition, payload: JsonMap, context: HarnessContext) -> tuple[str, ...]:
     if workflow.workflow_id == "deep-interview":
         return ()
@@ -255,22 +242,3 @@ def _harness_context(workflow: WorkflowDefinition, payload: JsonMap, output_dir:
         ledger_ref=f"{workflow.workflow_id}/{WORKFLOW_HARNESS_LEDGER_NAME}",
         workflow_dir=output_dir / workflow.workflow_id,
     )
-
-
-def _blocked_result(workflow_id: str, output_dir: Path, blocker: str) -> WorkflowHarnessResult:
-    normalized = normalize_workflow_id(workflow_id)
-    result = WorkflowHarnessResult(
-        workflow_id=normalized,
-        status="blocked",
-        current_state="blocked",
-        verification_gate="workflow_known",
-        gate_status="blocked",
-        evidence_keys=(),
-        missing_evidence=(),
-        resumable=True,
-        ledger_ref=f"{normalized}/{WORKFLOW_HARNESS_LEDGER_NAME}",
-        blockers=(blocker,),
-        events=(WorkflowHarnessEvent(time.time(), normalized, "blocked", "SlashCommand", blocker, terminal=True),),
-    )
-    write_blocked_workflow_ledger(output_dir / normalized, result)
-    return result
