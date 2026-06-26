@@ -37,6 +37,7 @@ class WorkflowGate:
     response_schema: JsonMap | None = None
     answered_at: str = ""
     schema_hash: str = ""
+    deep_interview: JsonMap | None = None
 
     def to_json(self) -> JsonMap:
         payload: dict[str, object] = {
@@ -61,6 +62,8 @@ class WorkflowGate:
                 payload["response_schema"] = self.response_schema or {}
             case unreachable:
                 assert_never(unreachable)
+        if self.deep_interview is not None:
+            payload["deep_interview"] = dict(self.deep_interview)
         return payload
 
 
@@ -135,6 +138,8 @@ def workflow_gate_schema_hash(gate: WorkflowGate) -> str:
             shape["response_schema"] = gate.response_schema or {}
         case unreachable:
             assert_never(unreachable)
+    if gate.deep_interview is not None:
+        shape["deep_interview"] = dict(gate.deep_interview)
     encoded = json.dumps(shape, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()[:16]
 
@@ -163,6 +168,7 @@ def read_gate(path: Path) -> WorkflowGate | None:
         raw.get("response_schema") if isinstance(raw.get("response_schema"), dict) else None,
         required_text(raw, "answered_at"),
         required_text(raw, "schema_hash"),
+        raw.get("deep_interview") if isinstance(raw.get("deep_interview"), dict) else None,
     )
 
 
@@ -182,6 +188,7 @@ def answered_gate(gate: WorkflowGate) -> WorkflowGate:
         gate.response_schema,
         now(),
         gate.schema_hash,
+        gate.deep_interview,
     )
 
 
@@ -223,6 +230,9 @@ def response_schema_blocker(value: object, schema: JsonMap) -> str:
     schema_type = schema.get("type")
     if schema_type is not None and not matches_schema_type(value, schema_type):
         return "workflow_gate_response_schema_mismatch"
+    enum_values = schema.get("enum")
+    if isinstance(enum_values, list) and value not in enum_values:
+        return "workflow_gate_response_schema_mismatch"
     required = schema.get("required")
     if isinstance(required, list):
         if not isinstance(value, dict):
@@ -230,6 +240,11 @@ def response_schema_blocker(value: object, schema: JsonMap) -> str:
         for field in required:
             if isinstance(field, str) and field not in value:
                 return "workflow_gate_response_schema_mismatch"
+    if schema.get("additionalProperties") is False and isinstance(value, dict):
+        properties = schema.get("properties")
+        allowed = {field for field in properties if isinstance(field, str)} if isinstance(properties, dict) else set()
+        if any(not isinstance(field, str) or field not in allowed for field in value):
+            return "workflow_gate_response_schema_mismatch"
     properties = schema.get("properties")
     if isinstance(properties, dict) and isinstance(value, dict):
         for field, field_schema in properties.items():
@@ -238,6 +253,19 @@ def response_schema_blocker(value: object, schema: JsonMap) -> str:
             blocker = response_schema_blocker(value[field], field_schema)
             if blocker:
                 return blocker
+    if isinstance(value, list):
+        min_items = schema.get("minItems")
+        max_items = schema.get("maxItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            return "workflow_gate_response_schema_mismatch"
+        if isinstance(max_items, int) and len(value) > max_items:
+            return "workflow_gate_response_schema_mismatch"
+        items_schema = schema.get("items")
+        if isinstance(items_schema, dict):
+            for item in value:
+                blocker = response_schema_blocker(item, items_schema)
+                if blocker:
+                    return blocker
     return ""
 
 

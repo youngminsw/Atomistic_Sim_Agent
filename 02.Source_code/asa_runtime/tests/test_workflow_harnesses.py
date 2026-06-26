@@ -28,20 +28,21 @@ def test_workflow_harness_smoke_writes_resumable_state_machine_ledger(tmp_path: 
     )
     ledger = json.loads((tmp_path / result.ledger_ref).read_text(encoding="utf-8"))
 
-    assert result.status == "ready"
+    assert result.status == "blocked"
     assert result.workflow_id == "deep-interview"
-    assert result.current_state == "handoff_ready"
+    assert result.current_state == "blocked"
     assert result.resumable is True
     assert result.verification_gate == "ambiguity_gate_clear"
-    assert result.gate_status == "passed"
+    assert result.gate_status == "awaiting_response"
     assert ledger["workflow_id"] == "deep-interview"
     assert ledger["resumable"] is True
-    assert ledger["gate_status"] == "passed"
+    assert ledger["gate_status"] == "awaiting_response"
     assert ledger["missing_evidence"] == []
-    assert ledger["artifact_refs"] == ["deep-interview/transcript.jsonl", "deep-interview/handoff.md"]
-    assert [event["state"] for event in ledger["events"]][-1] == "handoff_ready"
-    assert (tmp_path / "deep-interview" / "transcript.jsonl").is_file()
-    assert (tmp_path / "deep-interview" / "handoff.md").is_file()
+    assert ledger["artifact_refs"] == []
+    assert ledger["gate"]["gate_kind"] == "response_schema"
+    assert [event["state"] for event in ledger["events"]][-1] == "blocked"
+    assert (tmp_path / "deep-interview" / "gates" / "question-q1.json").is_file()
+    assert not (tmp_path / "deep-interview" / "handoff.md").exists()
 
 
 def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: Path) -> None:
@@ -69,10 +70,9 @@ def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: 
     assert "workflow_harness_ready=true" in result.stdout
     assert "workflow=deep-interview" in result.stdout
     assert "workflow=ralplan" in result.stdout
-    assert "current_state=handoff_ready" in result.stdout
+    assert "current_state=blocked" in result.stdout
     assert "current_state=verification_plan_ready" in result.stdout
-    assert "workflow_gate_status=passed" in result.stdout
-    assert "workflow_artifact_refs=deep-interview/transcript.jsonl,deep-interview/handoff.md" in result.stdout
+    assert "workflow_gate_status=awaiting_response" in result.stdout
     assert "workflow_artifact_refs=ralplan/prd.md,ralplan/test-spec.md,ralplan/consensus.json" in result.stdout
     assert "/workflow <name>" in result.stdout
     assert "/ralplan" in result.stdout

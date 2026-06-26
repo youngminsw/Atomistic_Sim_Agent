@@ -15,10 +15,10 @@ def test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger(tmp_path
     result = _run_tui(
         tmp_path,
         (
-            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
-            "--owner-agent orchestrator --target-agent orchestrator --goal-id goal-di "
-            f"--gate-id clarify --allowed-values clear,blocked --output-dir {workflow_dir}\n"
-            "/workflow-response clarify clear --workflow-id deep-interview "
+            "/workflow deep-interview --owner-agent orchestrator --target-agent orchestrator --goal-id goal-di "
+            "--deep-question-id clarify --deep-ambiguity 0.2 --deep-options clear,blocked "
+            f"--output-dir {workflow_dir}\n"
+            "/workflow-response question-clarify '{\"selected\":[\"clear\"]}' --workflow-id deep-interview "
             f"--responder-agent orchestrator --output-dir {workflow_dir}\n"
             "/ralplan --evidence-key prd_path,test_spec_path --owner-agent orchestrator "
             "--target-agent qa_agent --goal-id goal-ral --gate-id approval "
@@ -36,7 +36,7 @@ def test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger(tmp_path
     assert "workflow=deep-interview" in result.stdout
     assert "workflow_status=blocked" in result.stdout
     assert "workflow_gate_status=awaiting_response" in result.stdout
-    assert "workflow_gate_id=clarify" in result.stdout
+    assert "workflow_gate_id=question-clarify" in result.stdout
     assert "workflow_owner_agent_id=orchestrator" in result.stdout
     assert "workflow_target_agent_id=orchestrator" in result.stdout
     assert "workflow_goal_id=goal-di" in result.stdout
@@ -51,7 +51,7 @@ def test_tui_workflow_response_surface_shows_gate_owner_goal_and_ledger(tmp_path
     assert "workflow_artifact_refs=ultragoal/brief.md,ultragoal/goals.json,ultragoal/ledger.jsonl" in result.stdout
     assert "/workflow-response <gate-id> <value>" in result.stdout
 
-    deep_gate = workflow_dir / "deep-interview" / "gates" / "clarify.json"
+    deep_gate = workflow_dir / "deep-interview" / "gates" / "question-clarify.json"
     ralplan_gate = workflow_dir / "ralplan" / "gates" / "approval.json"
     assert deep_gate.is_file()
     assert ralplan_gate.is_file()
@@ -96,17 +96,17 @@ def test_tui_workflow_response_preserves_cli_enum_values_as_strings(tmp_path: Pa
     result = _run_tui(
         tmp_path,
         (
-            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            "/workflow ralplan --evidence-key prd_path,test_spec_path "
             "--gate-id numeric --allowed-values 1,2 "
             f"--output-dir {workflow_dir}\n"
-            f"/workflow-response numeric 1 --workflow-id deep-interview --output-dir {workflow_dir}\n"
+            f"/workflow-response numeric 1 --workflow-id ralplan --output-dir {workflow_dir}\n"
             "/exit\n"
         ),
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "workflow_response_status=accepted" in result.stdout
-    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "numeric.json").read_text(encoding="utf-8"))
+    gate_payload = json.loads((workflow_dir / "ralplan" / "gates" / "numeric.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] == "1"
 
 
@@ -115,29 +115,29 @@ def test_tui_workflow_response_parses_response_schema_json_scalars(tmp_path: Pat
     result = _run_tui(
         tmp_path,
         (
-            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            "/workflow ralplan --evidence-key prd_path,test_spec_path "
             "--gate-id confirmed --gate-kind response_schema --response-schema '{\"type\":\"boolean\"}' "
             f"--output-dir {workflow_dir}\n"
-            f"/workflow-response confirmed true --workflow-id deep-interview --output-dir {workflow_dir}\n"
-            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            f"/workflow-response confirmed true --workflow-id ralplan --output-dir {workflow_dir}\n"
+            "/workflow ralplan --evidence-key prd_path,test_spec_path "
             "--gate-id score --gate-kind response_schema --response-schema '{\"type\":\"number\"}' "
             f"--output-dir {workflow_dir}\n"
-            f"/workflow-response score 1 --workflow-id deep-interview --output-dir {workflow_dir}\n"
-            "/workflow deep-interview --evidence-key question_answer,ambiguity_score "
+            f"/workflow-response score 1 --workflow-id ralplan --output-dir {workflow_dir}\n"
+            "/workflow ralplan --evidence-key prd_path,test_spec_path "
             "--gate-id optional --gate-kind response_schema --response-schema '{\"type\":\"null\"}' "
             f"--output-dir {workflow_dir}\n"
-            f"/workflow-response optional null --workflow-id deep-interview --output-dir {workflow_dir}\n"
+            f"/workflow-response optional null --workflow-id ralplan --output-dir {workflow_dir}\n"
             "/exit\n"
         ),
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.count("workflow_response_status=accepted") == 3
-    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "confirmed.json").read_text(encoding="utf-8"))
+    gate_payload = json.loads((workflow_dir / "ralplan" / "gates" / "confirmed.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] is True
-    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "score.json").read_text(encoding="utf-8"))
+    gate_payload = json.loads((workflow_dir / "ralplan" / "gates" / "score.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] == 1
-    gate_payload = json.loads((workflow_dir / "deep-interview" / "gates" / "optional.json").read_text(encoding="utf-8"))
+    gate_payload = json.loads((workflow_dir / "ralplan" / "gates" / "optional.json").read_text(encoding="utf-8"))
     assert gate_payload["response_value"] is None
 
 

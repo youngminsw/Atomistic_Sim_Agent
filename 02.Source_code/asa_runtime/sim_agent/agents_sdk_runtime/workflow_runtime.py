@@ -8,6 +8,14 @@ from typing import assert_never
 from sim_agent.schemas._parse import JsonMap
 
 from .workflow_actions import WorkflowActionResolveRequest, ensure_pending_action, resolve_workflow_action
+from .workflow_deep_interview import (
+    deep_interview_corrupt_state,
+    deep_interview_gate,
+    deep_interview_handoff_refs,
+    deep_interview_pending_gate,
+    deep_interview_response_blocker,
+    record_deep_interview_response,
+)
 from .workflow_gate_protocol import (
     WORKFLOW_GATE_SCHEMA_VERSION,
     WorkflowGate,
@@ -97,6 +105,8 @@ def start_workflow_runtime(request: WorkflowRuntimeStartRequest) -> WorkflowRunt
     )
     if authority_blocker:
         return WorkflowRuntimeStartResult("blocked", "blocked", (authority_blocker,), None)
+    if request.workflow_id == "deep-interview":
+        return _start_deep_interview_runtime(request)
     artifact_blocker = _artifact_validation_blocker(request)
     if artifact_blocker:
         return WorkflowRuntimeStartResult(
@@ -159,6 +169,9 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
             if not isinstance(value, str) or value not in gate.allowed_values:
                 return gate_response_for_gate(gate, "blocked", ("workflow_gate_invalid_enum_value",), "")
         case WorkflowGateKind.RESPONSE_SCHEMA:
+            deep_blocker = deep_interview_response_blocker(gate, value)
+            if deep_blocker:
+                return gate_response_for_gate(gate, "blocked", (deep_blocker,), "")
             blocker = response_schema_blocker(value, gate.response_schema or {})
             if blocker:
                 return gate_response_for_gate(gate, "blocked", (blocker,), "")
@@ -171,7 +184,45 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
         return gate_response_for_gate(gate, "blocked", action_result.blockers, "", action_result.to_json())
     answered = answered_gate(gate)
     write_json(gate_path, answered.to_json() | {"response_value": value, "responder_agent_id": responder_agent_id})
+    record_deep_interview_response(output_dir, answered, value)
     return gate_response_for_gate(answered, "accepted", (), answered.answered_at, action_result.to_json())
+
+
+def _start_deep_interview_runtime(request: WorkflowRuntimeStartRequest) -> WorkflowRuntimeStartResult:
+    workflow_dir = request.output_dir / "deep-interview"
+    if deep_interview_corrupt_state(workflow_dir):
+        return WorkflowRuntimeStartResult("blocked", "blocked", ("deep_interview_state_corrupt",), None)
+    if deep_interview_handoff_refs(workflow_dir):
+        return WorkflowRuntimeStartResult("ready", "passed", (), None)
+    pending = deep_interview_pending_gate(workflow_dir)
+    if pending is not None:
+        return WorkflowRuntimeStartResult("blocked", "awaiting_response", ("workflow_gate_response_required",), pending)
+    gate = deep_interview_gate(
+        request.workflow_id,
+        request.goal_id,
+        request.owner_agent_id,
+        request.target_agent_id,
+        request.payload,
+    )
+    existing = read_gate(request.output_dir / gate.ledger_ref)
+    if existing is not None:
+        if existing.status == "accepted":
+            return WorkflowRuntimeStartResult(
+                "blocked",
+                "accepted",
+                ("deep_interview_next_round_required",),
+                existing,
+            )
+        return WorkflowRuntimeStartResult(
+            "blocked",
+            existing.status or "blocked",
+            ("workflow_gate_response_required",),
+            existing,
+        )
+    gate_path = request.output_dir / gate.ledger_ref
+    write_json(gate_path, gate.to_json())
+    ensure_pending_action(request.output_dir, gate)
+    return WorkflowRuntimeStartResult("blocked", "awaiting_response", ("workflow_gate_response_required",), gate)
 
 
 def adjust_workflow_goal_state(output_dir: Path, payload: JsonMap) -> WorkflowGoalAuthorityResult:

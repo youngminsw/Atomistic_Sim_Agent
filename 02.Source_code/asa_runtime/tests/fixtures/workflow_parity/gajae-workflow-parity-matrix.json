@@ -92,17 +92,24 @@
       ],
       "behavioral_contract": "Interactive input is represented as a workflow_gate with kind question and context describing the UI/request. ASA deep-interview must create one pending question gate per round rather than batching multiple rounds.",
       "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_deep_interview.py",
         "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/agents_sdk_runtime/workflow_gate_protocol.py",
+        "sim_agent/cli/tui_workflow.py",
+        "tests/test_deep_interview_runtime.py",
         "tests/test_workflow_harnesses.py",
         "tests/test_tui_workflow_activity.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "tests/test_workflow_runtime_parity.py::test_workflow_runtime_resumes_existing_gate_record"
+        "tests/test_deep_interview_runtime.py",
+        "tests/test_tui_workflow_activity.py"
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-red.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-green.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-transcript.txt"
       ]
     },
     {

@@ -24,6 +24,7 @@ from sim_agent.agents_sdk_runtime.workflow_harness_types import (
     workflow_event,
     workflow_harness_catalog,
 )
+from sim_agent.agents_sdk_runtime.workflow_deep_interview import deep_interview_handoff_refs
 from sim_agent.agents_sdk_runtime.workflow_runtime import (
     WorkflowRuntimeStartRequest,
     start_workflow_runtime,
@@ -115,16 +116,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         )
         write_workflow_ledger(context.workflow_dir, result, workflow, payload)
         return result
-    artifact_refs = materialize_workflow_artifacts(
-        WorkflowArtifactRequest(
-            workflow,
-            payload,
-            context.workflow_dir,
-            context.owner_agent_id,
-            context.target_agent_id,
-            context.goal_id,
-        )
-    )
+    artifact_refs = _artifact_refs(workflow, payload, context)
     runtime = start_workflow_runtime(
         WorkflowRuntimeStartRequest(
             output_dir,
@@ -188,7 +180,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         target_agent_id=context.target_agent_id,
         goal_id=context.goal_id,
         gate=runtime.gate.to_json() if runtime.gate is not None else None,
-        artifact_refs=artifact_refs,
+        artifact_refs=artifact_refs or deep_interview_handoff_refs(context.workflow_dir),
     )
     write_workflow_ledger(context.workflow_dir, result, workflow, payload)
     return result
@@ -202,6 +194,21 @@ def _missing_evidence_blocker(workflow: WorkflowDefinition) -> str:
             return "ultraresearch_evidence_required"
         case _:
             return "workflow_gate_missing_evidence"
+
+
+def _artifact_refs(workflow: WorkflowDefinition, payload: JsonMap, context: HarnessContext) -> tuple[str, ...]:
+    if workflow.workflow_id == "deep-interview":
+        return ()
+    return materialize_workflow_artifacts(
+        WorkflowArtifactRequest(
+            workflow,
+            payload,
+            context.workflow_dir,
+            context.owner_agent_id,
+            context.target_agent_id,
+            context.goal_id,
+        )
+    )
 
 
 def _harness_context(workflow: WorkflowDefinition, payload: JsonMap, output_dir: Path) -> HarnessContext:

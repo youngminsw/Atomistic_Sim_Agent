@@ -62,7 +62,7 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         ("initialized", "question_round", "ambiguity_gate", "handoff_ready"),
         "handoff_ready",
         "ambiguity_gate_clear",
-        ("question_answer", "ambiguity_score"),
+        (),
         "UserPromptSubmit",
         "ask_one_round_then_checkpoint",
     ),

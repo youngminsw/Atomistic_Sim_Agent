@@ -146,13 +146,13 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
         RuntimeToolCall(
             tool_name="workflow_start",
             arguments={
-                "workflow_id": "deep-interview",
+                "workflow_id": "ralplan",
                 "owner_agent_id": "orchestrator",
                 "target_agent_id": "qa_agent",
                 "goal_id": "goal-schema-gate",
                 "payload": {
                     "request_id": "workflow-schema-gate-tool",
-                    "evidence": {"question_answer": "provided", "ambiguity_score": "provided"},
+                    "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
                     "gate": {
                         "gate_id": "clarify",
                         "gate_kind": "response_schema",
@@ -176,7 +176,7 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
         RuntimeToolCall(
             tool_name="workflow_gate_response",
             arguments={
-                "workflow_id": "deep-interview",
+                "workflow_id": "ralplan",
                 "gate_id": "clarify",
                 "value": {"decision": "clear"},
             },
@@ -191,7 +191,7 @@ def test_workflow_gate_response_tool_accepts_response_schema_object_value(tmp_pa
     assert start.status == "blocked"
     assert start.output["gate"]["gate_kind"] == "response_schema"
     assert result.status == "accepted"
-    assert result.output["workflow_id"] == "deep-interview"
+    assert result.output["workflow_id"] == "ralplan"
     assert result.output["target_agent_id"] == "qa_agent"
 
 

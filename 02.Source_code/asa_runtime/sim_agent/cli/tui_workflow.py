@@ -47,6 +47,13 @@ def handle_workflow(args: Sequence[str], state: TuiState, output_stream: TextIO)
         output_stream.write(f"workflow_gate_kind={result.gate.get('gate_kind', '')}\n")
         output_stream.write(f"workflow_gate_schema_hash={result.gate.get('schema_hash', '')}\n")
         output_stream.write(f"workflow_gate_ledger_ref={result.gate.get('ledger_ref', '')}\n")
+        metadata = result.gate.get("deep_interview")
+        if isinstance(metadata, dict):
+            output_stream.write(f"workflow_deep_interview_round={metadata.get('round', '')}\n")
+            output_stream.write(f"workflow_deep_interview_round_id={metadata.get('round_id', '')}\n")
+            output_stream.write(f"workflow_deep_interview_component={metadata.get('component', '')}\n")
+            output_stream.write(f"workflow_deep_interview_dimension={metadata.get('dimension', '')}\n")
+            output_stream.write(f"workflow_deep_interview_ambiguity={metadata.get('ambiguity', '')}\n")
     if result.evidence_keys:
         output_stream.write(f"workflow_evidence_keys={','.join(result.evidence_keys)}\n")
     if result.artifact_refs:
@@ -141,6 +148,9 @@ def _workflow_payload(options: dict[str, str], flags: tuple[str, ...], session_i
         payload["validate_artifact_paths"] = True
     if "goals_path" in options:
         payload["goals_path"] = options["goals_path"]
+    deep_interview = _deep_interview_from_options(options)
+    if deep_interview:
+        payload["deep_interview"] = deep_interview
     gate = _gate_from_options(options)
     if gate is not None:
         payload["gate"] = gate
@@ -182,6 +192,26 @@ def _response_schema(raw: str) -> dict[str, object]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def _deep_interview_from_options(options: dict[str, str]) -> dict[str, object]:
+    metadata: dict[str, object] = {}
+    for payload_key, option_key in (
+        ("round", "deep_round"),
+        ("round_id", "deep_round_id"),
+        ("component", "deep_component"),
+        ("dimension", "deep_dimension"),
+        ("ambiguity", "deep_ambiguity"),
+        ("question_id", "deep_question_id"),
+    ):
+        value = options.get(option_key, "")
+        if value:
+            metadata[payload_key] = _numeric_value(value) if payload_key in {"round", "ambiguity"} else value
+    if "deep_multi" in options:
+        metadata["multi"] = _flag_enabled(options, (), "deep_multi")
+    if "deep_options" in options:
+        metadata["options"] = _csv_values(options["deep_options"])
+    return metadata
+
+
 def _response_value(raw: str, output_dir: Path, workflow_id: str, gate_id: str) -> object:
     stripped = raw.strip()
     if _stored_gate_kind(output_dir, workflow_id, gate_id) == "response_schema":
@@ -221,3 +251,12 @@ def _option_value(options: dict[str, str], *keys: str, default: str = "orchestra
         if value:
             return value
     return default
+
+
+def _numeric_value(value: str) -> int | float | str:
+    if value.isdecimal():
+        return int(value)
+    try:
+        return float(value)
+    except ValueError:
+        return value

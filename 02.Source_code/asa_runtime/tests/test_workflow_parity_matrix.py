@@ -30,6 +30,14 @@ REQUIRED_ROW_IDS = {
     "tui_tool_persistence_coverage",
 }
 ALLOWED_STATUSES = {"implemented"}
+GENERIC_VERIFICATION_EVIDENCE = [".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"]
+ROW_VERIFICATION_EVIDENCE = {
+    "deep_interview_one_question_gate": [
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-red.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-green.txt",
+        ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-transcript.txt",
+    ],
+}
 
 
 def test_gajae_workflow_parity_matrix_has_required_rows_and_fields() -> None:
@@ -54,7 +62,11 @@ def test_gajae_workflow_parity_matrix_has_required_rows_and_fields() -> None:
         assert row["verification_evidence"], row_id
         assert not any("planned:" in item for item in row["asa_target"]), row_id
         assert not any("planned:" in item for item in row["tests"]), row_id
-        assert row["verification_evidence"] == [".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"], row_id
+        assert not any("planned:" in item for item in row["verification_evidence"]), row_id
+        assert row["verification_evidence"] == ROW_VERIFICATION_EVIDENCE.get(
+            row_id,
+            GENERIC_VERIFICATION_EVIDENCE,
+        ), row_id
 
 
 def test_gajae_workflow_parity_matrix_markdown_mentions_every_required_row() -> None:

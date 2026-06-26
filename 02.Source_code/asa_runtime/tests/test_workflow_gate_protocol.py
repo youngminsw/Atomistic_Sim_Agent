@@ -65,13 +65,13 @@ def test_workflow_gate_response_schema_rejects_shape_mismatch_and_accepts_valid_
     from sim_agent.agents_sdk_runtime import respond_workflow_gate, run_workflow_harness_smoke
 
     run_workflow_harness_smoke(
-        "deep-interview",
+        "ralplan",
         {
             "request_id": "schema-gate",
             "owner_agent_id": "orchestrator",
             "target_agent_id": "research_agent",
             "goal_id": "goal-schema-gate",
-            "evidence": {"question_answer": "answer", "ambiguity_score": 0.1},
+            "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
             "gate": {
                 "gate_id": "clarify",
                 "gate_kind": "response_schema",
@@ -87,16 +87,16 @@ def test_workflow_gate_response_schema_rejects_shape_mismatch_and_accepts_valid_
 
     scalar = respond_workflow_gate(
         tmp_path,
-        {"workflow_id": "deep-interview", "gate_id": "clarify", "responder_agent_id": "research_agent", "value": "clear"},
+        {"workflow_id": "ralplan", "gate_id": "clarify", "responder_agent_id": "research_agent", "value": "clear"},
     )
     missing_required = respond_workflow_gate(
         tmp_path,
-        {"workflow_id": "deep-interview", "gate_id": "clarify", "responder_agent_id": "research_agent", "value": {}},
+        {"workflow_id": "ralplan", "gate_id": "clarify", "responder_agent_id": "research_agent", "value": {}},
     )
     wrong_nested_type = respond_workflow_gate(
         tmp_path,
         {
-            "workflow_id": "deep-interview",
+            "workflow_id": "ralplan",
             "gate_id": "clarify",
             "responder_agent_id": "research_agent",
             "value": {"decision": 1},
@@ -105,7 +105,7 @@ def test_workflow_gate_response_schema_rejects_shape_mismatch_and_accepts_valid_
     valid = respond_workflow_gate(
         tmp_path,
         {
-            "workflow_id": "deep-interview",
+            "workflow_id": "ralplan",
             "gate_id": "clarify",
             "responder_agent_id": "research_agent",
             "value": {"decision": "clear"},
