@@ -51,13 +51,17 @@
       ],
       "behavioral_contract": "A ralplan approval gate carries stage ralplan:approval, kind approval, boolean schema, options, and context identifying the ralplan approval phase. ASA must preserve the gate fields for approval response handling.",
       "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_ralplan.py",
         "sim_agent/agents_sdk_runtime/workflow_runtime.py",
+        "sim_agent/agents_sdk_runtime/workflow_harness_artifacts.py",
         "tests/test_workflow_runtime_parity.py",
-        "tests/test_workflow_gate_protocol.py"
+        "tests/test_workflow_gate_protocol.py",
+        "tests/test_ralplan_runtime.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "tests/test_workflow_runtime_parity.py::test_rich_gate_blocks_until_runtime_response_and_persists_flat_shape"
+        "tests/test_workflow_runtime_parity.py::test_rich_gate_blocks_until_runtime_response_and_persists_flat_shape",
+        "tests/test_ralplan_runtime.py"
       ],
       "status": "implemented",
       "verification_evidence": [

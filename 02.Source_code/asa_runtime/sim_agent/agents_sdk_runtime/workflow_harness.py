@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sim_agent.schemas._parse import JsonMap
 from sim_agent.agents_sdk_runtime.workflow_harness_artifacts import (
+    RalplanArtifactError,
     WorkflowArtifactRequest,
     materialize_workflow_artifacts,
 )
@@ -116,7 +117,39 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         )
         write_workflow_ledger(context.workflow_dir, result, workflow, payload)
         return result
-    artifact_refs = _artifact_refs(workflow, payload, context)
+    try:
+        artifact_refs = _artifact_refs(workflow, payload, context)
+    except RalplanArtifactError as exc:
+        events = (
+            workflow_event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:{exc.blocker}",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status="blocked",
+            evidence_keys=present_evidence,
+            missing_evidence=(),
+            resumable=True,
+            ledger_ref=context.ledger_ref,
+            blockers=(exc.blocker,),
+            events=events,
+            actor_agent_id=context.actor_agent_id,
+            owner_agent_id=context.owner_agent_id,
+            target_agent_id=context.target_agent_id,
+            goal_id=context.goal_id,
+        )
+        write_workflow_ledger(context.workflow_dir, result, workflow, payload)
+        return result
     runtime = start_workflow_runtime(
         WorkflowRuntimeStartRequest(
             output_dir,

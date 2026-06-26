@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sim_agent.schemas._parse import JsonMap
 from sim_agent.agents_sdk_runtime.workflow_harness_payload import evidence_keys, request_id, text_value
+from sim_agent.agents_sdk_runtime.workflow_ralplan import RalplanArtifactError, materialize_ralplan_artifacts
 from sim_agent.agents_sdk_runtime.workflow_harness_types import WorkflowDefinition
 
 
@@ -78,10 +79,11 @@ def _materialize_deep_interview(workflow_dir: Path, context: JsonMap, payload: J
 
 
 def _materialize_ralplan(workflow_dir: Path, context: JsonMap, workflow: WorkflowDefinition) -> tuple[str, ...]:
+    result = materialize_ralplan_artifacts(workflow_dir, context, workflow.verification_gate)
     prd = workflow_dir / "prd.md"
     test_spec = workflow_dir / "test-spec.md"
-    consensus = workflow_dir / "consensus.json"
-    prd.write_text(
+    _write_once(
+        prd,
         "\n".join(
             (
                 "# RALPlan PRD",
@@ -93,9 +95,9 @@ def _materialize_ralplan(workflow_dir: Path, context: JsonMap, workflow: Workflo
                 "",
             )
         ),
-        encoding="utf-8",
     )
-    test_spec.write_text(
+    _write_once(
+        test_spec,
         "\n".join(
             (
                 "# RALPlan Test Spec",
@@ -106,20 +108,20 @@ def _materialize_ralplan(workflow_dir: Path, context: JsonMap, workflow: Workflo
                 "",
             )
         ),
-        encoding="utf-8",
     )
-    _write_json(
-        consensus,
-        context
-        | {
-            "artifact_kind": "ralplan_consensus",
-            "reviewers": ["planner", "architect", "critic"],
-            "decision": "ready_for_execution",
-            "prd_path": "ralplan/prd.md",
-            "test_spec_path": "ralplan/test-spec.md",
-        },
-    )
-    return ("ralplan/prd.md", "ralplan/test-spec.md", "ralplan/consensus.json")
+    return result.refs
+
+
+def _write_once(path: Path, body: str) -> None:
+    if path.exists():
+        try:
+            current = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RalplanArtifactError("ralplan_artifact_corrupt") from exc
+        if current != body:
+            raise RalplanArtifactError("ralplan_artifact_conflict")
+        return
+    path.write_text(body, encoding="utf-8")
 
 
 def _materialize_ultragoal(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:

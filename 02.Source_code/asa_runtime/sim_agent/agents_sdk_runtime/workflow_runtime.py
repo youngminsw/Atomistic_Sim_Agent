@@ -16,6 +16,7 @@ from .workflow_deep_interview import (
     deep_interview_response_blocker,
     record_deep_interview_response,
 )
+from .workflow_ralplan import ralplan_response_blocker, record_ralplan_approval_response
 from .workflow_gate_protocol import (
     WORKFLOW_GATE_SCHEMA_VERSION,
     WorkflowGate,
@@ -172,6 +173,9 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
             deep_blocker = deep_interview_response_blocker(gate, value)
             if deep_blocker:
                 return gate_response_for_gate(gate, "blocked", (deep_blocker,), "")
+            ralplan_blocker = ralplan_response_blocker(gate, value)
+            if ralplan_blocker:
+                return gate_response_for_gate(gate, "blocked", (ralplan_blocker,), "")
             blocker = response_schema_blocker(value, gate.response_schema or {})
             if blocker:
                 return gate_response_for_gate(gate, "blocked", (blocker,), "")
@@ -185,6 +189,7 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
     answered = answered_gate(gate)
     write_json(gate_path, answered.to_json() | {"response_value": value, "responder_agent_id": responder_agent_id})
     record_deep_interview_response(output_dir, answered, value)
+    record_ralplan_approval_response(output_dir, answered, value)
     return gate_response_for_gate(answered, "accepted", (), answered.answered_at, action_result.to_json())
 
 
