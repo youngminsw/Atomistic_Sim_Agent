@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -21,6 +22,7 @@ from sim_agent.agent_runtime import (
     reply_agent_message,
     send_agent_message,
 )
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.compaction_store import read_json, read_jsonl
 from sim_agent.agent_runtime.live_agent_turn import LiveAgentTurnResult, run_live_agent_turn
 from sim_agent.cli.tui_state import ModelSettings, TuiState, persist_state
@@ -64,7 +66,7 @@ def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> Path:
     opened = open_global_session(
         GlobalSessionOpenRequest(
             requested_dir=request.session_dir,
-            default_root=Path(runtime_config.evidence_root) / "e2e-runtime-smoke",
+            default_root=_default_session_root(request),
             model=model,
         )
     )
@@ -94,12 +96,13 @@ def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> Path:
             compact_id="e2e-orchestrator-manual",
             summary="E2E smoke: orchestrator selected a bounded subagent and recorded session-local evidence.",
         ),
+        summarizer=_SmokeSemanticSummarizer(),
     )
     replay = replay_agent_compaction(opened.record.session_dir, "orchestrator")
     resumed = open_global_session(
         GlobalSessionOpenRequest(
             requested_dir=opened.record.session_dir,
-            default_root=Path(runtime_config.evidence_root) / "e2e-runtime-smoke",
+            default_root=_default_session_root(request),
             model=model,
             resume="latest",
         )
@@ -132,6 +135,18 @@ def _model_from_profile(profile: ModelProfile, runtime_config: RuntimeConfig) ->
         auth_mode=endpoint.auth_mode,
         api_key_env=endpoint.api_key_env,
     )
+
+
+def _default_session_root(request: E2ERuntimeSmokeRequest) -> Path:
+    if request.session_dir is not None:
+        return request.session_dir.parent
+    return Path(tempfile.gettempdir()) / "asa-e2e-smoke" / request.output_json.stem
+
+
+class _SmokeSemanticSummarizer:
+    def summarize(self, request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        summary = request.additional_focus or "E2E runtime smoke semantic compaction summary."
+        return SemanticSummaryResult(summary=summary, short_summary="E2E runtime smoke checkpoint.")
 
 
 def _scenario_prompt(scenario: str, allow_hardgate_bypass: bool) -> str:

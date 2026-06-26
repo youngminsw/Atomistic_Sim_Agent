@@ -34,7 +34,7 @@ def test_auto_compaction_activates_generated_summary_without_manual_replay(tmp_p
     result = auto_compact_agent_session(
         state.session_dir,
         "md_agent",
-        AutoCompactionPolicy(new_message_threshold=1),
+        AutoCompactionPolicy(context_window_tokens=100, threshold_tokens=1, keep_recent_tokens=16),
         summarizer=summarizer,
     )
 
@@ -47,12 +47,42 @@ def test_auto_compaction_activates_generated_summary_without_manual_replay(tmp_p
     assert summarizer.requests[0].summary_source == "auto_generated"
 
 
+def test_auto_compaction_token_budget_recognizes_google_provider_aliases(tmp_path: Path) -> None:
+    state = initial_state(tmp_path)
+    append_agent_message(state.session_dir, "md_agent", "user", "first")
+    summarizer = RecordingSummarizer(SemanticSummaryResult(summary="## Goal\n- google provider summary"), [])
+
+    for provider, model in (
+        ("google-gemini-cli", "gemini-3-pro-preview"),
+        ("google-antigravity", "gemini-3-pro-high"),
+        ("google-antigravity", "claude-sonnet-4-5"),
+        ("google-antigravity", "gpt-oss-120b"),
+    ):
+        result = auto_compact_agent_session(
+            state.session_dir,
+            "md_agent",
+            AutoCompactionPolicy(
+                provider=provider,
+                model=model,
+                threshold_tokens=999_999_999,
+                keep_recent_tokens=16,
+            ),
+            summarizer=summarizer,
+        )
+
+        assert result.status == "skipped"
+        assert result.compact_status == "below_token_threshold"
+        assert result.context_window_tokens > 0
+        assert result.blocker is None
+
+
 def test_auto_compaction_runs_after_manual_replay_and_new_messages(tmp_path: Path) -> None:
     state = initial_state(tmp_path)
     append_agent_message(state.session_dir, "qa_agent", "user", "audit seed")
     compact_agent_session(
         state.session_dir,
         CompactionRequest(agent_id="qa_agent", compact_id="manual-qa-001", summary="manual qa summary"),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="manual qa summary"), []),
     )
     replayed = replay_agent_compaction(state.session_dir, "qa_agent")
     append_agent_message(state.session_dir, "qa_agent", "assistant", "audit response")
@@ -62,7 +92,7 @@ def test_auto_compaction_runs_after_manual_replay_and_new_messages(tmp_path: Pat
     result = auto_compact_agent_session(
         state.session_dir,
         "qa_agent",
-        AutoCompactionPolicy(new_message_threshold=2),
+        AutoCompactionPolicy(context_window_tokens=100, threshold_tokens=1, keep_recent_tokens=16),
         summarizer=summarizer,
     )
 
@@ -84,13 +114,14 @@ def test_auto_compaction_blocks_when_manual_summary_was_not_replayed(tmp_path: P
     compact_agent_session(
         state.session_dir,
         CompactionRequest(agent_id="ml_agent", compact_id="manual-mdn-001", summary="manual mdn summary"),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="manual mdn summary"), []),
     )
     append_agent_message(state.session_dir, "ml_agent", "assistant", "candidate")
 
     result = auto_compact_agent_session(
         state.session_dir,
         "ml_agent",
-        AutoCompactionPolicy(new_message_threshold=1),
+        AutoCompactionPolicy(context_window_tokens=100, threshold_tokens=1, keep_recent_tokens=16),
     )
 
     errors = _jsonl(state.session_dir / "agent_sessions" / "ml_agent" / "compact_errors.jsonl")
@@ -107,10 +138,11 @@ def test_agent_message_append_preserves_append_only_log_until_boundary(tmp_path:
     compact_agent_session(
         state.session_dir,
         CompactionRequest(agent_id="research_agent", compact_id="manual-rg-001", summary="source seed"),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="source seed"), []),
     )
     replay_agent_compaction(state.session_dir, "research_agent")
 
-    for index in range(AutoCompactionPolicy().new_message_threshold):
+    for index in range(80):
         append_agent_message(state.session_dir, "research_agent", "user", f"source update {index}")
 
     summary_path = state.session_dir / "agent_sessions" / "research_agent" / "compact_summary.json"

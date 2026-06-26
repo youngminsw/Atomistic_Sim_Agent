@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+
+import pytest
 
 from sim_agent.agent_runtime import (
     GlobalSessionModel,
@@ -12,6 +15,8 @@ from sim_agent.agent_runtime import (
     open_global_session,
 )
 from sim_agent.agent_runtime.live_agent_turn import run_live_agent_turn
+from sim_agent.runtime_config import RUNTIME_CONFIG_ENV, default_runtime_config, save_runtime_config
+from sim_agent.runtime_config_types import CompactionRuntimeConfig
 
 
 OLD_RAW_SENTINEL = "SEMANTIC_OLD_RAW_MUST_STAY_ON_DISK_ONLY"
@@ -20,7 +25,24 @@ CURRENT_SENTINEL = "SEMANTIC_CURRENT_TURN_STAYS_VISIBLE"
 SUMMARY_SENTINEL = "SEMANTIC_SUMMARY_REPLACES_OLD_CONTEXT"
 
 
-def test_live_provider_boundary_auto_compacts_with_provider_semantic_summary(tmp_path: Path) -> None:
+def test_live_provider_boundary_auto_compacts_with_provider_semantic_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(RUNTIME_CONFIG_ENV, str(tmp_path / "runtime-config.json"))
+    save_runtime_config(
+        replace(
+            default_runtime_config(),
+            compaction=CompactionRuntimeConfig(
+                enabled=True,
+                threshold_percent=70,
+                threshold_tokens=1,
+                reserve_tokens=16,
+                keep_recent_tokens=96,
+                context_window_tokens=100,
+            ),
+        )
+    )
     with _SemanticLiveGateway() as gateway:
         record = open_global_session(
             GlobalSessionOpenRequest(
@@ -54,6 +76,47 @@ def test_live_provider_boundary_auto_compacts_with_provider_semantic_summary(tmp
     assert payload["compact_mode"] == "auto"
     assert payload["summary_source"] == "llm_semantic"
     assert payload["provider_cache_invalidated"] is True
+
+
+def test_live_provider_boundary_uses_configurable_percent_context_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(RUNTIME_CONFIG_ENV, str(tmp_path / "runtime-config.json"))
+    save_runtime_config(
+        replace(
+            default_runtime_config(),
+            compaction=CompactionRuntimeConfig(
+                enabled=True,
+                threshold_percent=70,
+                threshold_tokens=-1,
+                reserve_tokens=16,
+                keep_recent_tokens=64,
+                context_window_tokens=100,
+            ),
+        )
+    )
+    with _SemanticLiveGateway() as gateway:
+        record = open_global_session(
+            GlobalSessionOpenRequest(
+                requested_dir=tmp_path / "percent-session",
+                default_root=tmp_path,
+                model=_live_model(gateway.base_url),
+            )
+        ).record
+        append_agent_message(record.session_dir, "orchestrator", "user", OLD_RAW_SENTINEL + (" token" * 400))
+        append_agent_message(record.session_dir, "orchestrator", "assistant", TAIL_SENTINEL)
+
+        result = run_live_agent_turn(record.session_dir, "orchestrator", CURRENT_SENTINEL)
+
+    summary_path = record.paths.agent_sessions / "orchestrator" / "compact_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary_bodies = tuple(body for body in gateway.request_bodies if not body.get("tools"))
+    assert result.status == "succeeded"
+    assert summary_bodies
+    assert payload["compact_mode"] == "auto"
+    assert payload["keep_recent_tokens"] == 64
+    assert payload["summary_source"] == "llm_semantic"
 
 
 def _live_model(base_url: str) -> GlobalSessionModel:

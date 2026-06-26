@@ -80,6 +80,7 @@ def test_manual_compaction_uses_gajae_semantic_summary_prompt_and_preserves_raw_
             summary_source="manual_generated",
         ),
         summarizer=summarizer,
+        policy=AutoCompactionPolicy(context_window_tokens=10_000, keep_recent_tokens=96),
     )
     replayed = replay_agent_compaction(state.session_dir, "md_agent")
 
@@ -128,6 +129,7 @@ def test_provider_payload_matrix_excludes_old_raw_after_semantic_projection(tmp_
             summary_source="manual_generated",
         ),
         summarizer=summarizer,
+        policy=AutoCompactionPolicy(context_window_tokens=10_000, keep_recent_tokens=96),
     )
     replay_agent_compaction(state.session_dir, "qa_agent")
     handle = load_agent_registry(state.session_dir).handles["qa_agent"]
@@ -156,14 +158,14 @@ def test_append_only_log_does_not_auto_compact_until_provider_boundary(tmp_path:
     state = initial_state(tmp_path / "session")
     summary_path = state.session_dir / "agent_sessions" / "research_agent" / "compact_summary.json"
 
-    for index in range(AutoCompactionPolicy().new_message_threshold):
+    for index in range(80):
         append_agent_message(state.session_dir, "research_agent", "user", f"research update {index}")
 
     assert not summary_path.exists()
     result = auto_compact_agent_session(
         state.session_dir,
         "research_agent",
-        AutoCompactionPolicy(new_message_threshold=1),
+        AutoCompactionPolicy(context_window_tokens=100, threshold_tokens=1, keep_recent_tokens=32),
         summarizer=RecordingSummarizer(
             SemanticSummaryResult(summary="## Goal\n- auto semantic checkpoint", short_summary="I compacted research context."),
             [],

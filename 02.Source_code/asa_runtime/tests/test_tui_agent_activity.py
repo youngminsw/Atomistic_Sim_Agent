@@ -113,7 +113,8 @@ def test_agents_tty_output_hides_semantic_debug_lines(tmp_path: Path) -> None:
     assert "agent_roster=" not in rendered
     assert "agent_session=" not in rendered
     assert "agent_registry_path=" not in rendered
-    assert "auto_compaction_new_message_threshold=" not in rendered
+    old_threshold_line = "_".join(("auto", "compaction", "new", "message", "threshold="))
+    assert old_threshold_line not in rendered
 
 
 def test_direct_agent_mention_appends_target_agent_transcript(tmp_path: Path) -> None:

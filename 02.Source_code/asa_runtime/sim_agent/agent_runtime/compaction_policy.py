@@ -6,6 +6,7 @@ from typing import Final, Literal
 
 from sim_agent.schemas._parse import JsonMap
 
+from sim_agent.compaction_tokens import DEFAULT_KEEP_RECENT_TOKENS, estimate_message_tokens
 from .compaction_store import read_jsonl
 
 COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v4"
@@ -13,12 +14,12 @@ LEGACY_COMPACT_SCHEMA_VERSION: Final = "asa_agent_compact_summary_v3"
 LEGACY_COMPACT_SCHEMA_VERSIONS: Final = ("asa_agent_compact_summary_v2", "asa_agent_compact_summary_v3")
 COMPACT_SUMMARY_NAME: Final = "compact_summary.json"
 COMPACT_LEDGER_NAME: Final = "compactions.jsonl"
-RETAINED_TAIL_POLICY: Final = "max_context_messages_with_minimum_turns"
+RETAINED_TAIL_POLICY: Final = "keep_recent_tokens_with_minimum_turns"
 MIN_RETAINED_MESSAGES: Final = 8
 MIN_RETAINED_TURNS: Final = 4
 
 CompactionMode = Literal["manual", "auto"]
-CompactionSummarySource = Literal["manual_supplied", "manual_generated", "auto_generated", "llm_semantic"]
+CompactionSummarySource = Literal["manual_generated", "auto_generated", "llm_semantic"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,9 @@ class CompactionPreparation:
     last_message_sequence: int
     last_event_sequence: int
     turn_boundary_preserved: bool
+    keep_recent_tokens: int
+    retained_tail_token_estimate: int
+    compacted_token_estimate: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,12 +108,26 @@ def ledger_counts(messages_path: Path, events_path: Path) -> LedgerCounts | None
     )
 
 
-def prepare_compaction(messages: tuple[JsonMap, ...], events: tuple[JsonMap, ...], max_context_messages: int) -> CompactionPreparation | None:
+def prepare_compaction(
+    messages: tuple[JsonMap, ...],
+    events: tuple[JsonMap, ...],
+    keep_recent_tokens: int = DEFAULT_KEEP_RECENT_TOKENS,
+) -> CompactionPreparation | None:
     if _has_missing_sequence(messages) or _has_missing_sequence(events):
         return None
-    retained = min(len(messages), max(max_context_messages, MIN_RETAINED_MESSAGES))
-    first_index = max(0, len(messages) - retained)
-    first_index = _turn_boundary_index(messages, first_index)
+    first_index = _token_tail_first_index(messages, keep_recent_tokens)
+    boundary_index = _turn_boundary_index(messages, first_index)
+    turn_boundary_preserved = True
+    if boundary_index < first_index:
+        boundary_token_estimate = sum(estimate_message_tokens(message) for message in messages[boundary_index:])
+        if boundary_token_estimate <= max(1, keep_recent_tokens):
+            first_index = boundary_index
+        else:
+            turn_boundary_preserved = False
+    else:
+        first_index = boundary_index
+    retained_tail_token_estimate = sum(estimate_message_tokens(message) for message in messages[first_index:])
+    compacted_token_estimate = sum(estimate_message_tokens(message) for message in messages[:first_index])
     first_kept_sequence = sequence_at(messages, first_index)
     cutoff_sequence = sequence_at(messages, first_index - 1) if first_index > 0 else 0
     last_event_sequence = last_sequence(events)
@@ -125,7 +143,10 @@ def prepare_compaction(messages: tuple[JsonMap, ...], events: tuple[JsonMap, ...
         compacted_event_count=len(events),
         last_message_sequence=last_sequence(messages),
         last_event_sequence=last_event_sequence,
-        turn_boundary_preserved=True,
+        turn_boundary_preserved=turn_boundary_preserved,
+        keep_recent_tokens=max(1, keep_recent_tokens),
+        retained_tail_token_estimate=retained_tail_token_estimate,
+        compacted_token_estimate=compacted_token_estimate,
     )
 
 
@@ -244,3 +265,22 @@ def _turn_boundary_index(messages: tuple[JsonMap, ...], first_index: int) -> int
     if first_index <= 0 or first_index >= len(messages):
         return max(0, first_index)
     return first_index - 1 if messages[first_index].get("role") == "assistant" else first_index
+
+
+def _token_tail_first_index(messages: tuple[JsonMap, ...], keep_recent_tokens: int) -> int:
+    if not messages:
+        return 0
+    token_limit = max(1, keep_recent_tokens)
+    token_total = 0
+    retained_messages = 0
+    first_index = len(messages)
+    for index in range(len(messages) - 1, -1, -1):
+        next_tokens = estimate_message_tokens(messages[index])
+        if retained_messages > 0 and token_total + next_tokens > token_limit:
+            break
+        token_total += next_tokens
+        retained_messages += 1
+        first_index = index
+        if token_total >= token_limit:
+            break
+    return first_index

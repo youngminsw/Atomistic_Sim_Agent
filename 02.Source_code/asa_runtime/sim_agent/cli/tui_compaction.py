@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TextIO
 
 from sim_agent.agent_runtime import (
+    AutoCompactionPolicy,
     CompactionRequest,
     compact_agent_session,
     load_agent_registry,
@@ -13,15 +14,17 @@ from sim_agent.agent_runtime import (
 )
 from sim_agent.agent_runtime.compaction import COMPACT_SUMMARY_NAME
 from sim_agent.agent_runtime.compaction_policy import COMPACT_SCHEMA_VERSION, activation_blocker
+from sim_agent.agent_runtime.compaction_provider_summarizer import ProviderSemanticSummarizer
 from sim_agent.agent_runtime.compaction_store import read_json, read_jsonl
 from sim_agent.agent_runtime.agent_registry import AgentRegistry, AgentSessionHandle
+from sim_agent.llm_endpoints import ModelProviderConfig
+from sim_agent.runtime_config import load_runtime_config
 from sim_agent.schemas._parse import JsonMap
 
 from .tui_paths import display_path
 from .tui_state import TuiState, append_event
 
-MAX_SUMMARY_SNIPPETS = 5
-MAX_SUMMARY_SNIPPET_CHARS = 180
+MAX_COMPACT_FOCUS_CHARS = 2000
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,15 +59,17 @@ def _handle_manual_compaction(
     if len(args) > 1 and args[1] == "replay":
         return _run_replay(handle.agent_id, state, output_stream)
     compact_id = f"manual-{handle.agent_id}-{int(time.time())}"
-    summary = _manual_summary(handle, args[1:])
+    additional_focus = _manual_focus(args[1:])
     compacted = compact_agent_session(
         state.session_dir,
         CompactionRequest(
             agent_id=handle.agent_id,
             compact_id=compact_id,
-            summary=summary,
-            summary_source="manual_supplied" if len(args) > 1 else "manual_generated",
+            summary_source="manual_generated",
+            additional_focus=additional_focus,
         ),
+        summarizer=_summarizer_for_state(state),
+        policy=_policy_for_state(state),
     )
     output_stream.write("manual_compaction=true\n")
     output_stream.write(f"compact_agent={handle.agent_id}\n")
@@ -157,25 +162,8 @@ def _write_agent_status(output_stream: TextIO, row: CompactStatusRow) -> None:
         output_stream.write(f"compact_id={row.compact_id}\n")
 
 
-def _manual_summary(handle: AgentSessionHandle, extra_tokens: Sequence[str]) -> str:
-    if extra_tokens:
-        return " ".join(extra_tokens)[:2000]
-    messages = read_jsonl(handle.messages_path)
-    if messages is None:
-        return f"Manual TUI compaction requested for {handle.agent_id}; message ledger is corrupt."
-    snippets = tuple(_message_snippet(record) for record in messages[-MAX_SUMMARY_SNIPPETS:])
-    visible = tuple(snippet for snippet in snippets if snippet)
-    if not visible:
-        return f"Manual TUI compaction for {handle.agent_id}; no messages recorded yet."
-    return f"Manual TUI compaction for {handle.agent_id}. Latest context: {' | '.join(visible)}"
-
-
-def _message_snippet(record: JsonMap) -> str:
-    role = _field(record, "role", "message")
-    content = _field(record, "content", "")
-    if not content:
-        return ""
-    return f"{role}: {_trim(content, MAX_SUMMARY_SNIPPET_CHARS)}"
+def _manual_focus(extra_tokens: Sequence[str]) -> str:
+    return " ".join(extra_tokens).strip()[:MAX_COMPACT_FOCUS_CHARS]
 
 
 def _target_handle(agent_id: str, registry: AgentRegistry) -> AgentSessionHandle | None:
@@ -187,8 +175,30 @@ def _field(payload: JsonMap, field: str, fallback: str) -> str:
     return value if isinstance(value, str) else fallback
 
 
-def _trim(value: str, limit: int) -> str:
-    cleaned = " ".join(value.replace("\r", " ").replace("\n", " ").split())
-    if len(cleaned) <= limit:
-        return cleaned
-    return f"{cleaned[: limit - 3]}..."
+def _summarizer_for_state(state: TuiState) -> ProviderSemanticSummarizer:
+    return ProviderSemanticSummarizer(
+        ModelProviderConfig.from_mapping(
+            {
+                "provider": state.model.provider,
+                "model": state.model.name,
+                "reasoning_effort": state.model.reasoning_effort,
+                "base_url": state.model.base_url,
+                "auth_mode": state.model.auth_mode,
+                "api_key_env": state.model.api_key_env,
+            }
+        )
+    )
+
+
+def _policy_for_state(state: TuiState) -> AutoCompactionPolicy:
+    compaction = load_runtime_config().compaction
+    return AutoCompactionPolicy(
+        provider=state.model.provider,
+        model=state.model.name,
+        enabled=compaction.enabled,
+        threshold_percent=compaction.threshold_percent,
+        threshold_tokens=compaction.threshold_tokens,
+        reserve_tokens=compaction.reserve_tokens,
+        keep_recent_tokens=compaction.keep_recent_tokens,
+        context_window_tokens=compaction.context_window_tokens,
+    )

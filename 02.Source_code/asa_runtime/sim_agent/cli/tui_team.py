@@ -54,7 +54,11 @@ def handle_agents(state: TuiState, output_stream: TextIO) -> None:
     write_semantic_line(output_stream, f"agent_registry_path={registry.registry_path}")
     compact_policy = AutoCompactionPolicy()
     write_semantic_line(output_stream, "auto_compaction_policy=llm_semantic_boundary_rewrite_active")
-    write_semantic_line(output_stream, f"auto_compaction_new_message_threshold={compact_policy.new_message_threshold}")
+    write_semantic_line(
+        output_stream,
+        f"auto_compaction_token_threshold_percent={compact_policy.threshold_percent}",
+    )
+    write_semantic_line(output_stream, f"auto_compaction_keep_recent_tokens={compact_policy.keep_recent_tokens}")
     worker = worker_adapter_status(default_worker_adapter_config())
     write_semantic_line(
         output_stream,

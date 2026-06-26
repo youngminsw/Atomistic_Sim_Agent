@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sim_agent.agent_runtime import (
@@ -10,6 +10,7 @@ from sim_agent.agent_runtime import (
     load_agent_registry,
     replay_agent_compaction,
 )
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.live_agent_context import live_turn_handle_with_model_override
 from sim_agent.agent_runtime.live_agent_turn import _agent_loop_session, run_live_agent_turn
 from sim_agent.agents_sdk_runtime import assemble_provider_context
@@ -20,6 +21,16 @@ from sim_agent.runtime_config import (
     default_runtime_config,
     save_runtime_config,
 )
+
+
+@dataclass(slots=True)
+class RecordingSummarizer:
+    result: SemanticSummaryResult
+    requests: list[SemanticSummaryRequest]
+
+    def summarize(self, request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        self.requests.append(request)
+        return self.result
 
 
 def test_live_agent_turn_uses_agent_override_and_hydrates_prompt_layers(
@@ -68,6 +79,7 @@ def test_live_agent_session_ignores_unreplayed_manual_compaction_until_replayed(
     compact_agent_session(
         state.session_dir,
         CompactionRequest(agent_id="qa_agent", compact_id="manual-qa-edge", summary="validated QA summary"),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="validated QA summary"), []),
     )
 
     unreplayed_handle = load_agent_registry(state.session_dir).handles["qa_agent"]

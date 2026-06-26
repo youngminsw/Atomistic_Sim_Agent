@@ -4,7 +4,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, assert_never
+from typing import assert_never
 
 from sim_agent.schemas._parse import JsonMap
 
@@ -21,6 +21,7 @@ from .compaction_policy import (
     CompactionPreparation,
     CompactionSummarySource,
     LedgerCounts,
+    ProviderContextCompactionBlocked,
     activation_blocker,
     int_value,
     ledger_counts,
@@ -38,19 +39,31 @@ from .compaction_semantic import (
     upsert_file_operations,
 )
 from .compaction_store import append_jsonl, atomic_write_json, read_json, read_jsonl
+from sim_agent.compaction_tokens import (
+    DEFAULT_AUTO_COMPACT_THRESHOLD_PERCENT,
+    DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
+    DEFAULT_KEEP_RECENT_TOKENS,
+    DEFAULT_RESERVE_TOKENS,
+    CompactionTokenBudget,
+    CompactionTokenSettings,
+    compaction_budget_for_model,
+    estimate_messages_tokens,
+    estimate_text_tokens,
+    should_compact_tokens,
+)
 from .global_session_store import backup_legacy_json
-
-
-AUTO_COMPACT_NEW_MESSAGE_THRESHOLD: Final = 32
+from .provider_context_projection import provider_visible_agent_context
 
 
 @dataclass(frozen=True, slots=True)
 class CompactionRequest:
     agent_id: str
     compact_id: str
-    summary: str
+    summary: str = ""
     compact_mode: CompactionMode = "manual"
-    summary_source: CompactionSummarySource = "manual_supplied"
+    summary_source: CompactionSummarySource = "manual_generated"
+    additional_focus: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +78,27 @@ class CompactionResult:
 
 @dataclass(frozen=True, slots=True)
 class AutoCompactionPolicy:
-    new_message_threshold: int = AUTO_COMPACT_NEW_MESSAGE_THRESHOLD
+    provider: str = "openai-codex"
+    model: str = "gpt-5-codex"
+    enabled: bool = True
+    threshold_percent: int = DEFAULT_AUTO_COMPACT_THRESHOLD_PERCENT
+    threshold_tokens: int = DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS
+    reserve_tokens: int = DEFAULT_RESERVE_TOKENS
+    keep_recent_tokens: int = DEFAULT_KEEP_RECENT_TOKENS
+    context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
+
+    def token_settings(self) -> CompactionTokenSettings:
+        return CompactionTokenSettings(
+            enabled=self.enabled,
+            threshold_percent=self.threshold_percent,
+            threshold_tokens=self.threshold_tokens,
+            reserve_tokens=self.reserve_tokens,
+            keep_recent_tokens=self.keep_recent_tokens,
+            context_window_tokens=self.context_window_tokens,
+        )
+
+    def token_budget(self) -> CompactionTokenBudget | None:
+        return compaction_budget_for_model(self.provider, self.model, self.token_settings())
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,8 +107,10 @@ class AutoCompactionResult:
     compact_status: str
     agent_id: str
     compact_id: str
-    message_count: int
-    new_message_count: int
+    raw_message_count: int
+    estimated_context_tokens: int
+    threshold_tokens: int
+    context_window_tokens: int
     summary_path: Path
     blocker: str | None = None
 
@@ -85,6 +120,7 @@ def compact_agent_session(
     request: CompactionRequest,
     *,
     summarizer: CompactionSemanticSummarizer | None = None,
+    policy: AutoCompactionPolicy = AutoCompactionPolicy(),
 ) -> CompactionResult:
     handle = load_agent_registry(session_dir).handles[request.agent_id]
     counts = ledger_counts(handle.messages_path, handle.events_path)
@@ -94,7 +130,7 @@ def compact_agent_session(
     events = read_jsonl(handle.events_path)
     if messages is None or events is None:
         return _blocked(handle.session_dir, request, "corrupt_ledger")
-    preparation = prepare_compaction(tuple(messages), tuple(events), 24)
+    preparation = prepare_compaction(tuple(messages), tuple(events), policy.keep_recent_tokens)
     if preparation is None:
         return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
@@ -136,10 +172,10 @@ def replay_agent_compaction(session_dir: Path, agent_id: str) -> CompactionResul
         events = read_jsonl(handle.events_path)
         if messages is None or events is None:
             return _blocked(handle.session_dir, request, "corrupt_ledger")
-        preparation = prepare_compaction(tuple(messages), tuple(events), 24)
+        preparation = prepare_compaction(tuple(messages), tuple(events), DEFAULT_KEEP_RECENT_TOKENS)
         if preparation is None:
             return _blocked(handle.session_dir, request, "unsafe_compaction_boundary")
-        semantic = _manual_summary_payload(request.summary, payload)
+        semantic = _legacy_replay_summary_payload(request.summary, payload)
         payload = _summary_payload(request, handle.agent_session_id, counts, preparation, semantic)
     _mark_replay_passed(summary_path, payload, counts)
     return CompactionResult("succeeded", "replayed", agent_id, request.compact_id, summary_path)
@@ -157,36 +193,87 @@ def auto_compact_agent_session(
     compact_id = f"auto-{agent_id}-{counts.message_count if counts is not None else 0}"
     if counts is None:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_ledger")
-        return _auto_result(blocked, 0, 0)
+        return _auto_result(blocked, 0, 0, 0, 0)
+    budget = policy.token_budget()
+    if budget is None:
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id, counts), "unknown_model_context_window")
+        return _auto_result(blocked, counts.message_count, 0, 0, 0)
+    if not budget.enabled:
+        return AutoCompactionResult(
+            "skipped",
+            "disabled",
+            agent_id,
+            compact_id,
+            counts.message_count,
+            0,
+            0,
+            0,
+            summary_path=handle.session_dir / COMPACT_SUMMARY_NAME,
+        )
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
     summary = read_json(summary_path)
     if summary is None:
-        if counts.message_count < policy.new_message_threshold:
+        messages = read_jsonl(handle.messages_path)
+        estimated_context_tokens = estimate_messages_tokens(tuple(messages or ()))
+        if not should_compact_tokens(estimated_context_tokens, budget):
             return AutoCompactionResult(
                 "skipped",
-                "below_threshold",
+                "below_token_threshold",
                 agent_id,
                 compact_id,
                 counts.message_count,
-                counts.message_count,
+                estimated_context_tokens,
+                budget.threshold_tokens,
+                budget.context_window_tokens,
                 summary_path,
             )
         request = _auto_request(agent_id, compact_id, counts)
-        compacted = compact_agent_session(session_dir, request, summarizer=summarizer)
-        return _auto_result(compacted, counts.message_count, counts.message_count, compact_status="auto_compacted")
+        compacted = compact_agent_session(session_dir, request, summarizer=summarizer, policy=policy)
+        return _auto_result(
+            compacted,
+            counts.message_count,
+            estimated_context_tokens,
+            budget.threshold_tokens,
+            budget.context_window_tokens,
+            compact_status="auto_compacted",
+        )
     if summary == {}:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_summary")
-        return _auto_result(blocked, counts.message_count, 0)
+        return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
     existing_blocker = activation_blocker(summary, handle.messages_path, handle.events_path)
     if existing_blocker is not None:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), existing_blocker)
-        return _auto_result(blocked, counts.message_count, 0)
-    new_message_count = max(0, counts.message_count - int_value(summary, "raw_message_count", int_value(summary, "message_count")))
-    if new_message_count < policy.new_message_threshold:
-        return AutoCompactionResult("skipped", "below_threshold", agent_id, compact_id, counts.message_count, new_message_count, summary_path)
+        return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
+    try:
+        visible_context = provider_visible_agent_context(handle)
+    except ProviderContextCompactionBlocked as exc:
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), str(exc))
+        return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
+    estimated_context_tokens = estimate_text_tokens(visible_context.compact_summary) + estimate_messages_tokens(
+        visible_context.messages,
+    )
+    if not should_compact_tokens(estimated_context_tokens, budget):
+        return AutoCompactionResult(
+            "skipped",
+            "below_token_threshold",
+            agent_id,
+            compact_id,
+            counts.message_count,
+            estimated_context_tokens,
+            budget.threshold_tokens,
+            budget.context_window_tokens,
+            summary_path,
+        )
     request = _auto_request(agent_id, compact_id, counts)
-    compacted = compact_agent_session(session_dir, request, summarizer=summarizer)
-    return _auto_result(compacted, counts.message_count, new_message_count, compact_status="auto_compacted")
+    compacted = compact_agent_session(session_dir, request, summarizer=summarizer, policy=policy)
+    return _auto_result(
+        compacted,
+        counts.message_count,
+        estimated_context_tokens,
+        budget.threshold_tokens,
+        budget.context_window_tokens,
+        compact_status="auto_compacted",
+    )
 
 
 def _summary_payload(
@@ -227,6 +314,9 @@ def _summary_payload(
         "retained_tail_policy": RETAINED_TAIL_POLICY,
         "min_retained_messages": MIN_RETAINED_MESSAGES,
         "min_retained_turns": MIN_RETAINED_TURNS,
+        "keep_recent_tokens": preparation.keep_recent_tokens,
+        "retained_tail_token_estimate": preparation.retained_tail_token_estimate,
+        "compacted_token_estimate": preparation.compacted_token_estimate,
         "turn_boundary_preserved": preparation.turn_boundary_preserved,
         "created_at": time.time(),
     }
@@ -239,8 +329,6 @@ def _semantic_summary_payload(
     previous_payload: JsonMap | None,
     summarizer: CompactionSemanticSummarizer | None,
 ) -> JsonMap | None:
-    if request.summary and summarizer is None:
-        return _manual_summary_payload(request.summary, previous_payload)
     if summarizer is None:
         return None
     previous_summary = str_value(previous_payload, "summary") if previous_payload else ""
@@ -253,6 +341,7 @@ def _semantic_summary_payload(
         first_kept_sequence=preparation.first_kept_message_sequence,
         summary_cutoff_sequence=preparation.summary_cutoff_message_sequence,
         previous_summary=previous_summary,
+        additional_focus=request.additional_focus or request.summary,
     )
     result = summarizer.summarize(summary_request)
     semantic_details = extract_semantic_file_operations(messages, _semantic_details(previous_payload))
@@ -270,11 +359,11 @@ def _semantic_summary_payload(
     }
 
 
-def _manual_summary_payload(summary: str, previous_payload: JsonMap | None) -> JsonMap:
+def _legacy_replay_summary_payload(summary: str, previous_payload: JsonMap | None) -> JsonMap:
     return {
         "summary": summary,
         "short_summary": str_value(previous_payload, "short_summary") if previous_payload else "",
-        "summary_source": "manual_supplied",
+        "summary_source": "manual_generated",
         "semantic_prompt_contract": semantic_prompt_contract(),
         "semantic_details": _semantic_details(previous_payload),
         "preserve_data": _preserve_data(previous_payload),
@@ -316,8 +405,10 @@ def _blocked(agent_dir: Path, request: CompactionRequest, blocker: str) -> Compa
 
 def _auto_result(
     result: CompactionResult,
-    message_count: int,
-    new_message_count: int,
+    raw_message_count: int,
+    estimated_context_tokens: int,
+    threshold_tokens: int,
+    context_window_tokens: int,
     *,
     compact_status: str | None = None,
 ) -> AutoCompactionResult:
@@ -326,8 +417,10 @@ def _auto_result(
         compact_status or result.compact_status,
         result.agent_id,
         result.compact_id,
-        message_count,
-        new_message_count,
+        raw_message_count,
+        estimated_context_tokens,
+        threshold_tokens,
+        context_window_tokens,
         result.summary_path,
         result.blocker,
     )

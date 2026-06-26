@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from sim_agent.agent_runtime import (
@@ -14,7 +14,18 @@ from sim_agent.agent_runtime import (
     open_global_session,
     replay_agent_compaction,
 )
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.global_session_store import SCHEMA_BACKUP_SUFFIX, paths_for
+
+
+@dataclass(slots=True)
+class RecordingSummarizer:
+    result: SemanticSummaryResult
+    requests: list[SemanticSummaryRequest]
+
+    def summarize(self, request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        self.requests.append(request)
+        return self.result
 
 
 def test_new_session_writes_v2_markers_and_v4_compaction_cursor(tmp_path: Path) -> None:
@@ -24,6 +35,7 @@ def test_new_session_writes_v2_markers_and_v4_compaction_cursor(tmp_path: Path) 
     compact_agent_session(
         created.record.session_dir,
         CompactionRequest(agent_id="md_agent", compact_id="compact-md-v2", summary="md transcript"),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="md transcript"), []),
     )
 
     global_session = _json(created.record.paths.global_session)

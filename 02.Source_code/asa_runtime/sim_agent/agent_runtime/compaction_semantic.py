@@ -44,6 +44,7 @@ class SemanticSummaryRequest:
     turn_prefix_messages: tuple[dict[str, object], ...]
     retained_messages: tuple[dict[str, object], ...]
     previous_summary: str
+    additional_focus: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +94,7 @@ def build_semantic_summary_request(
     first_kept_sequence: int,
     summary_cutoff_sequence: int,
     previous_summary: str = "",
+    additional_focus: str = "",
 ) -> SemanticSummaryRequest:
     messages_to_summarize = tuple(
         dict(message) for message in messages if _is_summarized(message, first_kept_sequence, summary_cutoff_sequence)
@@ -109,6 +111,7 @@ def build_semantic_summary_request(
         messages_to_summarize=messages_to_summarize,
         turn_prefix_messages=turn_prefix_messages,
         retained_messages=retained_messages,
+        additional_focus=additional_focus,
     )
     return SemanticSummaryRequest(
         agent_id=agent_id,
@@ -121,6 +124,7 @@ def build_semantic_summary_request(
         turn_prefix_messages=turn_prefix_messages,
         retained_messages=retained_messages,
         previous_summary=previous_summary,
+        additional_focus=additional_focus,
     )
 
 
@@ -159,14 +163,20 @@ def _render_summary_prompt(
     messages_to_summarize: tuple[dict[str, object], ...],
     turn_prefix_messages: tuple[dict[str, object], ...],
     retained_messages: tuple[dict[str, object], ...],
+    additional_focus: str,
 ) -> str:
     base = load_compaction_prompt("compaction-update-summary" if previous_summary else SUMMARY_PROMPT_NAME)
-    return "\n\n".join(
+    sections = [
+        base,
+        load_compaction_prompt("compaction-short-summary"),
+        load_compaction_prompt("compaction-turn-prefix"),
+        load_compaction_prompt("file-operations"),
+    ]
+    focus = additional_focus.strip()
+    if focus:
+        sections.append("Additional focus:\n" + focus)
+    sections.extend(
         (
-            base,
-            load_compaction_prompt("compaction-short-summary"),
-            load_compaction_prompt("compaction-turn-prefix"),
-            load_compaction_prompt("file-operations"),
             f"agent_id: {agent_id}",
             f"compact_id: {compact_id}",
             f"compact_mode: {compact_mode}",
@@ -177,6 +187,7 @@ def _render_summary_prompt(
             "<retained-tail>\n" + _render_messages(retained_messages) + "\n</retained-tail>",
         )
     )
+    return "\n\n".join(sections)
 
 
 def _render_messages(messages: tuple[dict[str, object], ...]) -> str:
