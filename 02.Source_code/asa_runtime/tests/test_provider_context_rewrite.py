@@ -75,7 +75,7 @@ def _compacted_session(tmp_path: Path, *, blocker: str = "") -> AsaAgentSession:
         compaction_metadata={
             "compact_id": "compact-test",
             "compact_mode": "manual",
-            "summary_source": "manual_supplied",
+            "summary_source": "llm_semantic",
             "first_kept_message_sequence": 20,
             "summary_cutoff_message_sequence": 19,
             "raw_message_count": 4,
@@ -122,4 +122,3 @@ def _endpoint(protocol: str) -> ModelProviderConfig:
 
 def _dump(value: JsonMap | list[JsonMap]) -> str:
     return repr(value)
-

@@ -5,7 +5,9 @@ import os
 import subprocess
 import sys
 import unicodedata
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -134,29 +136,34 @@ def test_prompt_completion_rows_include_agent_mentions_and_chat_command() -> Non
 
 
 def test_tui_compact_manual_summary_and_replay_gate(tmp_path: Path) -> None:
-    env = _env(tmp_path)
+    with _TuiSemanticGateway() as gateway:
+        env = _env(tmp_path)
+        env["ASA_OPENAI_CODEX_TOKEN"] = "test-token"
+        _write_gateway_runtime_config(tmp_path, gateway.base_url)
 
-    result = _run_tui(
-        [
-            "@md_agent prepare Ar on Si campaign",
-            "/compact md_agent",
-            "/compact status",
-            "/exit",
-        ],
-        env,
-    )
+        result = _run_tui(
+            [
+                "@md_agent prepare Ar on Si campaign",
+                "/compact md_agent",
+                "/compact status",
+                "/exit",
+            ],
+            env,
+        )
     summary_path = tmp_path / "session" / "agent_sessions" / "md_agent" / "compact_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert any(not body.get("tools") for body in gateway.request_bodies)
     assert "manual_compaction=true" in result.stdout
     assert "compact_agent=md_agent" in result.stdout
     assert "compact_status=compacted" in result.stdout
     assert "compact_replay_status=replayed" in result.stdout
     assert "compact_summary_status=rewrite_active" in result.stdout
     assert summary["compact_mode"] == "manual"
+    assert summary["summary_source"] == "llm_semantic"
     assert summary["manual_replay_status"] == "passed"
-    assert "prepare Ar on Si campaign" in summary["summary"]
+    assert "semantic TUI summary for prepare Ar on Si campaign" in summary["summary"]
 
 
 def test_chat_window_keeps_cjk_box_lines_inside_terminal_width(tmp_path: Path) -> None:
@@ -261,6 +268,72 @@ def _env(tmp_path: Path) -> dict[str, str]:
     env["ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"] = str(tmp_path / "credentials.json")
     env.pop("MODEL_GATEWAY_TOKEN", None)
     return env
+
+
+def _write_gateway_runtime_config(tmp_path: Path, base_url: str) -> None:
+    (tmp_path / "runtime-config.json").write_text(
+        json.dumps(
+            {
+                "model_endpoint": {
+                    "provider": "openai-codex",
+                    "model": "gpt-5.5",
+                    "reasoning_effort": "high",
+                    "base_url": base_url,
+                    "auth_mode": "oauth",
+                    "api_key_env": "ASA_OPENAI_CODEX_TOKEN",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class _TuiSemanticGateway:
+    def __init__(self) -> None:
+        self._handler = type("_TuiSemanticGatewayHandler", (_TuiSemanticGatewayHandler,), {"request_bodies": []})
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler)
+        self._thread = Thread(target=self._server.serve_forever, daemon=True)
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self._server.server_port}/v1"
+
+    @property
+    def request_bodies(self) -> tuple[dict[str, object], ...]:
+        return tuple(self._handler.request_bodies)
+
+    def __enter__(self) -> "_TuiSemanticGateway":
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5)
+
+
+class _TuiSemanticGatewayHandler(BaseHTTPRequestHandler):
+    request_bodies: list[dict[str, object]] = []
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def do_POST(self) -> None:
+        length = int(self.headers["content-length"])
+        body = json.loads(self.rfile.read(length).decode("utf-8"))
+        self.__class__.request_bodies.append(body)
+        if body.get("tools"):
+            self._write({"output_text": "ASA TUI live response ok"})
+            return
+        self._write({"output_text": "## Goal\n- semantic TUI summary for prepare Ar on Si campaign"})
+
+    def _write(self, payload: dict[str, object]) -> None:
+        encoded = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
 
 
 def _box_lines(output: str) -> list[str]:

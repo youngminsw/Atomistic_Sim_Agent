@@ -9,6 +9,7 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_registry import AgentSessionHandle, load_agent_registry
 from .agent_session_io import append_agent_event, append_agent_message
+from .compaction_boundary import provider_boundary_compaction_blocker
 from .compaction_policy import ProviderContextCompactionBlocked
 from .compaction_store import read_jsonl
 from .live_agent_context import (
@@ -131,7 +132,8 @@ def run_live_agent_turn(session_dir: Path, agent_id: str, user_goal: str) -> Liv
 
     handle = _ensure_turn_user_message(session_dir, agent_id, user_goal)
     runtime_handle = live_turn_handle_with_model_override(handle)
-    session = _agent_loop_session(runtime_handle, user_goal)
+    provider_blocker = provider_boundary_compaction_blocker(session_dir, runtime_handle)
+    session = _agent_loop_session(runtime_handle, user_goal, provider_blocker)
     loop_result = AgentLoop(session, _live_turn_model(runtime_handle, user_goal, session)).run()
     for event in loop_result.trace:
         append_agent_event(session_dir, agent_id, event.event_type, event.summary)
@@ -147,22 +149,29 @@ def run_live_agent_turn(session_dir: Path, agent_id: str, user_goal: str) -> Liv
     )
 
 
-def _agent_loop_session(handle: AgentSessionHandle, user_goal: str) -> AsaAgentSession:
+def _agent_loop_session(handle: AgentSessionHandle, user_goal: str, boundary_blocker: str = "") -> AsaAgentSession:
     from sim_agent.agent_harness.tools import tool_registry_for_agent
     from sim_agent.agents_sdk_runtime import AsaAgentSession
 
-    provider_blocker = ""
-    try:
-        provider_context = provider_visible_agent_context(handle)
-    except ProviderContextCompactionBlocked as exc:
-        raw_messages = _chat_messages(handle)
-        provider_blocker = str(exc)
+    provider_blocker = boundary_blocker
+    if boundary_blocker:
         provider_context = ProviderVisibleAgentContext(
-            messages=tuple(raw_messages),
+            messages=(),
             compact_summary="",
             compaction=None,
-            raw_message_count=len(raw_messages),
+            raw_message_count=0,
         )
+    else:
+        try:
+            provider_context = provider_visible_agent_context(handle)
+        except ProviderContextCompactionBlocked as exc:
+            provider_blocker = str(exc)
+            provider_context = ProviderVisibleAgentContext(
+                messages=(),
+                compact_summary="",
+                compaction=None,
+                raw_message_count=0,
+            )
     return AsaAgentSession(
         run_id=f"direct-{handle.agent_id}-turn",
         session_id=handle.agent_session_id,
@@ -244,23 +253,6 @@ def _last_user_message_matches(handle: AgentSessionHandle, user_goal: str) -> bo
         return False
     last = records[-1]
     return last.get("role") == "user" and last.get("content") == user_goal
-
-
-def _chat_messages(handle: AgentSessionHandle) -> list[JsonMap]:
-    records = read_jsonl(handle.messages_path)
-    if records is None:
-        return []
-    messages: list[JsonMap] = []
-    for record in records:
-        role = record.get("role")
-        content = record.get("content")
-        if role in {"user", "assistant", "system"} and isinstance(content, str):
-            message = {"role": role, "content": content}
-            sequence = record.get("sequence")
-            if isinstance(sequence, int) and not isinstance(sequence, bool):
-                message["sequence"] = sequence
-            messages.append(message)
-    return messages
 
 
 def _assistant_message(status: str, blockers: tuple[str, ...]) -> str:

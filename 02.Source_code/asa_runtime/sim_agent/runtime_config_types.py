@@ -34,6 +34,16 @@ class ActiveModelProfileRuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CompactionRuntimeConfig:
+    enabled: bool
+    threshold_percent: int
+    threshold_tokens: int
+    reserve_tokens: int
+    keep_recent_tokens: int
+    context_window_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     workspace_root: str
     evidence_root: str
@@ -41,5 +51,6 @@ class RuntimeConfig:
     model_endpoint: ModelEndpointRuntimeConfig
     active_profile: ActiveModelProfileRuntimeConfig
     agent_model_overrides: tuple[AgentModelRuntimeConfig, ...]
+    compaction: CompactionRuntimeConfig
     graphdb: GraphDBRuntimeConfig
     compute_resources: tuple[ComputeResourceConfig, ...]

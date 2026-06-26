@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 
 from sim_agent.agent_runtime import (
+    AutoCompactionPolicy,
     CompactionRequest,
     GlobalSessionModel,
     GlobalSessionOpenRequest,
@@ -14,7 +16,18 @@ from sim_agent.agent_runtime import (
     open_global_session,
     replay_agent_compaction,
 )
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.live_agent_turn import run_live_agent_turn
+
+
+@dataclass(slots=True)
+class RecordingSummarizer:
+    result: SemanticSummaryResult
+    requests: list[SemanticSummaryRequest]
+
+    def summarize(self, request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        self.requests.append(request)
+        return self.result
 
 
 def test_live_agent_turn_uses_provider_model_for_connected_session(tmp_path: Path) -> None:
@@ -86,6 +99,11 @@ def test_live_agent_turn_injects_only_validated_compact_summary(tmp_path: Path) 
                 compact_id="compact-orch-001",
                 summary="Validated compact summary should reach the provider.",
             ),
+            summarizer=RecordingSummarizer(
+                SemanticSummaryResult(summary="Validated compact summary should reach the provider."),
+                [],
+            ),
+            policy=AutoCompactionPolicy(context_window_tokens=10_000, keep_recent_tokens=96),
         )
 
         first = run_live_agent_turn(record.session_dir, "orchestrator", "Before replay")
@@ -128,6 +146,8 @@ def test_domain_agent_resume_request_rewrites_compacted_context(tmp_path: Path) 
                     compact_id=f"compact-{agent_id}-001",
                     summary=summary,
                 ),
+                summarizer=RecordingSummarizer(SemanticSummaryResult(summary=summary), []),
+                policy=AutoCompactionPolicy(context_window_tokens=10_000, keep_recent_tokens=96),
             )
             replayed = replay_agent_compaction(record.session_dir, agent_id)
             resumed = open_global_session(

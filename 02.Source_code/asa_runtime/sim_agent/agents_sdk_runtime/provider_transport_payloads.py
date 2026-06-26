@@ -92,6 +92,10 @@ def _compaction_metadata(session: AsaAgentSession, context: ProviderPromptContex
         "summary_cutoff_message_sequence",
         "raw_message_count",
         "provider_visible_message_count",
+        "short_summary",
+        "provider_cache_invalidated",
+        "provider_session_reset",
+        "preserve_data_openai_remote",
     }
     payload = {field: str(session.compaction_metadata.get(field, "")) for field in fields}
     payload["provider_visible_message_count"] = str(len(context.messages))

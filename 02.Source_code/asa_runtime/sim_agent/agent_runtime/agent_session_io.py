@@ -34,9 +34,6 @@ def append_agent_message(
     with handle.messages_path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(payload, sort_keys=True) + "\n")
     append_agent_event(session_dir, agent_id, "agent_message_appended", f"{role} message appended")
-    from .compaction import auto_compact_agent_session
-
-    auto_compact_agent_session(session_dir, agent_id)
     return handle
 
 

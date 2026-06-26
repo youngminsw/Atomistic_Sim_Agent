@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import pty
 import select
 import subprocess
 import sys
@@ -9,7 +8,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from sim_agent.runtime_config import default_runtime_config, save_runtime_config
+
+pytest.importorskip("termios")
+import pty
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]

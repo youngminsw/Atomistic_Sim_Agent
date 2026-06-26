@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# noqa: SIZE_OK - Existing runtime config boundary owns persisted schema migration and profile IO.
+
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,14 @@ from sim_agent.llm_endpoints.config import (
 )
 from sim_agent.llm_endpoints.model_catalog import find_model_catalog_entry
 from sim_agent.llm_endpoints.model_profiles import ModelProfileAssignment, find_model_profile
+from sim_agent.compaction_tokens import (
+    DEFAULT_AUTO_COMPACT_THRESHOLD_PERCENT,
+    DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
+    DEFAULT_KEEP_RECENT_TOKENS,
+    DEFAULT_RESERVE_TOKENS,
+    MIN_THRESHOLD_PERCENT,
+)
 from sim_agent.project_layout import ensure_project_state_layout
 from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV, provider_by_id
 from sim_agent.runtime_compute_config import (
@@ -31,6 +41,7 @@ from sim_agent.runtime_graphdb_config import (
 from sim_agent.runtime_config_types import (
     ActiveModelProfileRuntimeConfig,
     AgentModelRuntimeConfig,
+    CompactionRuntimeConfig,
     ModelEndpointRuntimeConfig,
     RuntimeConfig,
 )
@@ -80,6 +91,7 @@ def default_runtime_config() -> RuntimeConfig:
         ),
         active_profile=ActiveModelProfileRuntimeConfig(name="", customized=False),
         agent_model_overrides=(),
+        compaction=default_compaction_runtime_config(),
         graphdb=default_graphdb_config(),
         compute_resources=default_compute_resources(),
     )
@@ -99,6 +111,7 @@ def runtime_config_payload(config: RuntimeConfig) -> JsonMap:
         "model_endpoint": _model_payload(config.model_endpoint),
         "active_profile": _active_profile_payload(config.active_profile),
         "agent_model_overrides": [_agent_model_payload(item) for item in config.agent_model_overrides],
+        "compaction": _compaction_payload(config.compaction),
         "graphdb": graphdb_payload(config.graphdb),
         "compute_resources": [compute_payload(resource) for resource in config.compute_resources],
     }
@@ -123,6 +136,7 @@ def runtime_config_from_payload(payload: JsonMap) -> RuntimeConfig:
         model_endpoint=endpoint,
         active_profile=_active_profile_from_payload(payload, default.active_profile),
         agent_model_overrides=_agent_models_from_payload(payload),
+        compaction=_compaction_from_payload(payload, default.compaction),
         graphdb=graphdb_from_payload(as_mapping(payload.get("graphdb", graphdb_default), "graphdb")),
         compute_resources=resources,
     )
@@ -150,6 +164,7 @@ def mark_active_profile_customized(config: RuntimeConfig) -> RuntimeConfig:
         model_endpoint=config.model_endpoint,
         active_profile=ActiveModelProfileRuntimeConfig(name=config.active_profile.name, customized=True),
         agent_model_overrides=config.agent_model_overrides,
+        compaction=config.compaction,
         graphdb=config.graphdb,
         compute_resources=config.compute_resources,
     )
@@ -266,6 +281,43 @@ def _active_profile_payload(active_profile: ActiveModelProfileRuntimeConfig) -> 
     }
 
 
+def default_compaction_runtime_config() -> CompactionRuntimeConfig:
+    return CompactionRuntimeConfig(
+        enabled=True,
+        threshold_percent=DEFAULT_AUTO_COMPACT_THRESHOLD_PERCENT,
+        threshold_tokens=DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS,
+        reserve_tokens=DEFAULT_RESERVE_TOKENS,
+        keep_recent_tokens=DEFAULT_KEEP_RECENT_TOKENS,
+        context_window_tokens=DEFAULT_CONTEXT_WINDOW_TOKENS,
+    )
+
+
+def _compaction_from_payload(payload: JsonMap, default: CompactionRuntimeConfig) -> CompactionRuntimeConfig:
+    value = payload.get("compaction")
+    if value is None:
+        return default
+    mapping = as_mapping(value, "compaction")
+    return CompactionRuntimeConfig(
+        enabled=_optional_bool(mapping, "enabled", default.enabled),
+        threshold_percent=_optional_compaction_threshold_percent(mapping, default.threshold_percent),
+        threshold_tokens=_optional_int(mapping, "threshold_tokens", default.threshold_tokens),
+        reserve_tokens=_optional_int(mapping, "reserve_tokens", default.reserve_tokens),
+        keep_recent_tokens=_optional_int(mapping, "keep_recent_tokens", default.keep_recent_tokens),
+        context_window_tokens=_optional_int(mapping, "context_window_tokens", default.context_window_tokens),
+    )
+
+
+def _compaction_payload(compaction: CompactionRuntimeConfig) -> JsonMap:
+    return {
+        "enabled": compaction.enabled,
+        "threshold_percent": compaction.threshold_percent,
+        "threshold_tokens": compaction.threshold_tokens,
+        "reserve_tokens": compaction.reserve_tokens,
+        "keep_recent_tokens": compaction.keep_recent_tokens,
+        "context_window_tokens": compaction.context_window_tokens,
+    }
+
+
 def _config_matches_profile(
     config: RuntimeConfig,
     default: ModelProfileAssignment,
@@ -326,3 +378,17 @@ def _optional_bool(payload: JsonMap, field: str, default: bool) -> bool:
     if isinstance(value, bool):
         return value
     raise SchemaValidationError(f"{field} must be a boolean")
+
+
+def _optional_int(payload: JsonMap, field: str, default: int) -> int:
+    value = payload.get(field, default)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise SchemaValidationError(f"{field} must be an integer")
+
+
+def _optional_compaction_threshold_percent(payload: JsonMap, default: int) -> int:
+    value = payload.get("threshold_percent", default)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return MIN_THRESHOLD_PERCENT - 1

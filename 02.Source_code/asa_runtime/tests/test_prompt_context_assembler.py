@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from sim_agent.agent_runtime import (
+    AutoCompactionPolicy,
     CompactionRequest,
     append_agent_message,
     compact_agent_session,
@@ -11,6 +13,7 @@ from sim_agent.agent_runtime import (
 )
 from sim_agent.agent_runtime.agent_registry import AgentSessionHandle
 from sim_agent.agent_runtime.agent_specs import resolve_subagent_preset
+from sim_agent.agent_runtime.compaction_semantic import SemanticSummaryRequest, SemanticSummaryResult
 from sim_agent.agent_runtime.global_session_types import GlobalSessionModel
 from sim_agent.agent_runtime.live_agent_context import live_turn_project_guidance
 from sim_agent.agent_runtime.subagent_loop import _subagent_agent_session
@@ -26,6 +29,16 @@ from sim_agent.agents_sdk_runtime.prompt_assets import (
 from sim_agent.agents_sdk_runtime.provider_transport import ProviderApiProtocol, provider_transport_request
 from sim_agent.cli.tui_state import initial_state
 from sim_agent.llm_endpoints import ModelProviderConfig
+
+
+@dataclass(slots=True)
+class RecordingSummarizer:
+    result: SemanticSummaryResult
+    requests: list[SemanticSummaryRequest]
+
+    def summarize(self, request: SemanticSummaryRequest) -> SemanticSummaryResult:
+        self.requests.append(request)
+        return self.result
 
 
 def test_provider_context_assembles_role_compaction_transcript_and_tool_history(tmp_path: Path) -> None:
@@ -269,6 +282,8 @@ def test_subagent_caller_context_uses_compacted_provider_visible_tail(tmp_path: 
             compact_id="compact-md-subagent",
             summary="Subagent caller compact summary.",
         ),
+        summarizer=RecordingSummarizer(SemanticSummaryResult(summary="Subagent caller compact summary."), []),
+        policy=AutoCompactionPolicy(context_window_tokens=10_000, keep_recent_tokens=96),
     )
     replayed = replay_agent_compaction(state.session_dir, "md_agent")
     handle = load_agent_registry(state.session_dir).handles["md_agent"]

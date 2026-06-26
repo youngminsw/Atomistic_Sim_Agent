@@ -150,6 +150,8 @@ def _conversation_messages(session: AsaAgentSession) -> tuple[JsonMap, ...]:
     messages = tuple(parsed_messages)
     if not messages or _content_text(messages[-1].get("content")) != session.user_goal:
         messages = (*messages, {"role": "user", "content": session.user_goal})
+    if int_value(session.compaction_metadata, "first_kept_message_sequence") > 0:
+        return messages
     return messages[-MAX_CONTEXT_MESSAGES:]
 
 
