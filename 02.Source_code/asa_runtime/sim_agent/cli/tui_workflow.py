@@ -12,7 +12,7 @@ from .tui_parse import parse_options
 from .tui_state import TuiState, append_event
 
 
-WORKFLOW_ALIASES: tuple[str, ...] = ("deep-interview", "ralplan", "ultrawork", "ultraqa", "ultragoal")
+WORKFLOW_ALIASES: tuple[str, ...] = tuple(workflow.workflow_id for workflow in workflow_harness_catalog())
 
 
 def handle_workflow(args: Sequence[str], state: TuiState, output_stream: TextIO) -> TuiState:

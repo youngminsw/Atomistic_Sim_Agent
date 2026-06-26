@@ -81,6 +81,14 @@ def agent_skill_contracts() -> tuple[AgentSkillContract, ...]:
             ("agent_run_ledger", "quality_gates"),
             ("qa_report.json", "production_readiness_report.json"),
         ),
+        AgentSkillContract(
+            "research_agent",
+            "insane_search",
+            "acquisition.insane_search",
+            "Acquire public web evidence for ultraresearch with explicit safety and trace metadata.",
+            ("query",),
+            ("insane_search_trace.json",),
+        ),
     )
 
 
@@ -126,6 +134,7 @@ def _handlers() -> dict[str, SkillHandler]:
         "run_feature_scale_level_set": _feature_scale_handler,
         "research_and_ingest_graphdb_catalog": _research_handler,
         "qa_physics_and_runtime_evidence": _qa_handler,
+        "insane_search": _insane_search_handler,
     }
 
 
@@ -183,6 +192,37 @@ def _qa_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocati
     )
 
 
+def _insane_search_handler(payload: JsonMap, contract: AgentSkillContract) -> SkillInvocationResult:
+    return _adapter_result(
+        payload,
+        contract,
+        adapter_output=_insane_search_adapter(payload),
+        next_action="attach_public_evidence_trace_to_ultraresearch_journal",
+    )
+
+
+def _insane_search_adapter(payload: JsonMap) -> JsonMap:
+    query = payload.get("query")
+    routes = payload.get("routes")
+    route_list = [item for item in routes if isinstance(item, str) and item] if isinstance(routes, list) else []
+    blockers: list[str] = []
+    if _contains_private_or_credentialed_target(payload):
+        blockers.append("insane_search_public_content_only")
+    return {
+        "adapter_action": "public_content_acquisition_preflight",
+        "surface": "skill",
+        "skill_id": "insane_search",
+        "query": query if isinstance(query, str) else "",
+        "routes": route_list or ["search", "fetch_chain", "phase0"],
+        "public_only": True,
+        "ssrf_safe": True,
+        "auth_required": False,
+        "artifacts": ["insane_search_trace.json"],
+        "preserve_trace_fields": ["grid_exhausted", "untried_routes", "must_invoke_playwright_mcp"],
+        "adapter_blockers": blockers,
+    }
+
+
 def _adapter_result(
     payload: JsonMap,
     contract: AgentSkillContract,
@@ -236,6 +276,52 @@ def _adapter_blockers(adapter_output: JsonMap) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         return ()
     return tuple(item for item in value if isinstance(item, str))
+
+
+def _contains_private_or_credentialed_target(payload: JsonMap) -> bool:
+    private_markers = (
+        "localhost",
+        "127.",
+        "10.",
+        "192.168.",
+        "172.16.",
+        "172.17.",
+        "172.18.",
+        "172.19.",
+        "172.20.",
+        "172.21.",
+        "172.22.",
+        "172.23.",
+        "172.24.",
+        "172.25.",
+        "172.26.",
+        "172.27.",
+        "172.28.",
+        "172.29.",
+        "172.30.",
+        "172.31.",
+        "file://",
+        "login",
+        "paywall",
+        "credential",
+    )
+    return any(marker in value for value in _payload_strings(payload) for marker in private_markers)
+
+
+def _payload_strings(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value.casefold(),)
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for item in value.values():
+            strings.extend(_payload_strings(item))
+        return tuple(strings)
+    if isinstance(value, list | tuple):
+        strings = []
+        for item in value:
+            strings.extend(_payload_strings(item))
+        return tuple(strings)
+    return ()
 
 
 def _contract_payload(contract: AgentSkillContract) -> JsonMap:

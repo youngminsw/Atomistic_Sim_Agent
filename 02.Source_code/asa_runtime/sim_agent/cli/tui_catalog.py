@@ -29,7 +29,7 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand(
         "/workflow",
         "/workflow <name> [--gate-id ID] [--owner-agent AGENT] [--target-agent AGENT] [--output-dir PATH]",
-        "start a resumable workflow harness for deep-interview, ralplan, ultrawork, ultraqa, or ultragoal",
+        "start a resumable workflow harness for deep-interview, ralplan, ultragoal, visual-qa, or ultraresearch",
     ),
     SlashCommand(
         "/workflow-response",
@@ -41,6 +41,12 @@ COMMANDS: Final[tuple[SlashCommand, ...]] = (
     SlashCommand("/ultrawork", "/ultrawork [--output-dir PATH]", "shortcut for parallel work orchestration harness"),
     SlashCommand("/ultraqa", "/ultraqa [--output-dir PATH]", "shortcut for adversarial QA workflow harness"),
     SlashCommand("/ultragoal", "/ultragoal [--output-dir PATH]", "shortcut for durable goal checkpoint harness"),
+    SlashCommand("/visual-qa", "/visual-qa [--output-dir PATH]", "shortcut for evidence-captured visual QA workflow"),
+    SlashCommand(
+        "/ultraresearch",
+        "/ultraresearch [--output-dir PATH]",
+        "shortcut for public-source ultraresearch workflow with insane_search acquisition",
+    ),
     SlashCommand("/team", "/team [--output-dir PATH]", "start a team-session smoke and render agent activity"),
     SlashCommand("/team", "/team contract", "show heartbeat, timeout, call-matrix, and QA-gate contract"),
     SlashCommand("/skills", "/skills", "show simulation skills available to the agent team"),

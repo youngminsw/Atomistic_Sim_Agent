@@ -106,6 +106,26 @@ WORKFLOW_DEFINITIONS: Final[tuple[WorkflowDefinition, ...]] = (
         "GoalState",
         "story_checkpoint_after_verification",
     ),
+    WorkflowDefinition(
+        "visual-qa",
+        "Visual QA",
+        ("initialized", "surface_captured", "oracle_verdict_recorded", "verdict_ready"),
+        "verdict_ready",
+        "visual_surface_and_oracle_recorded",
+        ("surface_ref", "screenshot_ref", "oracle_verdict"),
+        "PostToolUse",
+        "capture_rendered_surface_then_oracle_verdict",
+    ),
+    WorkflowDefinition(
+        "ultraresearch",
+        "Ultraresearch",
+        ("initialized", "question_decomposed", "acquisition_wave_recorded", "synthesis_ready"),
+        "synthesis_ready",
+        "public_sources_verified_and_journaled",
+        ("research_question", "source_journal", "insane_search_trace"),
+        "SlashCommand",
+        "expand_sources_then_synthesize_with_public_evidence",
+    ),
 )
 
 

@@ -106,7 +106,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
             missing_evidence=missing,
             resumable=True,
             ledger_ref=context.ledger_ref,
-            blockers=("workflow_gate_missing_evidence",),
+            blockers=(_missing_evidence_blocker(workflow),),
             events=events,
             actor_agent_id=context.actor_agent_id,
             owner_agent_id=context.owner_agent_id,
@@ -192,6 +192,16 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
     )
     write_workflow_ledger(context.workflow_dir, result, workflow, payload)
     return result
+
+
+def _missing_evidence_blocker(workflow: WorkflowDefinition) -> str:
+    match workflow.workflow_id:
+        case "visual-qa":
+            return "visual_qa_surface_required"
+        case "ultraresearch":
+            return "ultraresearch_evidence_required"
+        case _:
+            return "workflow_gate_missing_evidence"
 
 
 def _harness_context(workflow: WorkflowDefinition, payload: JsonMap, output_dir: Path) -> HarnessContext:

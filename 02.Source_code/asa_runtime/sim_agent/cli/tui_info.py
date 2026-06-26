@@ -40,7 +40,7 @@ def write_help(output_stream: TextIO) -> None:
     output_stream.write("/harness\n")
     output_stream.write("/workflow <name> [--gate-id ID] [--owner-agent AGENT] [--target-agent AGENT] [--output-dir PATH]\n")
     output_stream.write("/workflow-response <gate-id> <value> [--workflow-id NAME] [--responder-agent AGENT]\n")
-    output_stream.write("/deep-interview | /ralplan | /ultrawork | /ultraqa | /ultragoal\n")
+    output_stream.write("/deep-interview | /ralplan | /ultrawork | /ultraqa | /ultragoal | /visual-qa | /ultraresearch\n")
     output_stream.write("/team [--output-dir PATH] [--simulate-agent-failure AGENT] [--slurm-job-script]\n")
     output_stream.write("/team contract\n")
     output_stream.write("/skills\n")

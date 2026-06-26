@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Final
 
 from sim_agent.agent_runtime.agent_specs import SUBAGENT_PRESETS
+from sim_agent.agents_sdk_runtime.skill_registry import agent_skill_contracts
+from sim_agent.agents_sdk_runtime.workflow_harness_types import workflow_harness_catalog
 
 from .agent_runtime_tools import (
     execute_agent_message,
@@ -43,6 +45,8 @@ from .tool_types import (
 def default_tool_registry() -> ToolRegistry:
     subagent_preset_enum = list(SUBAGENT_PRESETS)
     subagent_control_action_enum = ["list", "progress", "await", "cancel", "pause", "resume", "steer", "restart"]
+    skill_id_enum = [contract.skill_id for contract in agent_skill_contracts()]
+    workflow_id_enum = [workflow.workflow_id for workflow in workflow_harness_catalog()]
     return ToolRegistry(
         tools=(
             ToolDefinition(
@@ -364,14 +368,7 @@ def default_tool_registry() -> ToolRegistry:
                     {
                         "skill_id": {
                             "type": "string",
-                            "enum": [
-                                "orchestrate_simulation_run",
-                                "prepare_and_verify_lammps_md",
-                                "train_and_gate_mdn_surrogate",
-                                "run_feature_scale_level_set",
-                                "research_and_ingest_graphdb_catalog",
-                                "qa_physics_and_runtime_evidence",
-                            ],
+                            "enum": skill_id_enum,
                         },
                         "payload": {"type": "object", "additionalProperties": True},
                     },
@@ -393,7 +390,7 @@ def default_tool_registry() -> ToolRegistry:
                     {
                         "workflow_id": {
                             "type": "string",
-                            "enum": ["deep-interview", "ralplan", "ultrawork", "ultraqa", "ultragoal"],
+                            "enum": workflow_id_enum,
                         },
                         "owner_agent_id": {"type": "string"},
                         "target_agent_id": {"type": "string"},

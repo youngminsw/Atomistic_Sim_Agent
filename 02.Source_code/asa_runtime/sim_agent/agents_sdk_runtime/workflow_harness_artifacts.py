@@ -37,6 +37,10 @@ def materialize_workflow_artifacts(request: WorkflowArtifactRequest) -> tuple[st
             return _materialize_ralplan(request.workflow_dir, context, request.workflow)
         case "ultragoal":
             return _materialize_ultragoal(request.workflow_dir, context, request.payload)
+        case "visual-qa":
+            return _materialize_visual_qa(request.workflow_dir, context, request.payload)
+        case "ultraresearch":
+            return _materialize_ultraresearch(request.workflow_dir, context, request.payload)
         case _:
             path = request.workflow_dir / "workflow-state.json"
             _write_json(path, context | {"artifact_kind": "workflow_state"})
@@ -168,6 +172,86 @@ def _materialize_ultragoal(workflow_dir: Path, context: JsonMap, payload: JsonMa
         encoding="utf-8",
     )
     return ("ultragoal/brief.md", "ultragoal/goals.json", "ultragoal/ledger.jsonl")
+
+
+def _materialize_visual_qa(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:
+    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    surface_capture = workflow_dir / "surface-capture.json"
+    verdict = workflow_dir / "verdict.json"
+    _write_json(
+        surface_capture,
+        context
+        | {
+            "artifact_kind": "visual_qa_surface_capture",
+            "surface_ref": evidence.get("surface_ref", ""),
+            "screenshot_ref": evidence.get("screenshot_ref", ""),
+            "capture_target": evidence.get("capture_target", "rendered_surface"),
+            "stale_artifact_guard": True,
+        },
+    )
+    _write_json(
+        verdict,
+        context
+        | {
+            "artifact_kind": "visual_qa_verdict",
+            "oracle_verdict": evidence.get("oracle_verdict", {}),
+            "surface_capture_path": "visual-qa/surface-capture.json",
+            "surface_required_blocker": "visual_qa_surface_required",
+        },
+    )
+    return ("visual-qa/surface-capture.json", "visual-qa/verdict.json")
+
+
+def _materialize_ultraresearch(workflow_dir: Path, context: JsonMap, payload: JsonMap) -> tuple[str, ...]:
+    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    acquisition_plan = workflow_dir / "acquisition-plan.json"
+    journal = workflow_dir / "research-journal.jsonl"
+    research_question = text_value(evidence.get("research_question"), context["user_goal"])
+    insane_search_trace = evidence.get("insane_search_trace") if isinstance(evidence.get("insane_search_trace"), dict) else {}
+    _write_json(
+        acquisition_plan,
+        context
+        | {
+            "artifact_kind": "ultraresearch_acquisition_plan",
+            "research_question": research_question,
+            "source_journal": evidence.get("source_journal", "ultraresearch/research-journal.jsonl"),
+            "insane_search": {
+                "surface": "skill",
+                "skill_id": "insane_search",
+                "public_only": True,
+                "ssrf_safe": True,
+                "auth_required": False,
+                "trace": insane_search_trace,
+            },
+            "content_policy": {
+                "untrusted_web_content_is_evidence_only": True,
+                "credentialed_or_paywalled_sources_denied": True,
+            },
+        },
+    )
+    rows = (
+        context
+        | {
+            "artifact_kind": "ultraresearch_question_decomposition",
+            "research_question": research_question,
+            "axes": ["source_discovery", "claim_verification", "synthesis"],
+        },
+        context
+        | {
+            "artifact_kind": "ultraresearch_acquisition_wave",
+            "route": "insane_search",
+            "trace": insane_search_trace,
+            "source_journal": evidence.get("source_journal", "ultraresearch/research-journal.jsonl"),
+        },
+        context
+        | {
+            "artifact_kind": "ultraresearch_synthesis_checkpoint",
+            "status": "synthesis_ready",
+            "citation_required": True,
+        },
+    )
+    journal.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
+    return ("ultraresearch/acquisition-plan.json", "ultraresearch/research-journal.jsonl")
 
 
 def _write_json(path: Path, payload: JsonMap) -> None:

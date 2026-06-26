@@ -21,7 +21,15 @@ def test_registered_agent_skills_execute_domain_adapters_and_write_artifacts(tmp
 
     invocations = run_registered_agent_skills(payload, output_dir=tmp_path)
 
-    assert len(invocations) == 6
+    assert {invocation.skill_id for invocation in invocations} == {
+        "orchestrate_simulation_run",
+        "prepare_and_verify_lammps_md",
+        "train_and_gate_mdn_surrogate",
+        "run_feature_scale_level_set",
+        "research_and_ingest_graphdb_catalog",
+        "qa_physics_and_runtime_evidence",
+        "insane_search",
+    }
     for invocation in invocations:
         artifact_path = tmp_path / invocation.artifact_ref
         assert artifact_path.is_file()
@@ -40,6 +48,12 @@ def test_registered_agent_skills_execute_domain_adapters_and_write_artifacts(tmp
     qa_invocation = _by_skill(invocations, "qa_physics_and_runtime_evidence")
     qa_artifact = json.loads((tmp_path / qa_invocation.artifact_ref).read_text(encoding="utf-8"))
     assert qa_artifact["result"]["adapter_output"]["qa_status"] == "ready_for_runtime_review"
+    search_invocation = _by_skill(invocations, "insane_search")
+    search_artifact = json.loads((tmp_path / search_invocation.artifact_ref).read_text(encoding="utf-8"))
+    search_output = search_artifact["result"]["adapter_output"]
+    assert search_output["surface"] == "skill"
+    assert search_output["public_only"] is True
+    assert search_output["ssrf_safe"] is True
 
 
 def test_agents_sdk_runtime_dry_run_persists_executable_skill_artifacts(tmp_path: Path) -> None:
@@ -88,6 +102,7 @@ def _executable_skill_payload() -> JsonMap:
         "iadf": "uniform:0-55deg",
         "process_time_s": 1.0,
         "research_question": "Which force-field protocol supports Ar on Si etching?",
+        "query": "Which public references support Ar on Si etching workflow parity?",
         "graphdb_mode": "dry_run",
         "agent_run_ledger": "agent_run_ledger.json",
         "quality_gates": ("md_physics_gate", "surrogate_training_gate", "level_set_profile_timeline"),
