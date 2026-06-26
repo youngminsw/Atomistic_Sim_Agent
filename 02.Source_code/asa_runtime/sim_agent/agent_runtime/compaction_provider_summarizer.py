@@ -112,7 +112,7 @@ def _semantic_payload(completion: ProviderSemanticCompletion) -> JsonMap:
         case SemanticProviderProtocol.OPENAI_RESPONSES | SemanticProviderProtocol.CUSTOM_GATEWAY:
             return _openai_responses_payload(completion, store=None)
         case SemanticProviderProtocol.OPENAI_CODEX_RESPONSES:
-            return _openai_responses_payload(completion, store=False)
+            return _openai_responses_payload(completion, store=False, stream=True)
         case SemanticProviderProtocol.OPENAI_CHAT_COMPLETIONS | SemanticProviderProtocol.OLLAMA_OPENAI_COMPATIBLE:
             return {
                 "model": completion.endpoint.model,
@@ -139,7 +139,12 @@ def _semantic_payload(completion: ProviderSemanticCompletion) -> JsonMap:
             assert_never(unreachable)
 
 
-def _openai_responses_payload(completion: ProviderSemanticCompletion, *, store: bool | None) -> JsonMap:
+def _openai_responses_payload(
+    completion: ProviderSemanticCompletion,
+    *,
+    store: bool | None,
+    stream: bool | None = None,
+) -> JsonMap:
     payload: JsonMap = {
         "model": completion.endpoint.model,
         "instructions": completion.system_prompt,
@@ -148,6 +153,8 @@ def _openai_responses_payload(completion: ProviderSemanticCompletion, *, store: 
     }
     if store is not None:
         payload["store"] = store
+    if stream is not None:
+        payload["stream"] = stream
     return payload
 
 
