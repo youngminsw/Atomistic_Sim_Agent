@@ -112,13 +112,18 @@
       ],
       "behavioral_contract": "Action replies follow first-valid-resolution-wins semantics. Duplicate replies with a matching idempotency key and answer may be accepted, while conflicting idempotency, already answered, unknown action, unauthorized, and resolver-unavailable paths are rejected with explicit reasons.",
       "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_actions.py",
         "sim_agent/agents_sdk_runtime/workflow_runtime.py",
-        "sim_agent/agent_harness/agent_runtime_tools.py",
-        "tests/test_workflow_gate_protocol.py"
+        "sim_agent/agent_harness/tools.py",
+        "tests/test_workflow_action_lifecycle.py"
       ],
       "tests": [
         "tests/test_workflow_parity_matrix.py",
-        "tests/test_workflow_gate_protocol.py::test_workflow_gate_response_rejects_unknown_gate_and_malformed_payload"
+        "tests/test_workflow_action_lifecycle.py::test_pending_workflow_gate_creates_pending_action_file",
+        "tests/test_workflow_action_lifecycle.py::test_idempotent_retry_same_key_and_value_is_duplicate_noop",
+        "tests/test_workflow_action_lifecycle.py::test_idempotent_retry_same_key_different_value_is_conflict",
+        "tests/test_workflow_action_lifecycle.py::test_deleted_action_state_before_reply_yields_workflow_action_unknown",
+        "tests/test_workflow_action_lifecycle.py::test_workflow_gate_response_tool_accepts_idempotency_key"
       ],
       "status": "implemented",
       "verification_evidence": [

@@ -7,6 +7,7 @@ from typing import assert_never
 
 from sim_agent.schemas._parse import JsonMap
 
+from .workflow_actions import WorkflowActionResolveRequest, ensure_pending_action, resolve_workflow_action
 from .workflow_gate_protocol import (
     WORKFLOW_GATE_SCHEMA_VERSION,
     WorkflowGate,
@@ -116,6 +117,7 @@ def start_workflow_runtime(request: WorkflowRuntimeStartRequest) -> WorkflowRunt
     if active_gate.status == "accepted":
         return WorkflowRuntimeStartResult("ready", "passed", (), active_gate)
     write_json(gate_path, active_gate.to_json())
+    ensure_pending_action(request.output_dir, active_gate)
     return WorkflowRuntimeStartResult("blocked", "awaiting_response", ("workflow_gate_response_required",), active_gate)
 
 
@@ -131,7 +133,17 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
         return gate_response_blocked(workflow_id, gate_id, "workflow_gate_unknown")
     if responder_agent_id != gate.target_agent_id:
         return gate_response_for_gate(gate, "blocked", ("workflow_gate_responder_denied",), "")
+    value = payload["value"]
+    idempotency_key = required_text(payload, "idempotency_key")
     if gate.status == "accepted":
+        if idempotency_key:
+            action_result = resolve_workflow_action(
+                WorkflowActionResolveRequest(output_dir, gate, responder_agent_id, value, idempotency_key)
+            )
+            if action_result.status == "duplicate":
+                return gate_response_for_gate(gate, "accepted", (), gate.answered_at, action_result.to_json())
+            if action_result.blockers == ("workflow_action_idempotency_conflict",):
+                return gate_response_for_gate(gate, "blocked", action_result.blockers, gate.answered_at, action_result.to_json())
         return WorkflowGateResponseResult(
             gate.workflow_id,
             gate.gate_id,
@@ -142,7 +154,6 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
             ("workflow_gate_already_answered",),
             gate.answered_at,
         )
-    value = payload["value"]
     match gate.gate_kind:
         case WorkflowGateKind.ENUM:
             if not isinstance(value, str) or value not in gate.allowed_values:
@@ -153,9 +164,14 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
                 return gate_response_for_gate(gate, "blocked", (blocker,), "")
         case unreachable:
             assert_never(unreachable)
+    action_result = resolve_workflow_action(
+        WorkflowActionResolveRequest(output_dir, gate, responder_agent_id, value, idempotency_key)
+    )
+    if action_result.status == "blocked":
+        return gate_response_for_gate(gate, "blocked", action_result.blockers, "", action_result.to_json())
     answered = answered_gate(gate)
     write_json(gate_path, answered.to_json() | {"response_value": value, "responder_agent_id": responder_agent_id})
-    return gate_response_for_gate(answered, "accepted", (), answered.answered_at)
+    return gate_response_for_gate(answered, "accepted", (), answered.answered_at, action_result.to_json())
 
 
 def adjust_workflow_goal_state(output_dir: Path, payload: JsonMap) -> WorkflowGoalAuthorityResult:

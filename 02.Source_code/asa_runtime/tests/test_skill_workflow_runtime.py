@@ -414,6 +414,7 @@ def test_provider_payload_exposes_skill_and_workflow_tools(tmp_path: Path) -> No
         "value",
     ]
     assert "responder_agent_id" not in tools["workflow_gate_response"]["parameters"]["properties"]
+    assert tools["workflow_gate_response"]["parameters"]["properties"]["idempotency_key"] == {"type": "string"}
     value_schema = tools["workflow_gate_response"]["parameters"]["properties"]["value"]
     assert {"type": "object", "additionalProperties": True} in value_schema["anyOf"]
 

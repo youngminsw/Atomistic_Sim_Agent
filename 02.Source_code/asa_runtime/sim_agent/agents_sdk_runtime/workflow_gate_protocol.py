@@ -74,9 +74,10 @@ class WorkflowGateResponseResult:
     ledger_ref: str
     blockers: tuple[str, ...]
     answered_at: str = ""
+    action_lifecycle: JsonMap | None = None
 
     def to_json(self) -> JsonMap:
-        return {
+        payload: dict[str, object] = {
             "workflow_id": self.workflow_id,
             "gate_id": self.gate_id,
             "status": self.status,
@@ -86,6 +87,9 @@ class WorkflowGateResponseResult:
             "blockers": list(self.blockers),
             "answered_at": self.answered_at,
         }
+        if self.action_lifecycle is not None:
+            payload["action_lifecycle"] = self.action_lifecycle
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,10 +186,22 @@ def answered_gate(gate: WorkflowGate) -> WorkflowGate:
 
 
 def gate_response_for_gate(
-    gate: WorkflowGate, status: str, blockers: tuple[str, ...], answered_at: str
+    gate: WorkflowGate,
+    status: str,
+    blockers: tuple[str, ...],
+    answered_at: str,
+    action_lifecycle: JsonMap | None = None,
 ) -> WorkflowGateResponseResult:
     return WorkflowGateResponseResult(
-        gate.workflow_id, gate.gate_id, status, gate.owner_agent_id, gate.target_agent_id, gate.ledger_ref, blockers, answered_at
+        gate.workflow_id,
+        gate.gate_id,
+        status,
+        gate.owner_agent_id,
+        gate.target_agent_id,
+        gate.ledger_ref,
+        blockers,
+        answered_at,
+        action_lifecycle,
     )
 
 

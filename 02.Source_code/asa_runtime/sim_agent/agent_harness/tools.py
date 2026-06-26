@@ -427,6 +427,7 @@ def default_tool_registry() -> ToolRegistry:
                                 {"type": "null"},
                             ]
                         },
+                        "idempotency_key": {"type": "string"},
                     },
                     ("workflow_id", "gate_id", "value"),
                 ),
