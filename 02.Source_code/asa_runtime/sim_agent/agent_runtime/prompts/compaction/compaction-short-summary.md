@@ -5,5 +5,5 @@ Rules:
 - MUST describe the changes made, not the process
 - NEVER mention running tests, builds, or other validation steps
 - NEVER explain what the user asked for
-- MUST write in first person (I added..., I fixed...)
+- MUST write in first person (I added…, I fixed…)
 - NEVER ask questions

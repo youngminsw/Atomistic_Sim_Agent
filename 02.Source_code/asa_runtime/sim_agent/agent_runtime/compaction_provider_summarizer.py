@@ -17,6 +17,7 @@ from sim_agent.llm_endpoints import ModelProviderConfig
 from sim_agent.schemas._parse import JsonMap
 
 from .compaction_provider_auth import provider_headers, provider_token
+from .compaction_redaction import redact_secret_text
 from .compaction_semantic import (
     SemanticSummaryRequest,
     SemanticSummaryResult,
@@ -72,6 +73,8 @@ class ProviderSemanticSummarizer:
 
     def _complete(self, completion: ProviderSemanticCompletion) -> str:
         token = provider_token(self.endpoint, self.api_key)
+        if _auth_required(self.endpoint) and not token:
+            raise SemanticSummaryUnavailable("semantic_summary_auth_missing")
         try:
             _status, response = gateway_post_json(
                 _semantic_url(self.endpoint, completion.protocol),
@@ -89,14 +92,19 @@ class ProviderSemanticSummarizer:
 
 
 def _short_summary_prompt(summary: str) -> str:
+    safe_summary = redact_secret_text(summary.strip())
     return "\n\n".join(
         (
             load_compaction_prompt("compaction-short-summary"),
             "<summary>",
-            summary.strip(),
+            safe_summary,
             "</summary>",
         )
     )
+
+
+def _auth_required(endpoint: ModelProviderConfig) -> bool:
+    return endpoint.auth_mode != "none" and endpoint.credential_source != "none"
 
 
 def _semantic_payload(completion: ProviderSemanticCompletion) -> JsonMap:

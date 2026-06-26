@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# noqa: SIZE_OK - Existing runtime config boundary owns persisted schema migration and profile IO.
+
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,7 @@ from sim_agent.compaction_tokens import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     DEFAULT_KEEP_RECENT_TOKENS,
     DEFAULT_RESERVE_TOKENS,
+    MIN_THRESHOLD_PERCENT,
 )
 from sim_agent.project_layout import ensure_project_state_layout
 from sim_agent.provider_registry import OPENAI_CODEX_BASE_URL, OPENAI_CODEX_TOKEN_ENV, provider_by_id
@@ -296,7 +299,7 @@ def _compaction_from_payload(payload: JsonMap, default: CompactionRuntimeConfig)
     mapping = as_mapping(value, "compaction")
     return CompactionRuntimeConfig(
         enabled=_optional_bool(mapping, "enabled", default.enabled),
-        threshold_percent=_optional_int(mapping, "threshold_percent", default.threshold_percent),
+        threshold_percent=_optional_compaction_threshold_percent(mapping, default.threshold_percent),
         threshold_tokens=_optional_int(mapping, "threshold_tokens", default.threshold_tokens),
         reserve_tokens=_optional_int(mapping, "reserve_tokens", default.reserve_tokens),
         keep_recent_tokens=_optional_int(mapping, "keep_recent_tokens", default.keep_recent_tokens),
@@ -382,3 +385,10 @@ def _optional_int(payload: JsonMap, field: str, default: int) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     raise SchemaValidationError(f"{field} must be an integer")
+
+
+def _optional_compaction_threshold_percent(payload: JsonMap, default: int) -> int:
+    value = payload.get("threshold_percent", default)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return MIN_THRESHOLD_PERCENT - 1

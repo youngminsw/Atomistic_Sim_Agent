@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# noqa: SIZE_OK - Existing agent compaction state machine; split needs a separate behavior-preserving refactor.
+
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from typing import assert_never
 
 from sim_agent.schemas._parse import JsonMap
 
+from .agent_registry import AgentSessionHandle
 from .agent_registry import load_agent_registry
 from .agent_session_io import append_agent_event
 from .compaction_policy import (
@@ -30,6 +33,7 @@ from .compaction_policy import (
     str_value,
     summary_poison_blocker,
 )
+from .compaction_redaction import redact_secret_map, redact_secret_text
 from .compaction_semantic import (
     CompactionSemanticSummarizer,
     SemanticSummaryUnavailable,
@@ -48,10 +52,11 @@ from sim_agent.compaction_tokens import (
     CompactionTokenBudget,
     CompactionTokenSettings,
     compaction_budget_for_model,
-    estimate_messages_tokens,
-    estimate_text_tokens,
+    estimate_provider_visible_tokens,
+    is_valid_threshold_percent,
     should_compact_tokens,
 )
+from sim_agent.llm_endpoints import ModelProviderConfig
 from .global_session_store import backup_legacy_json
 from .provider_context_projection import provider_visible_agent_context
 
@@ -194,9 +199,16 @@ def auto_compact_agent_session(
     if counts is None:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), "corrupt_ledger")
         return _auto_result(blocked, 0, 0, 0, 0)
+    if not is_valid_threshold_percent(policy.threshold_percent):
+        blocked = _blocked(
+            handle.session_dir,
+            _auto_request(agent_id, compact_id, counts),
+            "invalid_compaction_threshold_percent",
+        )
+        return _auto_result(blocked, counts.message_count, 0, 0, 0)
     budget = policy.token_budget()
     if budget is None:
-        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id, counts), "unknown_model_context_window")
+        blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id, counts), "context_window_unknown")
         return _auto_result(blocked, counts.message_count, 0, 0, 0)
     if not budget.enabled:
         return AutoCompactionResult(
@@ -213,8 +225,11 @@ def auto_compact_agent_session(
     summary_path = handle.session_dir / COMPACT_SUMMARY_NAME
     summary = read_json(summary_path)
     if summary is None:
-        messages = read_jsonl(handle.messages_path)
-        estimated_context_tokens = estimate_messages_tokens(tuple(messages or ()))
+        try:
+            estimated_context_tokens = _estimate_agent_provider_visible_tokens(handle, policy)
+        except ProviderContextCompactionBlocked as exc:
+            blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), str(exc))
+            return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
         if not should_compact_tokens(estimated_context_tokens, budget):
             return AutoCompactionResult(
                 "skipped",
@@ -244,14 +259,23 @@ def auto_compact_agent_session(
     if existing_blocker is not None:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), existing_blocker)
         return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
+    if _summary_covers_counts(summary, counts):
+        return AutoCompactionResult(
+            "skipped",
+            "already_compacted",
+            agent_id,
+            compact_id,
+            counts.message_count,
+            0,
+            budget.threshold_tokens,
+            budget.context_window_tokens,
+            summary_path,
+        )
     try:
-        visible_context = provider_visible_agent_context(handle)
+        estimated_context_tokens = _estimate_agent_provider_visible_tokens(handle, policy)
     except ProviderContextCompactionBlocked as exc:
         blocked = _blocked(handle.session_dir, _auto_request(agent_id, compact_id), str(exc))
         return _auto_result(blocked, counts.message_count, 0, budget.threshold_tokens, budget.context_window_tokens)
-    estimated_context_tokens = estimate_text_tokens(visible_context.compact_summary) + estimate_messages_tokens(
-        visible_context.messages,
-    )
     if not should_compact_tokens(estimated_context_tokens, budget):
         return AutoCompactionResult(
             "skipped",
@@ -291,11 +315,11 @@ def _summary_payload(
         "compact_mode": request.compact_mode,
         "summary_source": str_value(semantic, "summary_source") or request.summary_source,
         "manual_replay_status": "passed" if request.compact_mode == "auto" else "required",
-        "summary": str_value(semantic, "summary"),
-        "short_summary": str_value(semantic, "short_summary"),
-        "semantic_prompt_contract": semantic.get("semantic_prompt_contract", {}),
-        "semantic_details": semantic.get("semantic_details", {}),
-        "preserve_data": semantic.get("preserve_data", {}),
+        "summary": redact_secret_text(str_value(semantic, "summary")),
+        "short_summary": redact_secret_text(str_value(semantic, "short_summary")),
+        "semantic_prompt_contract": _redacted_mapping(semantic.get("semantic_prompt_contract", {})),
+        "semantic_details": _redacted_mapping(semantic.get("semantic_details", {})),
+        "preserve_data": _redacted_mapping(semantic.get("preserve_data", {})),
         "provider_cache_invalidated": True,
         "provider_session_reset": True,
         "message_count": counts.message_count,
@@ -320,6 +344,70 @@ def _summary_payload(
         "turn_boundary_preserved": preparation.turn_boundary_preserved,
         "created_at": time.time(),
     }
+
+
+def _summary_covers_counts(payload: JsonMap, counts: LedgerCounts) -> bool:
+    message_count = int_value(payload, "raw_message_count", int_value(payload, "message_count"))
+    last_message_sequence = int_value(payload, "last_message_sequence")
+    return message_count == counts.message_count and last_message_sequence == counts.last_message_sequence
+
+
+def _estimate_agent_provider_visible_tokens(handle: AgentSessionHandle, policy: AutoCompactionPolicy) -> int:
+    from sim_agent.agent_harness.tools import tool_registry_for_agent
+    from sim_agent.agents_sdk_runtime import AsaAgentSession
+    from sim_agent.agents_sdk_runtime.provider_transport import provider_transport_request
+
+    from .live_agent_context import (
+        live_turn_ledger_facts,
+        live_turn_project_guidance,
+        live_turn_skill_names,
+        live_turn_workflow_policy,
+        live_turn_workflow_state,
+    )
+
+    provider_context = provider_visible_agent_context(handle)
+    session = AsaAgentSession(
+        run_id=f"auto-compaction-estimate-{handle.agent_id}",
+        session_id=handle.agent_session_id,
+        agent_id=handle.agent_id,
+        user_goal=_last_visible_message_content(provider_context.messages),
+        endpoint=_auto_compaction_endpoint(handle, policy),
+        output_dir=handle.session_dir,
+        registry=tool_registry_for_agent(handle.agent_id),
+        role_prompt=handle.role_prompt,
+        role_prompt_kind="domain_role",
+        workflow_policy=live_turn_workflow_policy(),
+        project_guidance=live_turn_project_guidance(handle),
+        compact_summary=provider_context.compact_summary,
+        workflow_state=live_turn_workflow_state(handle),
+        skills=live_turn_skill_names(handle.agent_id),
+        ledger_facts=live_turn_ledger_facts(handle),
+        messages=list(provider_context.messages),
+        raw_message_count=provider_context.raw_message_count,
+        compaction_metadata=provider_context.compaction.to_json() if provider_context.compaction is not None else {},
+    )
+    payload = provider_transport_request(session, session.model_visible_tool_schemas()).payload
+    return estimate_provider_visible_tokens(payload).total_tokens
+
+
+def _auto_compaction_endpoint(handle: AgentSessionHandle, policy: AutoCompactionPolicy) -> ModelProviderConfig:
+    return ModelProviderConfig.from_mapping(
+        {
+            "provider": policy.provider,
+            "model": policy.model,
+            "reasoning_effort": handle.model.reasoning_effort,
+            "base_url": handle.model.base_url,
+            "auth_mode": handle.model.auth_mode,
+            "api_key_env": handle.model.api_key_env,
+        }
+    )
+
+
+def _last_visible_message_content(messages: tuple[JsonMap, ...]) -> str:
+    if not messages:
+        return ""
+    content = messages[-1].get("content")
+    return content if isinstance(content, str) else ""
 
 
 def _semantic_summary_payload(
@@ -347,26 +435,32 @@ def _semantic_summary_payload(
     semantic_details = extract_semantic_file_operations(messages, _semantic_details(previous_payload))
     read_files = tuple(_string_sequence(semantic_details.get("readFiles")))
     modified_files = tuple(_string_sequence(semantic_details.get("modifiedFiles")))
-    summary = upsert_file_operations(result.summary, read_files, modified_files)
-    preserve_data = dict(result.preserve_data) if result.preserve_data is not None else _preserve_data(previous_payload)
+    redacted_read_files = tuple(redact_secret_text(path) for path in read_files)
+    redacted_modified_files = tuple(redact_secret_text(path) for path in modified_files)
+    summary = redact_secret_text(upsert_file_operations(result.summary, redacted_read_files, redacted_modified_files))
+    preserve_data = (
+        redact_secret_map(result.preserve_data)
+        if result.preserve_data is not None
+        else redact_secret_map(_preserve_data(previous_payload))
+    )
     return {
         "summary": summary,
-        "short_summary": result.short_summary,
+        "short_summary": redact_secret_text(result.short_summary),
         "summary_source": "llm_semantic",
         "semantic_prompt_contract": semantic_prompt_contract(),
-        "semantic_details": semantic_details,
+        "semantic_details": redact_secret_map(semantic_details),
         "preserve_data": preserve_data,
     }
 
 
 def _legacy_replay_summary_payload(summary: str, previous_payload: JsonMap | None) -> JsonMap:
     return {
-        "summary": summary,
-        "short_summary": str_value(previous_payload, "short_summary") if previous_payload else "",
+        "summary": redact_secret_text(summary),
+        "short_summary": redact_secret_text(str_value(previous_payload, "short_summary") if previous_payload else ""),
         "summary_source": "manual_generated",
         "semantic_prompt_contract": semantic_prompt_contract(),
-        "semantic_details": _semantic_details(previous_payload),
-        "preserve_data": _preserve_data(previous_payload),
+        "semantic_details": redact_secret_map(_semantic_details(previous_payload)),
+        "preserve_data": redact_secret_map(_preserve_data(previous_payload)),
     }
 
 
@@ -382,6 +476,10 @@ def _preserve_data(payload: JsonMap | None) -> JsonMap:
         return {}
     value = payload.get("preserve_data")
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _redacted_mapping(value: object) -> dict[str, object]:
+    return redact_secret_map(value) if isinstance(value, Mapping) else {}
 
 
 def _string_sequence(value: object) -> tuple[str, ...]:

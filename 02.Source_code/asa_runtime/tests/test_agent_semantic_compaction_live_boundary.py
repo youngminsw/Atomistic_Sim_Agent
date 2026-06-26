@@ -29,6 +29,7 @@ def test_live_provider_boundary_auto_compacts_with_provider_semantic_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MODEL_GATEWAY_TOKEN", "test-token")
     monkeypatch.setenv(RUNTIME_CONFIG_ENV, str(tmp_path / "runtime-config.json"))
     save_runtime_config(
         replace(
@@ -82,6 +83,7 @@ def test_live_provider_boundary_uses_configurable_percent_context_window(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("MODEL_GATEWAY_TOKEN", "test-token")
     monkeypatch.setenv(RUNTIME_CONFIG_ENV, str(tmp_path / "runtime-config.json"))
     save_runtime_config(
         replace(

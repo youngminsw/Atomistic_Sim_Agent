@@ -23,10 +23,10 @@ You MUST use this format (omit sections if not applicable):
 - [x] [Include previously done and newly completed items]
 
 ### In Progress
-- [ ] [Current work--update based on progress]
+- [ ] [Current work—update based on progress]
 
 ### Blocked
-- [Current blockers--remove if resolved]
+- [Current blockers—remove if resolved]
 
 ## Key Decisions
 - **[Decision]**: [Brief rationale] (preserve all previous, add new)

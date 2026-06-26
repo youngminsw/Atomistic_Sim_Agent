@@ -8,6 +8,8 @@ from html import escape
 from pathlib import Path
 from typing import Final, Protocol
 
+from .compaction_redaction import redact_secret_maps, redact_secret_text
+
 
 PROMPT_DIR: Final = Path(__file__).with_name("prompts") / "compaction"
 SYSTEM_PROMPT_NAME: Final = "summarization-system"
@@ -59,7 +61,7 @@ class SemanticSummaryUnavailable(RuntimeError):
     reason: str
 
     def __str__(self) -> str:
-        if self.reason.startswith("semantic_summarizer_unavailable"):
+        if self.reason == "semantic_summary_auth_missing" or self.reason.startswith("semantic_summarizer_unavailable"):
             return self.reason
         return f"semantic_summarizer_unavailable:{self.reason}"
 
@@ -96,10 +98,12 @@ def build_semantic_summary_request(
     previous_summary: str = "",
     additional_focus: str = "",
 ) -> SemanticSummaryRequest:
-    messages_to_summarize = tuple(
+    raw_messages_to_summarize = tuple(
         dict(message) for message in messages if _is_summarized(message, first_kept_sequence, summary_cutoff_sequence)
     )
-    retained_messages = tuple(dict(message) for message in messages if _is_retained(message, first_kept_sequence))
+    raw_retained_messages = tuple(dict(message) for message in messages if _is_retained(message, first_kept_sequence))
+    messages_to_summarize = redact_secret_maps(raw_messages_to_summarize)
+    retained_messages = redact_secret_maps(raw_retained_messages)
     turn_prefix_messages = retained_messages[:2]
     system_prompt = load_compaction_prompt(SYSTEM_PROMPT_NAME)
     prompt = _render_summary_prompt(
@@ -107,11 +111,11 @@ def build_semantic_summary_request(
         compact_id=compact_id,
         compact_mode=compact_mode,
         summary_source=summary_source,
-        previous_summary=previous_summary,
+        previous_summary=redact_secret_text(previous_summary),
         messages_to_summarize=messages_to_summarize,
         turn_prefix_messages=turn_prefix_messages,
         retained_messages=retained_messages,
-        additional_focus=additional_focus,
+        additional_focus=redact_secret_text(additional_focus),
     )
     return SemanticSummaryRequest(
         agent_id=agent_id,
@@ -123,14 +127,14 @@ def build_semantic_summary_request(
         messages_to_summarize=messages_to_summarize,
         turn_prefix_messages=turn_prefix_messages,
         retained_messages=retained_messages,
-        previous_summary=previous_summary,
-        additional_focus=additional_focus,
+        previous_summary=redact_secret_text(previous_summary),
+        additional_focus=redact_secret_text(additional_focus),
     )
 
 
 def render_provider_compaction_summary(summary: str) -> str:
     template = load_compaction_prompt("compaction-summary-context")
-    return template.replace("{{summary}}", summary.strip())
+    return template.replace("{{summary}}", redact_secret_text(summary.strip()))
 
 
 def extract_semantic_file_operations(

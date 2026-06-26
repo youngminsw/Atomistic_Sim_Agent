@@ -1,0 +1,113 @@
+{
+  "asa_only_deviations": [
+    {
+      "asa": "sim_agent/compaction_tokens.py::compaction_budget_for_model blocks invalid threshold_percent before provider transport",
+      "gajae": "packages/agent/src/compaction/compaction.ts::resolveThresholdTokens clamps invalid percentages or falls back to reserve budget",
+      "reason": "User explicitly required invalid threshold values to fail closed instead of silently falling back or clamping."
+    },
+    {
+      "asa": "ASA runtime has no Gajae extension API for session_before_compact/session.compacting hooks",
+      "gajae": "packages/coding-agent/src/extensibility/extensions/compact-handler.ts",
+      "reason": "Not applicable to ASA provider-context projection; ASA records workflow/project/ledger context directly in semantic request surfaces."
+    },
+    {
+      "asa": "OpenAI remote preserveData is persisted as provider preserve_data metadata when returned by the summarizer",
+      "gajae": "packages/agent/src/compaction/openai.ts and replacementHistory preserveData",
+      "reason": "ASA transports through the Python gateway and records cache/session invalidation markers instead of Gajae provider-session objects."
+    }
+  ],
+  "contract": {
+    "kind": "gajae_compaction",
+    "prompt_file_names": [
+      "summarization-system.md",
+      "compaction-summary.md",
+      "compaction-update-summary.md",
+      "compaction-short-summary.md",
+      "compaction-turn-prefix.md",
+      "file-operations.md",
+      "compaction-summary-context.md"
+    ],
+    "prompt_sha256": {
+      "compaction-short-summary": "f041eb5fa3b85424738a7e971581e747cf55fb34f223f5be0b29e1e8cd9b0538",
+      "compaction-summary": "60e9314cf109260c16f32a58ec01f99861166b11726daf2e69fd2a72e7b078a1",
+      "compaction-summary-context": "7a00a74524c0921a19ae04036a6b8f7964deea3eaf10f803d8365d10f059eea3",
+      "compaction-turn-prefix": "adc4daa19431945d9799b575b102b5edb26c04499bc0d40189bbc79978ff57f2",
+      "compaction-update-summary": "efe34afe7f3eea58f02b2bdfdf42804f3557563c3dc7264c0a94b7055ba5f092",
+      "file-operations": "061d32c633783c79c2a7eb37d5017394db8c618c8b717c50392e3ab28fda0035",
+      "summarization-system": "f99a409a9167a0f0d4af24e2ea0c9a015665d98a2357d5804f9661c594d9ab92"
+    },
+    "summary_prompt_sha256": "60e9314cf109260c16f32a58ec01f99861166b11726daf2e69fd2a72e7b078a1",
+    "system_prompt_sha256": "f99a409a9167a0f0d4af24e2ea0c9a015665d98a2357d5804f9661c594d9ab92"
+  },
+  "gajae_source": {
+    "commit": "0aaccdf9b9a06defba3f17e76b37f2596f067622",
+    "repo": "/tmp/gajae-code",
+    "prompt_paths": {
+      "compaction-short-summary": "packages/agent/src/compaction/prompts/compaction-short-summary.md",
+      "compaction-summary": "packages/agent/src/compaction/prompts/compaction-summary.md",
+      "compaction-summary-context": "packages/agent/src/compaction/prompts/compaction-summary-context.md",
+      "compaction-turn-prefix": "packages/agent/src/compaction/prompts/compaction-turn-prefix.md",
+      "compaction-update-summary": "packages/agent/src/compaction/prompts/compaction-update-summary.md",
+      "file-operations": "packages/agent/src/compaction/prompts/file-operations.md",
+      "summarization-system": "packages/agent/src/compaction/prompts/summarization-system.md"
+    }
+  },
+  "normalized_sha256": {
+    "initial": "98c9fcf0aabf208542ad2f0f444a7233e80776285a02092839b34123b32547e6",
+    "short_summary": "0d30990b1ce84ce8513e5452da1cfb0e08fbb19bad4ca7c52513124f8b50df74",
+    "system": "58491f4202b08fdb2873f762649432ee98de5492b7e518d1ea44c3a9a7f8f970",
+    "update_with_previous": "0658918d8849a7740bd7ec230759174f699146e224e100e1b710aee396ebd18f"
+  },
+  "parity_matrix": [
+    {
+      "asa": "sim_agent/agent_runtime/compaction_semantic.py::build_semantic_summary_request",
+      "gajae": "packages/agent/src/compaction/compaction.ts::generateSummary",
+      "requirement": "generateSummary prompt assembly with Additional focus, previous summary, conversation tags, and additional context",
+      "status": "implemented"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/compaction.py::_prepare_compaction_messages",
+      "gajae": "packages/agent/src/compaction/compaction.ts::prepareCompaction",
+      "requirement": "messages_to_summarize, turn_prefix_messages, retained recent tail, previous summary, and file operation extraction",
+      "status": "implemented_with_asa_message_ledger_adapter"
+    },
+    {
+      "asa": "sim_agent/cli/tui_compaction.py::handle_compact and sim_agent/agent_runtime/compaction.py::compact_agent_session",
+      "gajae": "packages/coding-agent/src/modes/shared/agent-wire/command-dispatch.ts and packages/coding-agent/src/session/agent-session.ts::compact",
+      "requirement": "/compact optional user text is customInstructions/additional focus, not a user-supplied summary",
+      "status": "implemented"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/prompts/compaction/compaction-turn-prefix.md",
+      "gajae": "packages/agent/src/compaction/prompts/compaction-turn-prefix.md",
+      "requirement": "turn-prefix/recent-tail prompt wording and split-turn preservation",
+      "status": "prompt_sha256_exact_match"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/prompts/compaction/compaction-update-summary.md",
+      "gajae": "packages/agent/src/compaction/prompts/compaction-update-summary.md",
+      "requirement": "previous-summary update prompt wording",
+      "status": "prompt_sha256_exact_match"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/prompts/compaction/compaction-short-summary.md",
+      "gajae": "packages/agent/src/compaction/prompts/compaction-short-summary.md",
+      "requirement": "short-summary prompt wording",
+      "status": "prompt_sha256_exact_match"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/prompts/compaction/file-operations.md and sim_agent/agent_runtime/compaction_semantic.py::_extract_file_operations",
+      "gajae": "packages/agent/src/compaction/prompts/file-operations.md and packages/agent/src/compaction/compaction.ts::extractFileOperations",
+      "requirement": "file operations surfaced to the summarizer",
+      "status": "implemented_with_asa_message_ledger_adapter"
+    },
+    {
+      "asa": "sim_agent/agent_runtime/provider_context_projection.py and sim_agent/agents_sdk_runtime/provider_transport.py",
+      "gajae": "packages/coding-agent/src/session/agent-session.ts provider pre-prompt compaction boundary",
+      "requirement": "provider projection sends compact summary plus retained tail/current turn and omits compacted raw turns",
+      "status": "implemented"
+    }
+  ],
+  "schema_version": 2,
+  "source_basis": "Gajae source checkout /tmp/gajae-code at 0aaccdf9b9a06defba3f17e76b37f2596f067622"
+}
