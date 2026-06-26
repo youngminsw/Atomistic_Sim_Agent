@@ -21,8 +21,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for workflow_gate_flat_shape.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "wrapped_event_envelope",
@@ -41,8 +46,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for wrapped_event_envelope.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "ralplan_approval_gate_parsing",
@@ -65,8 +75,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for ralplan_approval_gate_parsing.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "response_validation_enum_rejection_acceptance",
@@ -86,8 +101,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for response_validation_enum_rejection_acceptance.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "deep_interview_one_question_gate",
@@ -114,7 +134,12 @@
         ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-red.txt",
         ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-green.txt",
         ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-transcript.txt"
-      ]
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for deep_interview_one_question_gate.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "action_lifecycle_first_valid_resolution",
@@ -138,8 +163,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for action_lifecycle_first_valid_resolution.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "task_goal_context_summaries",
@@ -158,8 +188,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for task_goal_context_summaries.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "ultragoal_signoff_checkpoint_gate",
@@ -183,8 +218,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for ultragoal_signoff_checkpoint_gate.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "visual_qa_evidence_workflow",
@@ -210,7 +250,12 @@
       "verification_evidence": [
         ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-green.txt",
         ".omo/evidence/asa-gajae-workflow-gap-closure/t08-visual-qa-transcript.txt"
-      ]
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for visual_qa_evidence_workflow.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "ultraresearch_insane_search_evidence_boundary",
@@ -239,7 +284,12 @@
       "verification_evidence": [
         ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-green.txt",
         ".omo/evidence/asa-gajae-workflow-gap-closure/t09-ultraresearch-transcript.txt"
-      ]
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for ultraresearch_insane_search_evidence_boundary.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     },
     {
       "id": "tui_tool_persistence_coverage",
@@ -263,8 +313,13 @@
       ],
       "status": "implemented",
       "verification_evidence": [
-        ".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"
-      ]
+        ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+      ],
+      "anti_false_green": {
+        "sabotage": "Remove or corrupt verification evidence for tui_tool_persistence_coverage.",
+        "detected_by": "scripts/check_workflow_gap_evidence.py and tests/test_workflow_false_green_guards.py",
+        "blocker": "parity_evidence_missing"
+      }
     }
   ]
 }

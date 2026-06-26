@@ -17,6 +17,7 @@ REQUIRED_FIELDS = {
     "tests",
     "status",
     "verification_evidence",
+    "anti_false_green",
 }
 REQUIRED_ROW_IDS = {
     "workflow_gate_flat_shape",
@@ -32,7 +33,9 @@ REQUIRED_ROW_IDS = {
     "tui_tool_persistence_coverage",
 }
 ALLOWED_STATUSES = {"implemented"}
-GENERIC_VERIFICATION_EVIDENCE = [".omo/ulw-loop/evidence/G002-final-workflow-pytest.log"]
+GENERIC_VERIFICATION_EVIDENCE = [
+    ".omo/evidence/asa-gajae-workflow-gap-closure/final-action-lifecycle-slice-pytest.txt"
+]
 ROW_VERIFICATION_EVIDENCE = {
     "deep_interview_one_question_gate": [
         ".omo/evidence/asa-gajae-workflow-gap-closure/t05-deep-interview-red.txt",
@@ -70,6 +73,8 @@ def test_gajae_workflow_parity_matrix_has_required_rows_and_fields() -> None:
         assert row["asa_target"], row_id
         assert row["tests"], row_id
         assert row["verification_evidence"], row_id
+        assert row["anti_false_green"], row_id
+        assert {"sabotage", "detected_by", "blocker"} <= set(row["anti_false_green"]), row_id
         assert not any("planned:" in item for item in row["asa_target"]), row_id
         assert not any("planned:" in item for item in row["tests"]), row_id
         assert not any("planned:" in item for item in row["verification_evidence"]), row_id
