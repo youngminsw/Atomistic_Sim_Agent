@@ -30,6 +30,10 @@ from .workflow_gate_protocol import (
 )
 
 
+WORKFLOW_GOAL_SCHEMA_VERSION = "workflow_goal_v1"
+WORKFLOW_GOAL_OPERATIONS: tuple[str, ...] = ("create", "get", "resume", "pause", "drop", "complete")
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowRuntimeStartRequest:
     output_dir: Path
@@ -49,6 +53,39 @@ class WorkflowRuntimeStartResult:
     blockers: tuple[str, ...]
     gate: WorkflowGate | None
     missing_evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowGoalOperationResult:
+    workflow_id: str
+    goal_id: str
+    operation: str
+    status: str
+    actor_agent_id: str
+    owner_agent_id: str
+    target_agent_id: str
+    state: str
+    ledger_ref: str
+    blockers: tuple[str, ...]
+    goal: JsonMap | None = None
+
+    def to_json(self) -> JsonMap:
+        payload: dict[str, object] = {
+            "schema_version": WORKFLOW_GOAL_SCHEMA_VERSION,
+            "workflow_id": self.workflow_id,
+            "goal_id": self.goal_id,
+            "operation": self.operation,
+            "status": self.status,
+            "actor_agent_id": self.actor_agent_id,
+            "owner_agent_id": self.owner_agent_id,
+            "target_agent_id": self.target_agent_id,
+            "state": self.state,
+            "ledger_ref": self.ledger_ref,
+            "blockers": list(self.blockers),
+        }
+        if self.goal is not None:
+            payload["goal"] = self.goal
+        return payload
 
 
 def start_workflow_runtime(request: WorkflowRuntimeStartRequest) -> WorkflowRuntimeStartResult:
@@ -138,6 +175,123 @@ def adjust_workflow_goal_state(output_dir: Path, payload: JsonMap) -> WorkflowGo
     return result
 
 
+def operate_workflow_goal(output_dir: Path, payload: JsonMap) -> WorkflowGoalOperationResult:
+    operation = required_text(payload, "operation")
+    actor = required_text(payload, "actor_agent_id")
+    owner = required_text(payload, "owner_agent_id")
+    target = required_text(payload, "target_agent_id")
+    workflow_id = required_text(payload, "workflow_id")
+    goal_id = required_text(payload, "goal_id")
+    ledger_ref = _workflow_goal_ledger_ref(workflow_id or "unknown", goal_id or "unknown")
+    if (
+        not operation
+        or not actor
+        or not owner
+        or not target
+        or not workflow_id
+        or not goal_id
+    ):
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "blocked",
+            actor,
+            owner,
+            target,
+            "",
+            ledger_ref,
+            ("workflow_goal_malformed",),
+        )
+    if operation not in WORKFLOW_GOAL_OPERATIONS:
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "blocked",
+            actor,
+            owner,
+            target,
+            "",
+            ledger_ref,
+            ("workflow_goal_unknown_operation",),
+        )
+    authority_blocker = workflow_authority_blocker(actor, owner, target)
+    if authority_blocker:
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "blocked",
+            actor,
+            owner,
+            target,
+            "",
+            ledger_ref,
+            (authority_blocker,),
+        )
+    goal_path = output_dir / ledger_ref
+    existing = _read_goal(goal_path)
+    if operation == "get":
+        if existing is None:
+            return WorkflowGoalOperationResult(
+                workflow_id,
+                goal_id,
+                operation,
+                "blocked",
+                actor,
+                owner,
+                target,
+                "",
+                ledger_ref,
+                ("workflow_goal_unknown",),
+            )
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "accepted",
+            actor,
+            owner,
+            target,
+            required_text(existing, "state"),
+            ledger_ref,
+            (),
+            existing,
+        )
+    if existing is None and operation != "create":
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "blocked",
+            actor,
+            owner,
+            target,
+            "",
+            ledger_ref,
+            ("workflow_goal_unknown",),
+        )
+    state = _workflow_goal_state_for_operation(operation)
+    if existing is not None and required_text(existing, "state") in {"complete", "dropped"}:
+        return WorkflowGoalOperationResult(
+            workflow_id,
+            goal_id,
+            operation,
+            "blocked",
+            actor,
+            owner,
+            target,
+            required_text(existing, "state"),
+            ledger_ref,
+            ("workflow_goal_terminal",),
+            existing,
+        )
+    goal = _workflow_goal_payload(payload, existing, operation, state)
+    write_json(goal_path, goal)
+    return WorkflowGoalOperationResult(workflow_id, goal_id, operation, "accepted", actor, owner, target, state, ledger_ref, (), goal)
+
+
 def _gate_from_payload(request: WorkflowRuntimeStartRequest) -> WorkflowGate | None:
     payload = request.gate_payload or {}
     gate_id = required_text(payload, "gate_id")
@@ -214,3 +368,61 @@ def _artifact_path(output_dir: Path, payload: JsonMap, value: object) -> Path | 
     artifact_root = payload.get("artifact_root")
     base = Path(artifact_root) if isinstance(artifact_root, str) and artifact_root else output_dir
     return base / path
+
+
+def _workflow_goal_ledger_ref(workflow_id: str, goal_id: str) -> str:
+    return f"{safe_id(workflow_id)}/goals/{safe_id(goal_id)}.json"
+
+
+def _workflow_goal_state_for_operation(operation: str) -> str:
+    match operation:
+        case "create" | "resume":
+            return "active"
+        case "pause":
+            return "paused"
+        case "drop":
+            return "dropped"
+        case "complete":
+            return "complete"
+        case "get":
+            return ""
+        case _:
+            return ""
+
+
+def _workflow_goal_payload(payload: JsonMap, existing: JsonMap | None, operation: str, state: str) -> JsonMap:
+    timestamp = now()
+    history = existing.get("history") if existing is not None else None
+    history_items = [item for item in history if isinstance(item, dict)] if isinstance(history, list) else []
+    history_items.append(
+        {
+            "operation": operation,
+            "state": state,
+            "at": timestamp,
+            "actor_agent_id": required_text(payload, "actor_agent_id"),
+        }
+    )
+    created_at = required_text(existing or {}, "created_at") or timestamp
+    objective = required_text(payload, "objective") or required_text(existing or {}, "objective")
+    return {
+        "schema_version": WORKFLOW_GOAL_SCHEMA_VERSION,
+        "workflow_id": required_text(payload, "workflow_id"),
+        "goal_id": required_text(payload, "goal_id"),
+        "owner_agent_id": required_text(payload, "owner_agent_id"),
+        "target_agent_id": required_text(payload, "target_agent_id"),
+        "state": state,
+        "objective": objective,
+        "created_at": created_at,
+        "updated_at": timestamp,
+        "history": history_items,
+    }
+
+
+def _read_goal(path: Path) -> JsonMap | None:
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return raw if isinstance(raw, dict) else None

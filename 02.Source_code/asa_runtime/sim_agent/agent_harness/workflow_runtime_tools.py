@@ -9,7 +9,7 @@ from typing import Final
 from sim_agent.schemas._parse import JsonMap, as_str, require
 from sim_agent.schemas.errors import SchemaValidationError
 from sim_agent.agents_sdk_runtime.workflow_harness import run_workflow_harness_smoke
-from sim_agent.agents_sdk_runtime.workflow_runtime import respond_workflow_gate
+from sim_agent.agents_sdk_runtime.workflow_runtime import operate_workflow_goal, respond_workflow_gate
 
 from .tool_types import RuntimeToolCall, RuntimeToolError, RuntimeToolResult
 
@@ -81,6 +81,27 @@ def execute_workflow_gate_response(call: RuntimeToolCall, session_dir: Path) -> 
     result = respond_workflow_gate(
         session_dir / "workflows",
         dict(call.arguments) | {"responder_agent_id": call.caller_agent_id},
+    )
+    blocker = result.blockers[0] if result.blockers else None
+    output = result.to_json()
+    output = dict(output) | {"ledger_ref": f"workflows/{result.ledger_ref}"}
+    return _write_result(
+        call,
+        session_dir,
+        RuntimeToolResult(call.tool_name, result.status, output, _ledger_ref(call), blocker),
+    )
+
+
+def execute_workflow_goal(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
+    if not call.caller_agent_id:
+        return _blocked(
+            call,
+            session_dir,
+            ToolBlockRequest("workflow_goal_trusted_caller_required", {"tool_name": call.tool_name}),
+        )
+    result = operate_workflow_goal(
+        session_dir / "workflows",
+        dict(call.arguments) | {"actor_agent_id": call.caller_agent_id},
     )
     blocker = result.blockers[0] if result.blockers else None
     output = result.to_json()

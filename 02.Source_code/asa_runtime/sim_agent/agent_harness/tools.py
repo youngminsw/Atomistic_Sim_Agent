@@ -16,6 +16,7 @@ from .agent_runtime_tools import (
 )
 from .workflow_runtime_tools import (
     execute_workflow_gate_response,
+    execute_workflow_goal,
     execute_workflow_start,
 )
 from .tool_policy import DEFAULT_RUNTIME_TOOL_POLICY
@@ -432,6 +433,32 @@ def default_tool_registry() -> ToolRegistry:
                 side_effect_class="session_workflow_ledger",
                 executor=execute_workflow_gate_response,
             ),
+            ToolDefinition(
+                "workflow_goal",
+                "agent_workflow",
+                family="agent_runtime",
+                safety="session_local",
+                approval_required=False,
+                executable=True,
+                policy_id="workflow-goal-v1",
+                policy_summary="session_local_workflow_goal_state",
+                parameters=_object_schema(
+                    {
+                        "operation": {
+                            "type": "string",
+                            "enum": ["create", "get", "resume", "pause", "drop", "complete"],
+                        },
+                        "workflow_id": {"type": "string"},
+                        "goal_id": {"type": "string"},
+                        "owner_agent_id": {"type": "string"},
+                        "target_agent_id": {"type": "string"},
+                        "objective": {"type": "string"},
+                    },
+                    ("operation", "workflow_id", "goal_id", "owner_agent_id", "target_agent_id"),
+                ),
+                side_effect_class="session_workflow_goal",
+                executor=execute_workflow_goal,
+            ),
             ToolDefinition("validate_simulation_request", "schema"),
             ToolDefinition("geometry_ingestion", "geometry"),
             ToolDefinition("md_campaign_planning", "md"),
@@ -472,6 +499,7 @@ COMMON_DOMAIN_TOOL_NAMES: Final = frozenset(
         "subagent_control",
         "workflow_start",
         "workflow_gate_response",
+        "workflow_goal",
     )
 )
 
@@ -529,6 +557,7 @@ DOMAIN_AGENT_TOOL_NAMES: Final[dict[str, frozenset[str]]] = {
             "subagent_control",
             "workflow_start",
             "workflow_gate_response",
+            "workflow_goal",
         )
     )
     | COMMON_DOMAIN_TOOL_NAMES,
