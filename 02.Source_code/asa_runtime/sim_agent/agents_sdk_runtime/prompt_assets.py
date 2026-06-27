@@ -15,6 +15,10 @@ def load_workflow_policy_prompt() -> str:
     return _read_prompt("system/workflow_policy.md")
 
 
+def load_domain_workflow_policy_prompt(agent_id: str) -> str:
+    return _read_prompt(f"domain_workflow_policies/{agent_id}.md")
+
+
 def load_domain_role_prompt(agent_id: str) -> str:
     return _read_prompt(f"domain_roles/{agent_id}.md")
 

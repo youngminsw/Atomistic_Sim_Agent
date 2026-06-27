@@ -22,6 +22,7 @@ from sim_agent.agents_sdk_runtime import AsaAgentSession, assemble_provider_cont
 from sim_agent.agents_sdk_runtime.markdown_skills import MarkdownSkillSpec, skill_context_message
 from sim_agent.agents_sdk_runtime.prompt_assets import (
     load_common_system_prompt,
+    load_domain_workflow_policy_prompt,
     load_domain_role_prompt,
     load_subagent_role_prompt,
     load_workflow_policy_prompt,
@@ -70,6 +71,7 @@ def test_provider_context_assembles_role_compaction_transcript_and_tool_history(
     assert context.layer_kinds() == (
         "system_policy",
         "workflow_policy",
+        "domain_workflow_policy",
         "domain_role",
         "project_guidance",
         "compact_summary",
@@ -78,7 +80,8 @@ def test_provider_context_assembles_role_compaction_transcript_and_tool_history(
         "ledger_facts",
         "tool_history",
     )
-    assert context.layers_json()[2]["kind"] == "domain_role"
+    assert context.layers_json()[2]["kind"] == "domain_workflow_policy"
+    assert context.layers_json()[3]["kind"] == "domain_role"
     assert "Act as the MD domain agent." in context.instructions
     assert "Validate request, plan tools" in context.instructions
     assert "current WSL session" in context.instructions
@@ -108,6 +111,31 @@ def test_provider_context_uses_file_backed_common_and_workflow_policy(tmp_path: 
     assert layers[1]["kind"] == "workflow_policy"
     assert layers[1]["source"] == "asa.prompts.system.workflow_policy"
     assert load_workflow_policy_prompt() in layers[1]["content"]
+    assert layers[2]["kind"] == "domain_workflow_policy"
+    assert layers[2]["source"] == "asa.prompts.domain_workflow_policies.orchestrator"
+    assert load_domain_workflow_policy_prompt("orchestrator") in layers[2]["content"]
+
+
+def test_domain_workflow_policy_is_loaded_between_global_policy_and_role(tmp_path: Path) -> None:
+    session = _session(
+        tmp_path,
+        agent_id="md_agent",
+        role_prompt=load_domain_role_prompt("md_agent"),
+    )
+
+    context = assemble_provider_context(session)
+    layers = context.layers_json()
+
+    assert context.layer_kinds()[:4] == (
+        "system_policy",
+        "workflow_policy",
+        "domain_workflow_policy",
+        "domain_role",
+    )
+    assert layers[2]["source"] == "asa.prompts.domain_workflow_policies.md_agent"
+    assert "MD workflow policy" in layers[2]["content"]
+    assert "simulation request gate" in layers[2]["content"]
+    assert "You are the MD Agent" in layers[3]["content"]
 
 
 def test_common_system_prompt_contains_asa_constitution_without_domain_manual() -> None:
@@ -124,7 +152,7 @@ def test_common_system_prompt_contains_asa_constitution_without_domain_manual() 
     assert "arbitrary dynamic agent creation" in common
     assert "Conversation messages are provider input after prompt layers" in common
     assert "Conversation messages are not a PromptLayer" in common
-    assert "system policy, workflow policy, role prompt, project guidance, compact summary, skills, workflow state, ledger facts, and tool history" in common
+    assert "system policy, workflow policy, domain workflow policy, role prompt, project guidance, compact summary, skills, workflow state, ledger facts, and tool history" in common
 
     for phrase in (
         "LAMMPS-oriented atomistic simulation campaigns",
@@ -139,6 +167,7 @@ def test_prompt_assets_do_not_contain_disallowed_runtime_branding() -> None:
     prompt_texts = [
         load_common_system_prompt(),
         load_workflow_policy_prompt(),
+        *(load_domain_workflow_policy_prompt(agent) for agent in ("orchestrator", "md_agent", "ml_agent", "feature_scale_agent", "research_agent", "qa_agent")),
         *(load_domain_role_prompt(agent) for agent in ("orchestrator", "md_agent", "ml_agent", "feature_scale_agent", "research_agent", "qa_agent")),
         *(load_subagent_role_prompt(role) for role in ("planner", "architect", "critic", "executor", "verifier")),
     ]
@@ -425,6 +454,7 @@ def _session(
     base_url: str = "https://model-gateway.example/v1",
     role_prompt: str = "",
     role_prompt_kind: str = "domain_role",
+    agent_id: str = "orchestrator",
     workflow_policy: str = "",
     project_guidance: str = "",
     compact_summary: str = "",
@@ -447,7 +477,7 @@ def _session(
     return AsaAgentSession(
         run_id="context-assembler-test",
         session_id="context-session",
-        agent_id="orchestrator",
+        agent_id=agent_id,
         user_goal="latest request",
         endpoint=endpoint,
         output_dir=tmp_path,

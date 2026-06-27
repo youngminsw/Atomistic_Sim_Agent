@@ -48,7 +48,7 @@ def test_provider_tool_choice_model_posts_visible_tool_schemas_and_parses_output
     assert manifest["schema_version"] == "asa_prompt_assembly_manifest_v1"
     assert manifest["agent_id"] == "orchestrator"
     assert manifest["api_protocol"] == "openai_responses"
-    assert manifest["layer_kinds"][:3] == ["system_policy", "workflow_policy", "domain_role"]
+    assert manifest["layer_kinds"][:4] == ["system_policy", "workflow_policy", "domain_workflow_policy", "domain_role"]
     assert manifest["messages"] == [{"role": "user", "content": "Write provider-selected evidence"}]
     assert "artifact_write" in manifest["tool_names"]
 

@@ -9,7 +9,11 @@ from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop import AsaAgentSession
 from .markdown_skills import skill_context_body
-from .prompt_assets import load_common_system_prompt, load_workflow_policy_prompt
+from .prompt_assets import (
+    load_common_system_prompt,
+    load_domain_workflow_policy_prompt,
+    load_workflow_policy_prompt,
+)
 from .prompt_layers import PromptLayer, PromptLayerKind, prompt_layer
 
 
@@ -76,6 +80,7 @@ def _prompt_layers(session: AsaAgentSession) -> tuple[PromptLayer, ...]:
             source="asa.runtime.workflow" if session.workflow_policy.strip() else "asa.prompts.system.workflow_policy",
         ),
     ]
+    _append_domain_workflow_policy(layers, session)
     if session.role_prompt:
         _append_layer(
             layers,
@@ -100,6 +105,22 @@ def _prompt_layers(session: AsaAgentSession) -> tuple[PromptLayer, ...]:
     if session.tool_history:
         _append_layer(layers, "tool_history", "Recent tool history", _tool_history_text(session.tool_history[-MAX_TOOL_HISTORY:]), "asa.tools")
     return tuple(layers)
+
+
+def _append_domain_workflow_policy(layers: list[PromptLayer], session: AsaAgentSession) -> None:
+    if _role_prompt_kind(session) != "domain_role":
+        return
+    try:
+        policy = load_domain_workflow_policy_prompt(session.agent_id)
+    except FileNotFoundError:
+        return
+    _append_layer(
+        layers,
+        "domain_workflow_policy",
+        "Domain workflow policy",
+        policy,
+        f"asa.prompts.domain_workflow_policies.{session.agent_id}",
+    )
 
 
 def _append_layer(

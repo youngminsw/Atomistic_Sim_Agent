@@ -9,6 +9,7 @@ from sim_agent.schemas._parse import JsonMap
 PromptLayerKind = Literal[
     "system_policy",
     "workflow_policy",
+    "domain_workflow_policy",
     "domain_role",
     "subagent_role",
     "project_guidance",
