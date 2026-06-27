@@ -58,13 +58,7 @@ def _copy_payload_inputs(source_root: Path) -> None:
         source_root / "asa_runtime" / "tests" / "fixtures" / "materials",
     )
     _copy_file(
-        SOURCE_ROOT.parent
-        / "mss_agent"
-        / "md_agent_window"
-        / "Reference"
-        / "force_field_library"
-        / "potentials"
-        / "Si.tersoff",
+        SOURCE_ROOT / "sim_agent" / "md" / "legacy_assets" / "Si.tersoff",
         source_root
         / "mss_agent"
         / "md_agent_window"
@@ -74,12 +68,7 @@ def _copy_payload_inputs(source_root: Path) -> None:
         / "Si.tersoff",
     )
     _copy_file(
-        SOURCE_ROOT.parent
-        / "mss_agent"
-        / "md_agent_window"
-        / "results"
-        / "run_Ar_Si_3evts"
-        / "Si_periodic.data",
+        SOURCE_ROOT / "sim_agent" / "md" / "legacy_assets" / "Si_periodic.data",
         source_root
         / "mss_agent"
         / "md_agent_window"

@@ -15,13 +15,13 @@ def test_subagent_control_lists_and_awaits_completed_bounded_job(tmp_path: Path)
         RuntimeToolCall(
             tool_name="subagent_task",
             arguments={
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "task_id": "plan-window",
                 "task": "Plan a bounded MD window.",
             },
             run_id="subagent-run",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -30,9 +30,10 @@ def test_subagent_control_lists_and_awaits_completed_bounded_job(tmp_path: Path)
     listed = execute_runtime_tool(
         RuntimeToolCall(
             tool_name="subagent_control",
-            arguments={"action": "list", "caller_agent": "md_agent"},
+            arguments={"action": "list"},
             run_id="subagent-list",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -42,12 +43,12 @@ def test_subagent_control_lists_and_awaits_completed_bounded_job(tmp_path: Path)
             tool_name="subagent_control",
             arguments={
                 "action": "await",
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "subagent_id": "plan-window",
             },
             run_id="subagent-await",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -85,18 +86,18 @@ def test_subagent_control_writes_lifecycle_events_for_running_job(tmp_path: Path
     cancelled = _control(state.session_id, state.session_dir, "cancel", content="", registry=registry)
     progress = _control(state.session_id, state.session_dir, "progress", content="", registry=registry)
 
-    assert paused.status == "succeeded"
-    assert paused.output["state"] == "paused"
-    assert steered.status == "succeeded"
-    assert cancelled.status == "succeeded"
-    assert cancelled.output["state"] == "cancel_requested"
+    assert paused.status == "blocked"
+    assert paused.blocker == "subagent_control_unsupported"
+    assert paused.output["state"] == "running"
+    assert paused.output["controllable"] is False
+    assert steered.status == "blocked"
+    assert steered.blocker == "subagent_control_unsupported"
+    assert cancelled.status == "blocked"
+    assert cancelled.blocker == "subagent_control_unsupported"
     assert progress.status == "succeeded"
-    assert progress.output["state"] == "cancel_requested"
-    controls = (running_dir / "subagent_controls.jsonl").read_text(encoding="utf-8")
-    assert "pause" in controls
-    assert "steer" in controls
-    assert "Check code and evidence together." in controls
-    assert "cancel" in controls
+    assert progress.output["state"] == "running"
+    assert progress.output["controllable"] is False
+    assert not (running_dir / "subagent_controls.jsonl").exists()
 
 
 def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> None:
@@ -106,13 +107,13 @@ def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> No
         RuntimeToolCall(
             tool_name="subagent_task",
             arguments={
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "task_id": "done-job",
                 "task": "Complete a bounded job.",
             },
             run_id="subagent-run",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -123,12 +124,12 @@ def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> No
             tool_name="subagent_control",
             arguments={
                 "action": "cancel",
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "subagent_id": "done-job",
             },
             run_id="terminal-cancel",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -138,19 +139,19 @@ def test_subagent_control_blocks_terminal_and_unknown_jobs(tmp_path: Path) -> No
             tool_name="subagent_control",
             arguments={
                 "action": "progress",
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "subagent_id": "missing-job",
             },
             run_id="missing-progress",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
     )
 
     assert terminal_cancel.status == "blocked"
-    assert terminal_cancel.blocker == "subagent_already_terminal"
+    assert terminal_cancel.blocker == "subagent_not_controllable"
     assert missing.status == "blocked"
     assert missing.blocker == "unknown_subagent"
 
@@ -178,9 +179,10 @@ def test_subagent_control_detects_lost_process_and_restarts_same_job(tmp_path: P
     listed = execute_runtime_tool(
         RuntimeToolCall(
             tool_name="subagent_control",
-            arguments={"action": "list", "caller_agent": "md_agent"},
+            arguments={"action": "list"},
             run_id="lost-list",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -190,12 +192,12 @@ def test_subagent_control_detects_lost_process_and_restarts_same_job(tmp_path: P
             tool_name="subagent_control",
             arguments={
                 "action": "progress",
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "subagent_id": "lost-plan",
             },
             run_id="lost-progress",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -205,12 +207,12 @@ def test_subagent_control_detects_lost_process_and_restarts_same_job(tmp_path: P
             tool_name="subagent_control",
             arguments={
                 "action": "restart",
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "subagent_id": "lost-plan",
             },
             run_id="lost-restart",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -237,9 +239,10 @@ def test_provider_visible_schema_includes_subagent_control(tmp_path: Path) -> No
     result = execute_runtime_tool(
         RuntimeToolCall(
             tool_name="subagent_control",
-            arguments={"action": "list", "caller_agent": "orchestrator"},
+            arguments={"action": "list"},
             run_id="schema-smoke",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         default_tool_registry(),
         state.session_dir,
@@ -256,13 +259,13 @@ def _control(session_id: str, session_dir: Path, action: str, *, content: str, r
             tool_name="subagent_control",
             arguments={
                 "action": action,
-                "caller_agent": "qa_agent",
                 "preset": "critic",
                 "subagent_id": "review-live",
                 "content": content,
             },
             run_id=f"control-{action}",
             session_id=session_id,
+            caller_agent_id="qa_agent",
         ),
         registry,
         session_dir,

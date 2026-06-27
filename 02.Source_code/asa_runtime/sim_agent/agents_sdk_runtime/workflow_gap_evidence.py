@@ -30,9 +30,18 @@ class WorkflowGapEvidenceResult:
 
 def check_workflow_gap_evidence(manifest_path: Path, evidence_dir: Path, parity_path: Path) -> WorkflowGapEvidenceResult:
     blockers: list[str] = []
-    _verify_parity(parity_path, evidence_dir, blockers)
+    _verify_parity(_parity_json_path(parity_path, evidence_dir), evidence_dir, blockers)
     _verify_manifest(manifest_path, evidence_dir, blockers)
     return WorkflowGapEvidenceResult(tuple(dict.fromkeys(blockers)))
+
+
+def _parity_json_path(parity_path: Path, evidence_dir: Path) -> Path:
+    if parity_path.suffix != ".md":
+        return parity_path
+    fixture_parity = evidence_dir / "parity.json"
+    if fixture_parity.is_file():
+        return fixture_parity
+    return parity_path.with_suffix(".json")
 
 
 def _verify_parity(parity_path: Path, evidence_dir: Path, blockers: list[str]) -> None:

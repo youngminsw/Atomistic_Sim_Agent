@@ -20,7 +20,7 @@ from sim_agent.compute import (
     build_worker_bundle,
     job_bundle_payload,
     remote_execution_chain_payload,
-    remote_execution_plan_payload,
+    remote_execution_plan_manifest_payload,
     resolve_worker_host,
     stage_compute_source_payload,
     worker_bundle_payload,
@@ -231,8 +231,8 @@ def _remote_plan_outputs(
     if ssh_target is None or ssh_port is None:
         return {}
     plan = build_remote_execution_plan(worker, ssh_target=ssh_target, ssh_port=ssh_port)
-    plan_path = output_dir / "remote_plan.json"
-    payload = remote_execution_plan_payload(plan)
+    plan_path = output_dir / "remote" / "remote_plan.json"
+    payload = remote_execution_plan_manifest_payload(plan, SOURCE_ROOT, output_dir)
     _write_json(plan_path, payload)
     return {
         "remote_plan_path": str(plan_path),
@@ -249,8 +249,8 @@ def _lammps_remote_plan_outputs(
     if ssh_target is None or ssh_port is None:
         return {}
     plan = build_remote_execution_plan(worker, ssh_target=ssh_target, ssh_port=ssh_port)
-    plan_path = output_dir / "lammps_remote_plan.json"
-    payload = remote_execution_plan_payload(plan)
+    plan_path = output_dir / "remote" / "lammps_remote_plan.json"
+    payload = remote_execution_plan_manifest_payload(plan, SOURCE_ROOT, output_dir)
     _write_json(plan_path, payload)
     return {
         "lammps_remote_plan_path": str(plan_path),
@@ -268,13 +268,16 @@ def _remote_chain_outputs(
         return {}
     chain = build_remote_execution_chain(workers, ssh_target=ssh_target, ssh_port=ssh_port)
     chain_path = output_dir / "remote_chain.json"
-    script_path = output_dir / "remote_chain.sh"
-    manifest_path = output_dir / "remote_chain_manifest.json"
+    remote_root = output_dir / "remote"
+    script_path = remote_root / "remote_chain.sh"
+    manifest_path = remote_root / "remote_chain_manifest.json"
     payload = remote_execution_chain_payload(chain)
     script_bundle = write_remote_execution_script_bundle(
         chain,
         script_path=script_path,
         manifest_path=manifest_path,
+        source_root=SOURCE_ROOT,
+        output_root=output_dir,
     )
     _write_json(chain_path, payload)
     return {

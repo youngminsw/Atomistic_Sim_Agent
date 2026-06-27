@@ -103,7 +103,7 @@ async function handleResponses(context: HandlerContext, request: IncomingMessage
     gateway_request_id: context.requestId,
     adapter: context.adapter,
     output_text: "gateway_echo_ready",
-    request: body,
+    request_metadata: redactedMetadata(bodyText),
   })
 }
 
@@ -131,6 +131,19 @@ async function forwardToUpstream(
     const upstream = await fetchImpl(target, { method: "POST", headers, body: bodyText })
     const upstreamText = await upstream.text()
     const upstreamBody = upstreamJsonBody(upstream, upstreamText)
+    if (upstream.status >= 400) {
+      writeJson(response, upstream.status, {
+        error: {
+          code: "upstream_endpoint_error",
+          message: "upstream_endpoint_error",
+        },
+        gateway_request_id: context.requestId,
+        gateway_provider: context.config.provider,
+        gateway_model: context.config.model,
+        upstream_metadata: redactedMetadata(upstreamText, upstream),
+      })
+      return
+    }
     if (upstreamBody !== undefined && typeof upstreamBody === "object" && !Array.isArray(upstreamBody)) {
       writeJson(response, upstream.status, {
         ...upstreamBody,
@@ -144,16 +157,14 @@ async function forwardToUpstream(
       gateway_request_id: context.requestId,
       gateway_provider: context.config.provider,
       gateway_model: context.config.model,
-      upstream_text: upstreamText,
+      upstream_metadata: redactedMetadata(upstreamText, upstream),
     })
   } catch (error) {
     writeGatewayError(response, 502, "upstream_endpoint_error", context.requestId, error)
   }
 }
 
-function shouldForwardToUpstream(context: HandlerContext): boolean {
-  return context.options.upstreamBaseUrl !== undefined || context.config.provider === "openai-codex"
-}
+function shouldForwardToUpstream(context: HandlerContext): boolean { return context.options.upstreamBaseUrl !== undefined || context.config.provider === "openai-codex" }
 
 async function forwardToOpenAICodex(
   context: HandlerContext,
@@ -225,6 +236,13 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
+function redactedMetadata(text: string, response?: Response): Record<string, boolean | number | string> {
+  const bytes = Buffer.byteLength(text, "utf8")
+  return response === undefined
+    ? { redacted: true, bytes }
+    : { redacted: true, bytes, content_type: response.headers.get("content-type") ?? "", status: response.status }
+}
+
 function writeGatewayError(
   response: ServerResponse,
   status: number,
@@ -236,7 +254,7 @@ function writeGatewayError(
     error: {
       code,
       message: code,
-      cause: cause instanceof Error ? cause.message : undefined,
+      cause_type: cause instanceof Error ? cause.name : undefined,
     },
     gateway_request_id: requestId,
   })

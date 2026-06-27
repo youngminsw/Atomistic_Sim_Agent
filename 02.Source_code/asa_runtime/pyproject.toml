@@ -23,6 +23,7 @@ artifacts = [
   "ui/**",
   "sim_agent/agents_sdk_runtime/default_skills/**",
   "sim_agent/agents_sdk_runtime/prompts/**",
+  "sim_agent/md/legacy_assets/**",
 ]
 
 [tool.hatch.build.targets.sdist]

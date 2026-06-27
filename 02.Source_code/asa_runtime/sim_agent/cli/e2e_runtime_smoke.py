@@ -48,6 +48,13 @@ class E2ERuntimeSmokeRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class E2ERuntimeSmokeResult:
+    status: str
+    evidence_path: Path
+    blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class E2ERuntimeSmokeError(Exception):
     reason: str
 
@@ -55,7 +62,7 @@ class E2ERuntimeSmokeError(Exception):
         return self.reason
 
 
-def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> Path:
+def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> E2ERuntimeSmokeResult:
     if request.scenario != SCENARIO_ORCHESTRATOR_SUBAGENT_TOOL_LOOP:
         raise E2ERuntimeSmokeError(f"unsupported_e2e_runtime_smoke_scenario:{request.scenario}")
     profile = find_model_profile(request.model_profile)
@@ -75,6 +82,18 @@ def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> Path:
         "orchestrator",
         _scenario_prompt(request.scenario, request.allow_hardgate_bypass),
     )
+    if turn.status != "succeeded":
+        payload = _blocked_evidence_payload(
+            request,
+            runtime_config,
+            model,
+            opened.record.session_id,
+            opened.record.session_dir,
+            turn,
+        )
+        request.output_json.parent.mkdir(parents=True, exist_ok=True)
+        request.output_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return _smoke_result(payload, request.output_json)
     bus = _exercise_message_bus(opened.record.session_dir)
     handoff = handoff_task(
         opened.record.session_dir,
@@ -122,7 +141,17 @@ def run_e2e_runtime_smoke(request: E2ERuntimeSmokeRequest) -> Path:
     )
     request.output_json.parent.mkdir(parents=True, exist_ok=True)
     request.output_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return request.output_json
+    return _smoke_result(payload, request.output_json)
+
+
+def _smoke_result(payload: JsonMap, evidence_path: Path) -> E2ERuntimeSmokeResult:
+    blockers = payload.get("blockers", [])
+    blocker_strings = tuple(str(blocker) for blocker in blockers) if isinstance(blockers, list) else ()
+    return E2ERuntimeSmokeResult(
+        status=str(payload.get("status", "blocked")),
+        evidence_path=evidence_path,
+        blockers=blocker_strings,
+    )
 
 
 def _model_from_profile(profile: ModelProfile, runtime_config: RuntimeConfig) -> GlobalSessionModel:
@@ -188,6 +217,45 @@ def _exercise_message_bus(session_dir: Path) -> JsonMap:
         "thread_id": SMOKE_THREAD_ID,
         "records": records,
         "ledger_path": str(session_dir / "message_bus" / "messages.jsonl"),
+    }
+
+
+def _blocked_evidence_payload(
+    request: E2ERuntimeSmokeRequest,
+    runtime_config: RuntimeConfig,
+    model: GlobalSessionModel,
+    session_id: str,
+    session_dir: Path,
+    turn: LiveAgentTurnResult,
+) -> JsonMap:
+    blocker = turn.blockers[0] if turn.blockers else "orchestrator_turn_not_succeeded"
+    return _evidence_payload(
+        request,
+        runtime_config,
+        model,
+        session_id,
+        session_dir,
+        turn,
+        _blocked_stage(blocker),
+        _blocked_handoff(blocker),
+        _blocked_stage(blocker),
+        _blocked_stage(blocker),
+        "blocked",
+    )
+
+
+def _blocked_stage(blocker: str) -> JsonMap:
+    return {"status": "blocked", "blocker": blocker}
+
+
+def _blocked_handoff(blocker: str) -> JsonMap:
+    return {
+        "status": "blocked",
+        "task_id": "e2e-md-handoff",
+        "target_agent": "md_agent",
+        "artifact_ref": "",
+        "blocker": blocker,
+        "timeout_s": 1800,
     }
 
 

@@ -3,6 +3,81 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_corrupt_gate_file_returns_typed_blocker(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime.workflow_gate_protocol import gate_ledger_ref, read_gate
+
+    gate_path = tmp_path / gate_ledger_ref("ralplan", "approval")
+    gate_path.parent.mkdir(parents=True)
+    gate_path.write_text("{not-json", encoding="utf-8")
+
+    result = read_gate(gate_path)
+
+    assert result is not None
+    assert result.status == "blocked"
+    assert result.blockers == ("corrupt_gate_json",)
+    assert result.to_json() == {
+        "schema_version": "workflow_gate_blocker_v1",
+        "status": "blocked",
+        "reason": "corrupt_gate_json",
+        "gate_path": str(gate_path),
+    }
+
+
+def test_corrupt_gate_response_cannot_complete_gate(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import respond_workflow_gate
+    from sim_agent.agents_sdk_runtime.workflow_gate_protocol import gate_ledger_ref
+
+    gate_path = tmp_path / gate_ledger_ref("ralplan", "approval")
+    gate_path.parent.mkdir(parents=True)
+    gate_path.write_text("{not-json", encoding="utf-8")
+
+    result = respond_workflow_gate(
+        tmp_path,
+        {"workflow_id": "ralplan", "gate_id": "approval", "responder_agent_id": "qa_agent", "value": "approve"},
+    )
+
+    assert result.status == "blocked"
+    assert result.blockers == ("corrupt_gate_json",)
+    assert result.action_lifecycle == {
+        "reason": "corrupt_gate_json",
+        "gate_path": str(gate_path),
+    }
+    assert gate_path.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_corrupt_gate_resume_does_not_raise(tmp_path: Path) -> None:
+    from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
+    from sim_agent.agents_sdk_runtime.workflow_gate_protocol import gate_ledger_ref
+
+    gate_path = tmp_path / gate_ledger_ref("ralplan", "approval")
+    gate_path.parent.mkdir(parents=True)
+    gate_path.write_text("{not-json", encoding="utf-8")
+
+    result = run_workflow_harness_smoke(
+        "ralplan",
+        {
+            "request_id": "gate-resume",
+            "owner_agent_id": "orchestrator",
+            "target_agent_id": "qa_agent",
+            "goal_id": "goal-gate-resume",
+            "evidence": {"prd_path": "prd.md", "test_spec_path": "test-spec.md"},
+            "gate": {"gate_id": "approval", "gate_kind": "enum", "allowed_values": ["approve", "revise"]},
+        },
+        tmp_path,
+    )
+
+    assert result.status == "blocked"
+    assert result.gate_status == "blocked"
+    assert result.blockers == ("corrupt_gate_json",)
+    assert result.gate == {
+        "schema_version": "workflow_gate_blocker_v1",
+        "status": "blocked",
+        "reason": "corrupt_gate_json",
+        "gate_path": str(gate_path),
+    }
+    assert gate_path.read_text(encoding="utf-8") == "{not-json"
+
+
 def test_workflow_gate_response_rejects_invalid_enum_accepts_valid_once(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import respond_workflow_gate, run_workflow_harness_smoke
 

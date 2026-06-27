@@ -1,0 +1,61 @@
+{
+  "e2e_scenarios": [
+    {
+      "artifacts": [
+        "artifacts/workflow-state.json"
+      ],
+      "json": "full-e2e/workflow-ledger.json",
+      "name": "task-14-full-workflow-loop",
+      "required_transcript": [
+        "workflow_e2e_smoke_status=succeeded",
+        "/ralplan"
+      ],
+      "run_id": "run-task-14-fixture",
+      "started_at_epoch": 0,
+      "status": "succeeded",
+      "transcript": "full-e2e/workflow-transcript.txt"
+    }
+  ],
+  "evidence_files": [
+    {
+      "contains": [
+        "3 passed",
+        "workflow_gate_payload_missing"
+      ],
+      "path": "workflow-green.txt"
+    }
+  ],
+  "live_llm": [
+    {
+      "assistant_message_id": "msg_task_14",
+      "model": "gpt-5.5",
+      "provider": "openai",
+      "provider_events": "live/provider-events.jsonl",
+      "provider_request_id": "req_task_14",
+      "status": "succeeded",
+      "workflow": "/ralplan"
+    }
+  ],
+  "parity_rows": [
+    "task_14_workflow_readiness"
+  ],
+  "run_id": "run-task-14-fixture",
+  "sabotage_cases": [
+    {
+      "blocker": "workflow_gate_payload_missing",
+      "case": "gate_payload_none_false_green",
+      "status": "detected"
+    },
+    {
+      "blocker": "artifact_hash_mismatch",
+      "case": "tampered_workflow_state_artifact",
+      "status": "detected"
+    },
+    {
+      "blocker": "parity_negative_control_missing",
+      "case": "missing_negative_control",
+      "status": "detected"
+    }
+  ],
+  "schema_version": "asa_workflow_gap_evidence_manifest_v1"
+}

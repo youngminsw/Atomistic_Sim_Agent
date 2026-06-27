@@ -27,13 +27,13 @@ def test_subagent_task_tool_runs_bounded_child_under_caller_session(tmp_path: Pa
         RuntimeToolCall(
             tool_name="subagent_task",
             arguments={
-                "caller_agent": "md_agent",
                 "preset": "planner",
                 "task_id": "plan-md-window",
                 "task": "Plan the MD event coverage window without mutating runtime state.",
             },
             run_id="subagent-run",
             session_id=state.session_id,
+            caller_agent_id="md_agent",
         ),
         registry,
         state.session_dir,
@@ -204,12 +204,12 @@ def test_subagent_inspect_tool_reads_bounded_run_without_mutation(tmp_path: Path
         RuntimeToolCall(
             tool_name="subagent_inspect",
             arguments={
-                "caller_agent": "feature_scale_agent",
                 "preset": "executor",
                 "subagent_id": "execute-profile-plan",
             },
             run_id="inspect-run",
             session_id=state.session_id,
+            caller_agent_id="feature_scale_agent",
         ),
         registry,
         state.session_dir,
@@ -230,7 +230,6 @@ def _subagent_call(
     return RuntimeToolCall(
         tool_name="subagent_task",
         arguments={
-            "caller_agent": fixture.caller_agent,
             "preset": fixture.preset,
             "task_id": fixture.task_id,
             "task": f"Bounded task {fixture.task_id}",
@@ -238,6 +237,7 @@ def _subagent_call(
         },
         run_id=f"run-{fixture.task_id}",
         session_id=session_id,
+        caller_agent_id=fixture.caller_agent,
     )
 
 

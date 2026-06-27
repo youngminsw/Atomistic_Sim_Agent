@@ -60,8 +60,8 @@ class ProviderToolChoiceModel:
             request = provider_transport_request(session, safe_tool_schemas)
         except (ProviderTransportPolicyError, ProviderContextCompactionBlocked) as exc:
             raise ModelToolChoiceBlocked(str(exc)) from exc
-        _write_prompt_manifest(session, request.protocol, request.url, safe_tool_schemas)
         token = _token(session, self.api_key)
+        _write_prompt_manifest(session, request.protocol, request.url, safe_tool_schemas)
         response = self._post_with_retry(request.url, request.payload, token, request.protocol)
         return ModelTurnResult(
             selected_tools=_parse_selected_tools(response, model_visible_tools, request.protocol),
@@ -106,6 +106,8 @@ def _write_prompt_manifest(
         "provider": session.endpoint.provider,
         "model": session.endpoint.model,
         "reasoning_effort": session.endpoint.reasoning_effort,
+        "auth_mode": session.endpoint.auth_mode,
+        "credential_source": session.endpoint.credential_source,
         "api_protocol": protocol.value,
         "url": url,
         "layer_kinds": list(context.layer_kinds()),
@@ -128,12 +130,29 @@ def _tool_schema_name(schema: JsonMap) -> str:
 
 
 def _token(session: AsaAgentSession, api_key: str | None) -> str | None:
+    credential_source = session.endpoint.credential_source.strip().lower()
+    if not credential_source:
+        raise ModelToolChoiceBlocked("explicit_credential_source_required")
+    if credential_source == "none":
+        return None
     if api_key:
         return api_key
-    value = os.environ.get(session.endpoint.api_key_env)
-    if value:
-        return value
-    return access_token_for_provider(session.endpoint.provider)
+    if credential_source == "api_key_env":
+        value = os.environ.get(session.endpoint.api_key_env)
+        if value:
+            return value
+        raise ModelToolChoiceBlocked("missing_api_key_env")
+    if credential_source == "gateway_token":
+        value = os.environ.get(session.endpoint.api_key_env)
+        if value:
+            return value
+        raise ModelToolChoiceBlocked("missing_gateway_token")
+    if credential_source == "oauth_token":
+        token = access_token_for_provider(session.endpoint.provider)
+        if token:
+            return token
+        raise ModelToolChoiceBlocked("missing_oauth_token")
+    raise ModelToolChoiceBlocked(f"unsupported_credential_source={session.endpoint.credential_source}")
 
 
 def _provider_headers(protocol: ProviderApiProtocol, token: str | None) -> dict[str, str]:

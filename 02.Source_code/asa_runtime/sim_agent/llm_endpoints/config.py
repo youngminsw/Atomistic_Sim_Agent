@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 from urllib.parse import urlparse, urlunparse
 
 from sim_agent.provider_registry import LEGACY_MODEL_GATEWAY_TOKEN_ENV, default_api_key_env, default_auth_mode, provider_ids
@@ -13,7 +14,8 @@ from .policy import is_allowed_openclaw_base_url, normalize_openclaw_base_url
 
 PRIMARY_MODEL = "gpt-5.5"
 PRIMARY_REASONING = "high"
-SUPPORTED_PROVIDERS = frozenset(provider_ids(include_legacy=True))
+CUSTOM_PROVIDER_ALIASES: Final = frozenset({"custom_gateway"})
+SUPPORTED_PROVIDERS = frozenset(provider_ids(include_legacy=True)) | CUSTOM_PROVIDER_ALIASES
 DEFAULT_API_KEY_ENV_BY_PROVIDER = {
     provider: default_api_key_env(provider) for provider in SUPPORTED_PROVIDERS
 }
@@ -22,6 +24,7 @@ DEFAULT_API_KEY_ENV_BY_PROVIDER.update(
         "openclaw": "OPENCLAW_OAUTH_TOKEN",
         "oauth_gateway": LEGACY_MODEL_GATEWAY_TOKEN_ENV,
         "anthropic_gateway": LEGACY_MODEL_GATEWAY_TOKEN_ENV,
+        "custom_gateway": "RUNTIME_GATEWAY_TOKEN",
     }
 )
 DEFAULT_AUTH_MODE_BY_PROVIDER = {
@@ -32,6 +35,7 @@ DEFAULT_AUTH_MODE_BY_PROVIDER.update(
         "openclaw": "oauth",
         "oauth_gateway": "gateway",
         "anthropic_gateway": "gateway",
+        "custom_gateway": "none",
     }
 )
 REASONING_EFFORTS = frozenset({"inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"})
@@ -40,6 +44,20 @@ AUTH_MODES = frozenset({"api_key", "oauth", "gateway", "none"})
 API_PROTOCOLS = frozenset({"anthropic_messages", "chat_completions", "custom_gateway", "gemini", "gemini_generate_content", "ollama_openai_compatible", "openai_chat_completions", "openai_codex_responses", "openai_compatible", "openai_responses", "responses"})
 THINKING_MODES = frozenset({"auto", "enabled", "disabled"})
 CREDENTIAL_SOURCES = frozenset({"api_key_env", "oauth_token", "gateway_token", "none"})
+DEFAULT_API_PROTOCOL_BY_PROVIDER: Final = {
+    "openai": "responses",
+    "openai-codex": "responses",
+    "anthropic": "anthropic_messages",
+    "google-gemini-cli": "gemini",
+    "google-antigravity": "gemini",
+    "oauth_gateway": "openai_compatible",
+    "openclaw": "openai_compatible",
+    "ollama": "openai_compatible",
+    "lm-studio": "openai_compatible",
+    "vllm": "openai_compatible",
+    "local_gateway": "custom_gateway",
+    "custom_gateway": "custom_gateway",
+}
 
 
 class ModelUseCase(StrEnum):
@@ -116,7 +134,7 @@ class ModelProviderConfig:
             provider=provider,
             provider_id=provider,
             model=model,
-            api_protocol=_parse_api_protocol(_optional_str(mapping, "api_protocol", _default_api_protocol(provider))),
+            api_protocol=_parse_api_protocol(_api_protocol_from_mapping(mapping, provider)),
             reasoning_effort=reasoning_effort,
             thinking_mode=_parse_thinking_mode(_optional_str(mapping, "thinking_mode", "auto")),
             base_url=normalized_base_url,
@@ -221,14 +239,13 @@ def _provider_id_from_mapping(mapping: JsonMap) -> str:
     return str_field(mapping, "provider")
 
 
-def _default_api_protocol(provider: str) -> str:
-    if provider in {"openai", "openai-codex"}:
-        return "responses"
-    if provider == "anthropic":
-        return "anthropic_messages"
-    if provider in {"google-gemini-cli", "google-antigravity"}:
-        return "gemini"
-    return "openai_compatible"
+def _api_protocol_from_mapping(mapping: JsonMap, provider: str) -> str:
+    if "api_protocol" in mapping:
+        return _optional_str(mapping, "api_protocol", "")
+    default = DEFAULT_API_PROTOCOL_BY_PROVIDER.get(provider)
+    if default is None:
+        raise ModelPolicyError(f"explicit_api_protocol_required={provider}")
+    return default
 
 
 def _default_credential_source(auth_mode: str) -> str:

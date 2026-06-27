@@ -57,7 +57,8 @@ def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: 
         env=env,
         input=(
             f"/workflow deep-interview --evidence-key question_answer,ambiguity_score --output-dir {workflow_dir}\n"
-            f"/ralplan --evidence-key prd_path,test_spec_path --output-dir {workflow_dir}\n"
+            f"/ralplan --evidence-key prd_path,test_spec_path --gate-id approval --gate-kind enum "
+            f"--allowed-values approve,revise --output-dir {workflow_dir}\n"
             "/help\n"
             "/exit\n"
         ),
@@ -71,8 +72,8 @@ def test_tui_workflow_slash_commands_start_harnesses_and_show_ledgers(tmp_path: 
     assert "workflow=deep-interview" in result.stdout
     assert "workflow=ralplan" in result.stdout
     assert "current_state=blocked" in result.stdout
-    assert "current_state=verification_plan_ready" in result.stdout
     assert "workflow_gate_status=awaiting_response" in result.stdout
+    assert "workflow_gate_id=approval" in result.stdout
     assert "workflow_artifact_refs=ralplan/prd.md,ralplan/test-spec.md,ralplan/consensus.json" in result.stdout
     assert "/workflow <name>" in result.stdout
     assert "/ralplan" in result.stdout

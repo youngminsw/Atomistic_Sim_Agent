@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+WORKTREE_ROOT = SOURCE_ROOT.parents[1]
 
 
 def test_adversarial_e2e_smoke_cli_writes_blocker_matrix(tmp_path: Path) -> None:
@@ -55,3 +56,50 @@ def test_adversarial_e2e_smoke_cli_writes_blocker_matrix(tmp_path: Path) -> None
     assert payload["destructive_writes_ran"] == {"graphdb": False, "md": False, "remote": False}
     assert payload["secret_redaction"]["token_leaked"] is False
     assert "asa-adversarial-secret-token" not in json.dumps(payload)
+
+
+def test_adversarial_e2e_smoke_cli_uses_default_output_dir(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["ASA_PROJECT_ROOT"] = str(tmp_path)
+    env["PYTHONPATH"] = str(SOURCE_ROOT)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "sim_agent.cli.main", "--adversarial-e2e-smoke"],
+        cwd=SOURCE_ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "adversarial_e2e_smoke=true" in result.stdout
+    assert "adversarial_e2e_smoke_status=succeeded" in result.stdout
+    output_json = tmp_path / ".asa" / "evidence" / "adversarial-e2e-smoke" / "ultraqa" / "adversarial-e2e.json"
+    assert f"adversarial_e2e_smoke_json={output_json}" in result.stdout
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["status"] == "succeeded"
+    assert payload["blockers"] == []
+    assert "asa-adversarial-secret-token" not in json.dumps(payload)
+
+
+def test_final_secret_redaction_evidence_omits_raw_fixture_secrets() -> None:
+    evidence_path = (
+        WORKTREE_ROOT
+        / ".omo"
+        / "evidence"
+        / "runtime-spine-hardening-20260627"
+        / "final-secret-redaction-check.txt"
+    )
+    evidence_text = evidence_path.read_text(encoding="utf-8")
+
+    assert "raw known test secret literals omitted" in evidence_text
+    assert "status=PASS" in evidence_text
+    assert "task8-parent-secret-value" not in evidence_text
+    assert "sk-task8SecretToken123456789" not in evidence_text
+    assert "super-secret-token" not in evidence_text
+    assert "sk-secret-value" not in evidence_text

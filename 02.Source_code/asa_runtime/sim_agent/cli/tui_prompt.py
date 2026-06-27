@@ -181,7 +181,7 @@ def _build_prompt_session() -> PromptSessionProtocol | None:
     return PromptSession(
         completer=SlashCompleter(),
         complete_while_typing=True,
-        complete_style=CompleteStyle.COLUMN,
+        complete_style=CompleteStyle.READLINE_LIKE,
         key_bindings=key_bindings,
         reserve_space_for_menu=10,
         bottom_toolbar=HTML(

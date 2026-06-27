@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 
@@ -70,7 +71,7 @@ def test_run_remote_capability_probe_accepts_cwd_relative_script_path(
 ) -> None:
     manifest_path = _write_probe_bundle(tmp_path, script_body=_success_script())
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["probe_script"] = f"{tmp_path.name}/remote_capability_probe.sh"
+    manifest["probe_script"] = "remote_capability_probe.sh"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     out_path = tmp_path / "relative_result.json"
 
@@ -96,13 +97,21 @@ def test_run_remote_capability_probe_accepts_cwd_relative_script_path(
 
 
 def _write_probe_bundle(tmp_path: Path, script_body: str) -> Path:
-    script_path = tmp_path / "remote_capability_probe.sh"
-    manifest_path = tmp_path / "remote_capability_probe_manifest.json"
+    remote_dir = tmp_path / "remote"
+    remote_dir.mkdir(parents=True)
+    script_path = remote_dir / "remote_capability_probe.sh"
+    manifest_path = remote_dir / "remote_capability_probe_manifest.json"
     script_path.write_text(script_body, encoding="utf-8")
     manifest_path.write_text(
         json.dumps(
             {
-                "probe_script": str(script_path),
+                "schema_version": 1,
+                "kind": "remote_capability_probe",
+                "created_by": "asa_runtime",
+                "source_root": str(SOURCE_ROOT.resolve()),
+                "output_root": str(tmp_path.resolve()),
+                "probe_script": script_path.name,
+                "script_sha256": sha256(script_path.read_bytes()).hexdigest(),
                 "run_command": f"bash {script_path}",
                 "expected_output": "worker_capability.json",
                 "host_alias": "gpu-5090",

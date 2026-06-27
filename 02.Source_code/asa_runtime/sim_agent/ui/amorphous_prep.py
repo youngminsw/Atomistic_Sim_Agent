@@ -8,7 +8,7 @@ from sim_agent.compute import (
     build_remote_execution_plan,
     build_worker_bundle,
     job_bundle_payload,
-    remote_execution_plan_payload,
+    remote_execution_plan_manifest_payload,
     WorkerBundle,
     worker_bundle_payload,
 )
@@ -99,8 +99,14 @@ def _remote_plan_outputs(
     if ssh_target is None or ssh_port is None:
         return {}
     plan = build_remote_execution_plan(worker, ssh_target=ssh_target, ssh_port=ssh_port)
-    plan_path = output_dir / "amorphous_structure_prep_remote_plan.json"
-    payload = remote_execution_plan_payload(plan)
+    remote_dir = output_dir / "remote"
+    plan_path = remote_dir / "amorphous_structure_prep_remote_plan.json"
+    remote_dir.mkdir(parents=True, exist_ok=True)
+    payload = remote_execution_plan_manifest_payload(
+        plan,
+        source_root=Path(__file__).resolve().parents[2],
+        output_root=output_dir,
+    )
     _write_json(plan_path, payload)
     return {
         "amorphous_structure_prep_remote_plan_path": str(plan_path),

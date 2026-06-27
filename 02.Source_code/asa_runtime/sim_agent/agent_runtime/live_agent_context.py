@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import lru_cache
 
 from sim_agent.agents_sdk_runtime.markdown_skills import markdown_skill_specs
 from sim_agent.project_layout import project_guidance_text
@@ -35,6 +36,7 @@ def live_turn_handle_with_model_override(handle: AgentSessionHandle) -> AgentSes
     return replace(handle, model=_global_model_from_override(override))
 
 
+@lru_cache(maxsize=64)
 def live_turn_skill_names(agent_id: str) -> tuple[str, ...]:
     return tuple(spec.command for spec in markdown_skill_specs() if spec.agent_id == agent_id)
 

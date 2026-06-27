@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
 from sim_agent.schemas._parse import JsonMap, as_bool, as_mapping, as_sequence, as_str, require
@@ -80,6 +81,23 @@ def remote_execution_plan_payload(plan: RemoteExecutionPlan) -> JsonMap:
         "execution_command": plan.execution_command,
         "download_commands": list(plan.download_commands),
         "all_commands": list(plan.all_commands),
+    }
+
+
+def remote_execution_plan_manifest_payload(
+    plan: RemoteExecutionPlan,
+    source_root: Path,
+    output_root: Path,
+) -> JsonMap:
+    payload = remote_execution_plan_payload(plan)
+    return {
+        "schema_version": 1,
+        "kind": "remote_execution_plan",
+        "created_by": "asa_runtime",
+        "source_root": str(source_root.resolve()),
+        "output_root": str(output_root.resolve()),
+        "plan_sha256": _commands_sha256(plan.all_commands),
+        **payload,
     }
 
 
@@ -221,6 +239,15 @@ def _rsync_command(source: str, destination: str, ssh_port: int) -> str:
 
 def _join_shell(parts: tuple[str, ...]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _commands_sha256(commands: tuple[str, ...]) -> str:
+    encoded = json.dumps(
+        list(commands),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 def _unique_remote_parent_dirs(bundle: WorkerBundle) -> tuple[str, ...]:

@@ -84,6 +84,11 @@ class SubagentTaskResult:
             "blockers": list(self.blockers),
             "artifact_ref": self.artifact_ref,
             "blocker": self.blocker or "",
+            "lifecycle": {
+                "state": "completed" if self.subagent_status == "succeeded" else "blocked",
+                "running": False,
+                "controllable": False,
+            },
         }
 
 
@@ -156,8 +161,8 @@ def inspect_bounded_subagent(session_dir: Path, request: SubagentInspectRequest)
     ledger_path = subagent_dir / SUBAGENT_RUN_LEDGER_NAME
     if not ledger_path.is_file():
         return SubagentInspectResult("blocked", _inspect_error(request, "unknown_subagent"), "unknown_subagent")
-    payload = json.loads(ledger_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
+    payload = _read_json(ledger_path)
+    if payload is None:
         return SubagentInspectResult("blocked", _inspect_error(request, "corrupt_subagent_ledger"), "corrupt_subagent_ledger")
     return SubagentInspectResult("succeeded", payload)
 
@@ -185,9 +190,15 @@ def control_bounded_subagent(session_dir: Path, request: SubagentControlRequest)
         return _restart_lost_subagent(session_dir, request, subagent_dir)
     if request.action in {"cancel", "pause", "resume", "steer"}:
         if not (subagent_dir / SUBAGENT_RUNNING_LOCK_NAME).is_file():
-            return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, ledger, "subagent_already_terminal"), "subagent_already_terminal")
+            return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, ledger, "subagent_not_controllable"), "subagent_not_controllable")
         if _subagent_lost_process(subagent_dir):
             return SubagentControlResult("blocked", _control_snapshot(request, subagent_dir, ledger, "subagent_lost_process"), "subagent_lost_process")
+        if not _subagent_control_supported(subagent_dir):
+            return SubagentControlResult(
+                "blocked",
+                _control_snapshot(request, subagent_dir, ledger, "subagent_control_unsupported"),
+                "subagent_control_unsupported",
+            )
         _append_control_event(subagent_dir, request)
         if request.action in {"pause", "resume", "cancel"}:
             _write_control_state(subagent_dir, request)
@@ -381,6 +392,7 @@ def _control_snapshot(
 ) -> JsonMap:
     running = (subagent_dir / SUBAGENT_RUNNING_LOCK_NAME).is_file()
     lost_process = _subagent_lost_process(subagent_dir)
+    controllable = _subagent_control_supported(subagent_dir) if running and not lost_process else False
     state = _control_state(subagent_dir, running, lost_process)
     output = {
         "action": request.action,
@@ -390,7 +402,7 @@ def _control_snapshot(
         "status": ledger.get("status", "running"),
         "state": state,
         "running": running,
-        "controllable": running,
+        "controllable": controllable,
         "lost_process": lost_process,
         "session_dir": str(subagent_dir),
         "artifact_ref": _artifact_ref(SubagentLocator(request.caller_agent, request.preset, request.subagent_id)),
@@ -423,6 +435,7 @@ def _running_job_summary(subagent_dir: Path, lock: JsonMap) -> JsonMap:
     preset = str(lock.get("preset", ""))
     subagent_id = str(lock.get("subagent_id", ""))
     lost_process = _lock_owner_lost(lock)
+    controllable = _lock_control_supported(lock) if not lost_process else False
     return {
         "caller_agent": caller_agent,
         "preset": preset,
@@ -430,7 +443,7 @@ def _running_job_summary(subagent_dir: Path, lock: JsonMap) -> JsonMap:
         "status": "running",
         "state": _control_state(subagent_dir, True, lost_process),
         "running": True,
-        "controllable": True,
+        "controllable": controllable,
         "lost_process": lost_process,
         "session_dir": str(subagent_dir),
         "artifact_ref": _artifact_ref(SubagentLocator(caller_agent, preset, subagent_id)),
@@ -525,6 +538,18 @@ def _control_state(subagent_dir: Path, running: bool, lost_process: bool = False
 def _subagent_lost_process(subagent_dir: Path) -> bool:
     lock = _read_json(subagent_dir / SUBAGENT_RUNNING_LOCK_NAME)
     return _lock_owner_lost(lock) if isinstance(lock, dict) else False
+
+
+def _subagent_control_supported(subagent_dir: Path) -> bool:
+    lock = _read_json(subagent_dir / SUBAGENT_RUNNING_LOCK_NAME)
+    return _lock_control_supported(lock) if isinstance(lock, dict) else False
+
+
+def _lock_control_supported(lock: JsonMap) -> bool:
+    controller = lock.get("controller")
+    if not isinstance(controller, dict):
+        return False
+    return controller.get("kind") == "detached" and controller.get("control_supported") is True
 
 
 def _lock_owner_lost(lock: JsonMap) -> bool:

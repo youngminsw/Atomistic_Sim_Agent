@@ -43,6 +43,9 @@ class ToolBlockRequest:
 def execute_agent_message(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
     runtime_dir = _runtime_session_dir(session_dir)
     try:
+        identity_blocker = _identity_blocker(call, ("from_agent", "by_agent"))
+        if identity_blocker is not None:
+            return _blocked(call, session_dir, identity_blocker)
         action = _optional_str(call.arguments, "action", "send")
         match action:
             case "send":
@@ -51,13 +54,13 @@ def execute_agent_message(call: RuntimeToolCall, session_dir: Path) -> RuntimeTo
                 bus_result = ack_agent_message(
                     runtime_dir,
                     message_id=as_str(require(call.arguments, "message_id"), "message_id"),
-                    by_agent=as_str(require(call.arguments, "by_agent"), "by_agent"),
+                    by_agent=_trusted_caller_agent(call),
                 )
             case "read":
                 bus_result = read_agent_message(
                     runtime_dir,
                     message_id=as_str(require(call.arguments, "message_id"), "message_id"),
-                    by_agent=as_str(require(call.arguments, "by_agent"), "by_agent"),
+                    by_agent=_trusted_caller_agent(call),
                 )
             case "reply":
                 bus_result = reply_agent_message(runtime_dir, _reply_message_request(call))
@@ -75,6 +78,9 @@ def execute_agent_message(call: RuntimeToolCall, session_dir: Path) -> RuntimeTo
 def execute_handoff_task(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
     runtime_dir = _runtime_session_dir(session_dir)
     try:
+        identity_blocker = _identity_blocker(call, ("from_agent",))
+        if identity_blocker is not None:
+            return _blocked(call, session_dir, identity_blocker)
         result = handoff_task(runtime_dir, _handoff_request(call))
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
@@ -88,6 +94,9 @@ def execute_handoff_task(call: RuntimeToolCall, session_dir: Path) -> RuntimeToo
 def execute_subagent_task(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
     runtime_dir = _runtime_session_dir(session_dir)
     try:
+        identity_blocker = _identity_blocker(call, ("caller_agent",))
+        if identity_blocker is not None:
+            return _blocked(call, session_dir, identity_blocker)
         result = run_bounded_subagent(runtime_dir, _subagent_task_request(call))
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
@@ -101,6 +110,9 @@ def execute_subagent_task(call: RuntimeToolCall, session_dir: Path) -> RuntimeTo
 def execute_subagent_inspect(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
     runtime_dir = _runtime_session_dir(session_dir)
     try:
+        identity_blocker = _identity_blocker(call, ("caller_agent",))
+        if identity_blocker is not None:
+            return _blocked(call, session_dir, identity_blocker)
         result = inspect_bounded_subagent(runtime_dir, _subagent_inspect_request(call))
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
@@ -114,6 +126,9 @@ def execute_subagent_inspect(call: RuntimeToolCall, session_dir: Path) -> Runtim
 def execute_subagent_control(call: RuntimeToolCall, session_dir: Path) -> RuntimeToolResult:
     runtime_dir = _runtime_session_dir(session_dir)
     try:
+        identity_blocker = _identity_blocker(call, ("caller_agent",))
+        if identity_blocker is not None:
+            return _blocked(call, session_dir, identity_blocker)
         result = control_bounded_subagent(runtime_dir, _subagent_control_request(call))
     except SchemaValidationError as exc:
         return _blocked(call, session_dir, ToolBlockRequest("invalid_arguments", {"error": str(exc)}))
@@ -142,7 +157,7 @@ def execute_skill_invoke(call: RuntimeToolCall, session_dir: Path) -> RuntimeToo
 
 def _send_message_request(call: RuntimeToolCall) -> SendAgentMessageRequest:
     return SendAgentMessageRequest(
-        from_agent=as_str(require(call.arguments, "from_agent"), "from_agent"),
+        from_agent=_trusted_caller_agent(call),
         to_agent=as_str(require(call.arguments, "to_agent"), "to_agent"),
         content=as_str(require(call.arguments, "content"), "content"),
         thread_id=_optional_str(call.arguments, "thread_id", f"thread-{call.session_id}"),
@@ -154,14 +169,14 @@ def _send_message_request(call: RuntimeToolCall) -> SendAgentMessageRequest:
 def _reply_message_request(call: RuntimeToolCall) -> ReplyAgentMessageRequest:
     return ReplyAgentMessageRequest(
         message_id=as_str(require(call.arguments, "message_id"), "message_id"),
-        by_agent=as_str(require(call.arguments, "by_agent"), "by_agent"),
+        by_agent=_trusted_caller_agent(call),
         content=as_str(require(call.arguments, "content"), "content"),
     )
 
 
 def _handoff_request(call: RuntimeToolCall) -> HandoffTaskRequest:
     return HandoffTaskRequest(
-        from_agent=_optional_str(call.arguments, "from_agent", "orchestrator"),
+        from_agent=_trusted_caller_agent(call),
         target_agent=as_str(require(call.arguments, "target_agent"), "target_agent"),
         task_id=_optional_str(call.arguments, "task_id", f"task-{call.run_id}-{call.tool_name}"),
         thread_id=_optional_str(call.arguments, "thread_id", f"thread-{call.session_id}"),
@@ -171,7 +186,7 @@ def _handoff_request(call: RuntimeToolCall) -> HandoffTaskRequest:
 
 def _subagent_task_request(call: RuntimeToolCall) -> SubagentTaskRequest:
     return SubagentTaskRequest(
-        caller_agent=as_str(require(call.arguments, "caller_agent"), "caller_agent"),
+        caller_agent=_trusted_caller_agent(call),
         preset=as_str(require(call.arguments, "preset"), "preset"),
         task_id=_optional_str(call.arguments, "task_id", f"subagent-{call.run_id}"),
         task=as_str(require(call.arguments, "task"), "task"),
@@ -181,7 +196,7 @@ def _subagent_task_request(call: RuntimeToolCall) -> SubagentTaskRequest:
 
 def _subagent_inspect_request(call: RuntimeToolCall) -> SubagentInspectRequest:
     return SubagentInspectRequest(
-        caller_agent=as_str(require(call.arguments, "caller_agent"), "caller_agent"),
+        caller_agent=_trusted_caller_agent(call),
         preset=as_str(require(call.arguments, "preset"), "preset"),
         subagent_id=as_str(require(call.arguments, "subagent_id"), "subagent_id"),
     )
@@ -190,11 +205,35 @@ def _subagent_inspect_request(call: RuntimeToolCall) -> SubagentInspectRequest:
 def _subagent_control_request(call: RuntimeToolCall) -> SubagentControlRequest:
     return SubagentControlRequest(
         action=as_str(require(call.arguments, "action"), "action"),
-        caller_agent=as_str(require(call.arguments, "caller_agent"), "caller_agent"),
+        caller_agent=_trusted_caller_agent(call),
         preset=_optional_str(call.arguments, "preset", ""),
         subagent_id=_optional_str(call.arguments, "subagent_id", ""),
         content=_optional_str(call.arguments, "content", ""),
     )
+
+
+def _trusted_caller_agent(call: RuntimeToolCall) -> str:
+    if call.caller_agent_id:
+        return call.caller_agent_id
+    raise SchemaValidationError("missing trusted caller identity")
+
+
+def _identity_blocker(call: RuntimeToolCall, fields: tuple[str, ...]) -> ToolBlockRequest | None:
+    trusted = call.caller_agent_id
+    if not trusted:
+        return ToolBlockRequest("missing_trusted_caller_identity", {"caller_agent_id": ""})
+    for field in fields:
+        value = call.arguments.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise SchemaValidationError(f"{field} must be a string")
+        if value != trusted:
+            return ToolBlockRequest(
+                "caller_identity_mismatch",
+                {"field": field, "trusted_caller_agent_id": trusted, "supplied_agent_id": value},
+            )
+    return None
 
 
 def _optional_str(arguments: JsonMap, field: str, fallback: str) -> str:

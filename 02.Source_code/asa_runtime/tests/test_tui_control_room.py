@@ -32,7 +32,7 @@ def test_chat_records_targeted_agent_message_and_transcript(tmp_path: Path) -> N
     agent_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "md_agent" / "messages.jsonl")
     assert any(message["role"] == "user" and message["content"] == "한글 MD 캠페인 점검" for message in agent_messages)
     assert agent_messages[-1]["role"] == "assistant"
-    assert "agent loop blocked: endpoint_unreachable" in str(agent_messages[-1]["content"])
+    assert "agent loop blocked: missing_oauth_token" in str(agent_messages[-1]["content"])
 
 
 def test_direct_agent_mention_summons_agent_without_chat_command(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_direct_agent_mention_summons_agent_without_chat_command(tmp_path: Path)
     agent_messages = _jsonl(tmp_path / "session" / "agent_sessions" / "md_agent" / "messages.jsonl")
     assert any(message["role"] == "user" and message["content"] == "한글 MD 캠페인 바로 점검" for message in agent_messages)
     assert agent_messages[-1]["role"] == "assistant"
-    assert "agent loop blocked: endpoint_unreachable" in str(agent_messages[-1]["content"])
+    assert "agent loop blocked: missing_oauth_token" in str(agent_messages[-1]["content"])
 
 
 def test_hud_exposes_chat_agents_and_control_room_affordances(tmp_path: Path) -> None:

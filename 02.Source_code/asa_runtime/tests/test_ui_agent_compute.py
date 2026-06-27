@@ -130,17 +130,21 @@ def test_ui_http_prepares_remote_execution_plan_when_ssh_target_is_present(tmp_p
         "prep_remote_execution_plan",
     )
     assert status_code == 200
-    assert body["remote_plan_path"] == str(output_dir / "remote_plan.json")
+    assert body["remote_plan_path"] == str(output_dir / "remote" / "remote_plan.json")
     assert body["amorphous_structure_prep_remote_plan_path"] == str(
-        output_dir / "amorphous_structure_prep_remote_plan.json"
+        output_dir / "remote" / "amorphous_structure_prep_remote_plan.json"
     )
     assert remote_plan["ssh_target"] == "swym@10.24.12.85"
     assert remote_plan["ssh_port"] == 55555
+    assert remote_plan["kind"] == "remote_execution_plan"
+    assert remote_plan["created_by"] == "asa_runtime"
+    assert remote_plan["output_root"] == str(output_dir.resolve())
+    assert "plan_sha256" in remote_plan
     assert prep_remote_plan["ssh_target"] == "swym@10.24.12.85"
     assert "prepare_amorphous_structure_job.py" in prep_remote_plan["execution_command"]
     assert str(remote_plan["execution_command"]).startswith("ssh -p 55555 swym@10.24.12.85 ")
-    assert (output_dir / "remote_plan.json").exists()
-    assert (output_dir / "amorphous_structure_prep_remote_plan.json").exists()
+    assert (output_dir / "remote" / "remote_plan.json").exists()
+    assert (output_dir / "remote" / "amorphous_structure_prep_remote_plan.json").exists()
 
 
 def _post_json(url: str, payload: JsonMap) -> tuple[JsonMap, int]:

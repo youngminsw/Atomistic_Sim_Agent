@@ -73,6 +73,18 @@ class WorkflowGate:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkflowGateReadBlocker:
+    gate_path: Path
+    reason: str
+    status: str = "blocked"
+    blockers: tuple[str, ...] = ("corrupt_gate_json",)
+
+    def to_json(self) -> JsonMap:
+        payload: JsonMap = {"schema_version": "workflow_gate_blocker_v1", "status": self.status}
+        return payload | {"reason": self.reason, "gate_path": str(self.gate_path)}
+
+
+@dataclass(frozen=True, slots=True)
 class WorkflowGateResponseResult:
     workflow_id: str
     gate_id: str
@@ -149,10 +161,13 @@ def workflow_gate_schema_hash(gate: WorkflowGate) -> str:
     return hashlib.sha256(encoded).hexdigest()[:16]
 
 
-def read_gate(path: Path) -> WorkflowGate | None:
+def read_gate(path: Path) -> WorkflowGate | WorkflowGateReadBlocker | None:
     if not path.is_file():
         return None
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return WorkflowGateReadBlocker(path, "corrupt_gate_json")
     if not isinstance(raw, dict):
         return None
     kind = gate_kind(raw.get("gate_kind"))
@@ -219,6 +234,25 @@ def gate_response_for_gate(
 
 def gate_response_blocked(workflow_id: str, gate_id: str, blocker: str) -> WorkflowGateResponseResult:
     return WorkflowGateResponseResult(workflow_id, gate_id, "blocked", "", "", gate_ledger_ref(workflow_id, gate_id), (blocker,))
+
+
+def gate_response_for_read_blocker(
+    workflow_id: str, gate_id: str, blocker: WorkflowGateReadBlocker
+) -> WorkflowGateResponseResult:
+    lifecycle: JsonMap = {
+        "reason": blocker.reason,
+        "gate_path": str(blocker.gate_path),
+    }
+    return WorkflowGateResponseResult(
+        workflow_id,
+        gate_id,
+        "blocked",
+        "",
+        "",
+        gate_ledger_ref(workflow_id, gate_id),
+        blocker.blockers,
+        action_lifecycle=lifecycle,
+    )
 
 
 def gate_kind(value: WorkflowGateJsonValue) -> WorkflowGateKind | None:

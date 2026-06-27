@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 
@@ -68,14 +69,25 @@ def test_run_remote_chain_cli_records_failed_stage(tmp_path: Path) -> None:
 
 
 def _write_chain_bundle(tmp_path: Path, script_body: str) -> Path:
-    script_path = tmp_path / "remote_chain.sh"
-    manifest_path = tmp_path / "remote_chain_manifest.json"
+    source_root = tmp_path / "source"
+    output_root = tmp_path / "out"
+    remote_root = output_root / "remote"
+    source_root.mkdir()
+    remote_root.mkdir(parents=True)
+    script_path = remote_root / "remote_chain.sh"
+    manifest_path = remote_root / "remote_chain_manifest.json"
     script_path.write_text(script_body, encoding="utf-8")
     manifest_path.write_text(
         json.dumps(
             {
-                "executable_script": str(script_path),
+                "schema_version": 1,
+                "kind": "remote_execution_chain",
+                "created_by": "asa_runtime",
+                "source_root": str(source_root),
+                "output_root": str(output_root),
+                "executable_script": "remote_chain.sh",
                 "run_command": f"bash {script_path}",
+                "script_sha256": sha256(script_path.read_bytes()).hexdigest(),
                 "stage_count": 3,
                 "stage_ids": ["01-md", "02-lammps", "03-post"],
             },

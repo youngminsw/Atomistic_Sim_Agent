@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Final
 from urllib.parse import unquote, urlparse
 
+from sim_agent.md.legacy_assets import (
+    LEGACY_SI_CRYSTAL_STRUCTURE_SOURCE,
+    LEGACY_SOURCE_PREFIX,
+    resolve_repo_relative_path,
+)
 from sim_agent.schemas._parse import JsonMap, as_mapping, as_str, require
 from sim_agent.schemas.errors import SchemaValidationError
 
@@ -41,10 +46,7 @@ STRUCTURE_FILENAME: Final = "surface_snapshot_before.data"
 POTENTIAL_FILENAME: Final = "Si.tersoff"
 REPO_URL_PREFIX: Final = "repo://"
 FILE_URL_PREFIX: Final = "file://"
-LEGACY_SOURCE_PREFIX: Final = "02.Source_code/mss_agent/"
-SI_CRYSTAL_STRUCTURE_SOURCE: Final = (
-    "02.Source_code/mss_agent/md_agent_window/results/run_Ar_Si_3evts/Si_periodic.data"
-)
+SI_CRYSTAL_STRUCTURE_SOURCE: Final = LEGACY_SI_CRYSTAL_STRUCTURE_SOURCE
 
 
 def stage_lammps_run_assets(
@@ -144,14 +146,7 @@ def _source_path(source_url: str, repo_root: Path) -> Path:
 
 
 def _repo_relative_path(relative: str, repo_root: Path) -> Path:
-    candidate = repo_root / relative
-    if candidate.exists() or not relative.startswith(LEGACY_SOURCE_PREFIX):
-        return candidate
-    stripped = relative.removeprefix(LEGACY_SOURCE_PREFIX)
-    legacy_candidate = repo_root.parent / "mss_agent" / stripped
-    if legacy_candidate.exists():
-        return legacy_candidate
-    return repo_root / stripped
+    return resolve_repo_relative_path(relative, repo_root)
 
 
 def _relaxed_preparation(preparation: str) -> bool:

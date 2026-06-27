@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from types import TracebackType
+from typing import Protocol
 
 from sim_agent.runtime_config import (
     ActiveModelProfileRuntimeConfig,
@@ -97,6 +98,23 @@ class _PtyResult:
     cleanup: str
 
 
+class _TerminableProcess(Protocol):
+    pid: int
+    returncode: int | None
+
+    def poll(self) -> int | None:
+        raise NotImplementedError
+
+    def terminate(self) -> None:
+        raise NotImplementedError
+
+    def kill(self) -> None:
+        raise NotImplementedError
+
+    def wait(self, timeout: float | None = None) -> int:
+        raise NotImplementedError
+
+
 def _run_pty_control_room(session_dir: Path, config_path: Path) -> _PtyResult:
     commands = (
         "/",
@@ -179,18 +197,33 @@ def _run_pty(
         if proc.poll() is None:
             _read_until_exit(proc, master_fd, chunks, min(deadline, time.monotonic() + 1.5))
         if proc.poll() is None:
-            killed = True
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=3)
+            killed = _stop_process(proc)
     finally:
+        if proc.poll() is None:
+            killed = _stop_process(proc) or killed
         _drain(master_fd, chunks, timeout_s=0.2)
-        os.close(master_fd)
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
     cleanup = f"pty_pid={proc.pid} exited={proc.poll() is not None} killed={str(killed).lower()}"
     return _PtyResult(_decode(chunks), proc.returncode, cleanup)
+
+
+def _stop_process(proc: _TerminableProcess) -> bool:
+    if proc.poll() is not None:
+        return False
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+        return True
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        return True
+    return True
 
 
 def _read_until(master_fd: int, chunks: list[bytes], markers: tuple[str, ...], deadline: float) -> None:

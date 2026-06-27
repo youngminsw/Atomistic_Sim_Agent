@@ -1,5 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import { dirname } from "node:path"
+import { randomUUID } from "node:crypto"
+import { chmod, lstat, mkdir, open, readFile, rename, rm, unlink } from "node:fs/promises"
+import { basename, dirname, join } from "node:path"
 import type { OAuthCredentials, OAuthProviderInterface } from "../oauth/types.js"
 
 export type StoredCredential = {
@@ -12,6 +13,16 @@ export interface CredentialStore {
   get(provider: string): Promise<StoredCredential | undefined>
   set(provider: string, credentials: OAuthCredentials): Promise<StoredCredential>
   delete(provider: string): Promise<void>
+}
+
+export class CredentialStoreCorruptError extends Error {
+  readonly path: string
+
+  constructor(path: string, cause: unknown) {
+    super(`credential_store_corrupt:${path}`, { cause })
+    this.name = "CredentialStoreCorruptError"
+    this.path = path
+  }
 }
 
 export class InMemoryCredentialStore implements CredentialStore {
@@ -80,18 +91,52 @@ export class FileCredentialStore implements CredentialStore {
 
   async #readExisting(path: string): Promise<Record<string, StoredCredential> | undefined> {
     try {
+      await refuseSymlink(path)
       return parseCredentialRecord(await readFile(path, "utf8"))
     } catch (error) {
       if (isNotFound(error)) {
         return undefined
+      }
+      if (error instanceof SyntaxError) {
+        throw new CredentialStoreCorruptError(path, error)
       }
       throw error
     }
   }
 
   async #writeAll(items: Record<string, StoredCredential>): Promise<void> {
-    await mkdir(dirname(this.#path), { recursive: true })
-    await writeFile(this.#path, `${JSON.stringify(items, null, 2)}\n`, { encoding: "utf8", mode: 0o600 })
+    const directory = dirname(this.#path)
+    await mkdir(directory, { recursive: true })
+    await refuseSymlink(this.#path)
+    const tempPath = join(directory, `.${basename(this.#path)}.${process.pid}.${randomUUID()}.tmp`)
+    const handle = await open(tempPath, "wx", 0o600)
+    let shouldRemoveTemp = true
+    try {
+      await handle.writeFile(`${JSON.stringify(items, null, 2)}\n`, "utf8")
+      await handle.sync()
+      await handle.close()
+      await chmod(tempPath, 0o600)
+      await refuseSymlink(this.#path)
+      if (process.env["ATOMISTIC_TEST_CREDENTIAL_STORE_FAIL_BEFORE_REPLACE"] === "1") {
+        throw new Error("credential_store_replace_interrupted")
+      }
+      await rename(tempPath, this.#path)
+      await fsyncDirectory(directory)
+      shouldRemoveTemp = false
+    } finally {
+      await handle.close().catch(error => {
+        if (!isBadFileDescriptor(error)) {
+          throw error
+        }
+      })
+      if (shouldRemoveTemp) {
+        await unlink(tempPath).catch(error => {
+          if (!isNotFound(error)) {
+            throw error
+          }
+        })
+      }
+    }
   }
 }
 
@@ -135,6 +180,33 @@ export class CredentialManager {
 
 function isNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+}
+
+function isBadFileDescriptor(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EBADF"
+}
+
+async function refuseSymlink(path: string): Promise<void> {
+  try {
+    const stat = await lstat(path)
+    if (stat.isSymbolicLink()) {
+      throw new Error("credential_store_symlink_refused")
+    }
+  } catch (error) {
+    if (isNotFound(error)) {
+      return
+    }
+    throw error
+  }
+}
+
+async function fsyncDirectory(path: string): Promise<void> {
+  const handle = await open(path, "r")
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
 }
 
 function parseCredentialRecord(raw: string): Record<string, StoredCredential> {

@@ -215,7 +215,6 @@ def test_agent_message_runtime_tool_writes_bus_and_tool_ledger(tmp_path: Path) -
             tool_name="agent_message",
             arguments={
                 "action": "send",
-                "from_agent": "orchestrator",
                 "to_agent": "md_agent",
                 "content": "tool mediated message",
                 "thread_id": "tool-thread",
@@ -223,6 +222,7 @@ def test_agent_message_runtime_tool_writes_bus_and_tool_ledger(tmp_path: Path) -
             },
             run_id="tool-msg-run",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         registry,
         state.session_dir,

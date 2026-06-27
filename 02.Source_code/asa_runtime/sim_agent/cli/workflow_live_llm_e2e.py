@@ -180,6 +180,9 @@ def _workflow_start_arguments(workflow_id: str, run_id: str, session_dir: Path) 
         "user_goal": f"Live LLM e2e proof for ASA /{workflow_id}.",
         "evidence": _workflow_evidence(workflow_id, session_dir),
     }
+    gate = _workflow_gate(workflow_id)
+    if gate is not None:
+        payload["gate"] = gate
     return {
         "workflow_id": workflow_id,
         "owner_agent_id": "orchestrator",
@@ -253,6 +256,40 @@ def _workflow_evidence(workflow_id: str, session_dir: Path) -> JsonMap:
             return {}
 
 
+def _workflow_gate(workflow_id: str) -> JsonMap | None:
+    match workflow_id:
+        case "ralplan":
+            return {
+                "gate_id": "approval",
+                "gate_kind": "response_schema",
+                "response_schema": {
+                    "type": "object",
+                    "required": ["decision"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "decision": {"type": "string", "enum": ["approve", "request-changes", "reject"]},
+                        "comments": {"type": "string"},
+                    },
+                },
+            }
+        case "ultragoal":
+            return {
+                "gate_id": "signoff",
+                "gate_kind": "response_schema",
+                "response_schema": {
+                    "type": "object",
+                    "required": ["decision"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "decision": {"type": "string", "enum": ["approve", "decline"]},
+                        "reason": {"type": "string"},
+                    },
+                },
+            }
+        case _:
+            return None
+
+
 def _workflow_user_goal(workflow_id: str, arguments: JsonMap) -> str:
     return "\n".join(
         (
@@ -278,6 +315,8 @@ def _expected_runtime_observed(workflow_id: str, tool_rows: list[JsonMap]) -> bo
     if output.get("workflow_id") != workflow_id:
         return False
     if workflow_id == "deep-interview":
+        return row.get("status") == "blocked" and row.get("blocker") == "workflow_gate_response_required"
+    if workflow_id in {"ralplan", "ultragoal"}:
         return row.get("status") == "blocked" and row.get("blocker") == "workflow_gate_response_required"
     return row.get("status") == "ready" and not row.get("blocker")
 

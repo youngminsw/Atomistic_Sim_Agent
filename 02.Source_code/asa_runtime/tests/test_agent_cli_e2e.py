@@ -167,8 +167,8 @@ def test_agent_cli_writes_remote_chain_script_when_ssh_target_is_given(
     # Then
     assert result.returncode == 0, result.stdout + result.stderr
     assert "remote_execution_script_path=" in result.stdout
-    script_path = output_dir / "remote_chain.sh"
-    manifest_path = output_dir / "remote_chain_manifest.json"
+    script_path = output_dir / "remote" / "remote_chain.sh"
+    manifest_path = output_dir / "remote" / "remote_chain_manifest.json"
     assert script_path.exists()
     assert manifest_path.exists()
     script = script_path.read_text(encoding="utf-8")
@@ -271,7 +271,7 @@ def test_resume_agent_run_from_request_injects_amorphous_structure_source(
     assert "amorphous_structure_source_present" in ledger["md"]["evidence"]
     assert ledger["compute_target"]["host"] == "gpu-5090"
     assert ledger["compute_target"]["ssh_target"] == "swym@10.24.12.85"
-    assert (resumed_dir / "remote_chain_manifest.json").exists()
+    assert (resumed_dir / "remote" / "remote_chain_manifest.json").exists()
 
 
 def test_agent_cli_can_run_remote_chain_and_record_failure(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import stat
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from sim_agent.schemas._parse import JsonMap
@@ -21,12 +22,20 @@ def write_remote_execution_script_bundle(
     chain: RemoteExecutionChain,
     script_path: Path,
     manifest_path: Path,
+    source_root: Path | None = None,
+    output_root: Path | None = None,
 ) -> RemoteExecutionScriptBundle:
     script_text = _script_text(chain)
     script_path.parent.mkdir(parents=True, exist_ok=True)
     _write_bash_script(script_path, script_text)
     chmod_applied = _try_set_executable(script_path)
-    manifest_payload = _manifest_payload(chain, script_path, chmod_applied)
+    manifest_payload = _manifest_payload(
+        chain,
+        script_path,
+        chmod_applied,
+        source_root,
+        output_root,
+    )
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n",
@@ -72,9 +81,19 @@ def _manifest_payload(
     chain: RemoteExecutionChain,
     script_path: Path,
     chmod_applied: bool,
+    source_root: Path | None,
+    output_root: Path | None,
 ) -> JsonMap:
+    resolved_source_root = source_root.resolve() if source_root is not None else script_path.parent
+    resolved_output_root = output_root.resolve() if output_root is not None else script_path.parent.parent
     return {
-        "executable_script": str(script_path),
+        "schema_version": 1,
+        "kind": "remote_execution_chain",
+        "created_by": "asa_runtime",
+        "source_root": str(resolved_source_root),
+        "output_root": str(resolved_output_root),
+        "executable_script": script_path.name,
+        "script_sha256": sha256(script_path.read_bytes()).hexdigest(),
         "run_command": f"bash {script_path}",
         "chmod_applied": chmod_applied,
         "ssh_target": chain.ssh_target,

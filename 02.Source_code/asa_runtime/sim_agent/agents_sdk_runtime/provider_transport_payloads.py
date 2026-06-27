@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+from typing import Final
+
 from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop import AsaAgentSession
 from .context_assembler import ProviderPromptContext, assemble_provider_context
 
-SUBAGENT_PRESET_ENUM = ["planner", "architect", "critic", "executor", "verifier"]
-SUBAGENT_CONTROL_ACTION_ENUM = ["list", "progress", "await", "cancel", "pause", "resume", "steer", "restart"]
+TOOL_NAME_PATTERN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,63}$")
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderToolSchemaError(ValueError):
+    reason: str
+
+    def __str__(self) -> str:
+        return self.reason
 
 
 def openai_responses_payload(session: AsaAgentSession, tool_schemas: tuple[JsonMap, ...]) -> JsonMap:
@@ -141,7 +152,9 @@ def _gemini_tool_schema(schema: JsonMap) -> JsonMap:
 
 def _tool_name(schema: JsonMap) -> str:
     name = schema.get("name")
-    return name if isinstance(name, str) and name else "unknown_tool"
+    if isinstance(name, str) and TOOL_NAME_PATTERN.fullmatch(name):
+        return name
+    raise ProviderToolSchemaError("malformed_tool_schema:name")
 
 
 def _tool_description(schema: JsonMap) -> str:
@@ -155,76 +168,20 @@ def _tool_description(schema: JsonMap) -> str:
 def _tool_parameters(schema: JsonMap) -> JsonMap:
     parameters = schema.get("parameters")
     if isinstance(parameters, dict):
-        return parameters
-    match _tool_name(schema):
-        case "artifact_write":
-            return _object_schema(
-                {
-                    "relative_path": {"type": "string", "description": "Relative artifact path inside this ASA session."},
-                    "content": {"type": "string", "description": "Evidence text to write."},
-                },
-                ("relative_path", "content"),
-            )
-        case "graphdb_dry_run":
-            return _object_schema({"database_name": {"type": "string"}}, ("database_name",))
-        case "agent_message":
-            return _object_schema(
-                {
-                    "action": {"type": "string", "enum": ["send", "ack", "read", "reply"]},
-                    "from_agent": {"type": "string"},
-                    "to_agent": {"type": "string"},
-                    "content": {"type": "string"},
-                    "message_id": {"type": "string"},
-                    "by_agent": {"type": "string"},
-                    "thread_id": {"type": "string"},
-                },
-                ("action",),
-            )
-        case "handoff_task":
-            return _object_schema(
-                {
-                    "target_agent": {"type": "string"},
-                    "task": {"type": "string"},
-                    "from_agent": {"type": "string"},
-                    "task_id": {"type": "string"},
-                    "thread_id": {"type": "string"},
-                },
-                ("target_agent", "task"),
-            )
-        case "subagent_task":
-            return _object_schema(
-                {
-                    "caller_agent": {"type": "string"},
-                    "preset": {"type": "string", "enum": SUBAGENT_PRESET_ENUM},
-                    "task": {"type": "string"},
-                    "task_id": {"type": "string"},
-                    "depth": {"type": "integer"},
-                },
-                ("caller_agent", "preset", "task"),
-            )
-        case "subagent_inspect":
-            return _object_schema(
-                {
-                    "caller_agent": {"type": "string"},
-                    "preset": {"type": "string", "enum": SUBAGENT_PRESET_ENUM},
-                    "subagent_id": {"type": "string"},
-                },
-                ("caller_agent", "preset", "subagent_id"),
-            )
-        case "subagent_control":
-            return _object_schema(
-                {
-                    "action": {"type": "string", "enum": SUBAGENT_CONTROL_ACTION_ENUM},
-                    "caller_agent": {"type": "string"},
-                    "preset": {"type": "string", "enum": SUBAGENT_PRESET_ENUM},
-                    "subagent_id": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                ("action", "caller_agent"),
-            )
-        case _:
-            return _object_schema({}, ())
+        return _object_parameters(parameters)
+    input_schema = schema.get("inputSchema")
+    if isinstance(input_schema, dict):
+        return _object_parameters(input_schema)
+    raise ProviderToolSchemaError("malformed_tool_schema:parameters")
 
 
-def _object_schema(properties: JsonMap, required: tuple[str, ...]) -> JsonMap:
-    return {"type": "object", "properties": properties, "required": list(required), "additionalProperties": True}
+def _object_parameters(parameters: JsonMap) -> JsonMap:
+    if parameters.get("type") != "object":
+        raise ProviderToolSchemaError("malformed_tool_schema:parameters")
+    properties = parameters.get("properties")
+    if not isinstance(properties, dict):
+        raise ProviderToolSchemaError("malformed_tool_schema:parameters")
+    required = parameters.get("required", [])
+    if not isinstance(required, list) or not all(isinstance(field, str) for field in required):
+        raise ProviderToolSchemaError("malformed_tool_schema:parameters")
+    return parameters

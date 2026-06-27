@@ -4,6 +4,7 @@ import json
 import shlex
 import stat
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
 from sim_agent.schemas._parse import JsonMap
@@ -36,11 +37,12 @@ def prepare_remote_capability_probe(
     host = require_remote_worker_host(host_alias, environment_name, remote_user, ssh_target, ssh_port)
     if host.ssh_port is None or host.ssh_port < 1 or host.ssh_port > 65535:
         raise ComputePolicyError(f"invalid_ssh_port={host.ssh_port}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    source_payload = stage_compute_source_payload(source_root, output_dir)
+    remote_output_dir = output_dir / "remote"
+    remote_output_dir.mkdir(parents=True, exist_ok=True)
+    source_payload = stage_compute_source_payload(source_root, remote_output_dir)
     remote_run_dir = _remote_run_dir(host.remote_user, host.host_alias)
-    script_path = output_dir / "remote_capability_probe.sh"
-    manifest_path = output_dir / "remote_capability_probe_manifest.json"
+    script_path = remote_output_dir / "remote_capability_probe.sh"
+    manifest_path = remote_output_dir / "remote_capability_probe_manifest.json"
     script_path.write_text(
         _script_text(
             host.host_alias,
@@ -59,6 +61,8 @@ def prepare_remote_capability_probe(
     manifest = _manifest_payload(
         script_path,
         source_payload.archive_path,
+        source_root,
+        output_dir,
         host.host_alias,
         host.environment_name,
         host.remote_user,
@@ -168,6 +172,8 @@ def _probe_command(
 def _manifest_payload(
     script_path: Path,
     source_payload_path: Path,
+    source_root: Path,
+    output_root: Path,
     host_alias: str,
     environment_name: str,
     remote_user: str,
@@ -181,7 +187,13 @@ def _manifest_payload(
     required_lammps_packages: tuple[str, ...],
 ) -> JsonMap:
     return {
-        "probe_script": str(script_path),
+        "schema_version": 1,
+        "kind": "remote_capability_probe",
+        "created_by": "asa_runtime",
+        "source_root": str(source_root.resolve()),
+        "output_root": str(output_root.resolve()),
+        "probe_script": script_path.name,
+        "script_sha256": _file_sha256(script_path),
         "run_command": f"bash {script_path}",
         "source_payload_path": str(source_payload_path),
         "host_alias": host_alias,
@@ -197,6 +209,10 @@ def _manifest_payload(
         "requires_lammps": requires_lammps,
         "required_lammps_packages": list(required_lammps_packages),
     }
+
+
+def _file_sha256(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
 
 
 def _safe_segment(raw: str, field: str) -> str:

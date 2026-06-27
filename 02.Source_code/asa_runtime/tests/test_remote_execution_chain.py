@@ -126,16 +126,16 @@ def test_ui_http_writes_remote_execution_chain_when_ssh_target_is_present(
     chain = as_mapping(body["remote_execution_chain"], "remote_execution_chain")
     worker = as_mapping(body["worker_bundle"], "worker_bundle")
     assert body["remote_execution_chain_path"] == str(output_dir / "remote_chain.json")
-    assert body["remote_execution_script_path"] == str(output_dir / "remote_chain.sh")
+    assert body["remote_execution_script_path"] == str(output_dir / "remote" / "remote_chain.sh")
     assert body["remote_execution_manifest_path"] == str(
-        output_dir / "remote_chain_manifest.json"
+        output_dir / "remote" / "remote_chain_manifest.json"
     )
     assert chain["stage_count"] == 3
     assert (output_dir / "remote_chain.json").exists()
-    script = (output_dir / "remote_chain.sh").read_text(encoding="utf-8")
+    script = (output_dir / "remote" / "remote_chain.sh").read_text(encoding="utf-8")
     source_payload_path = output_dir / "source_payload.tar.gz"
     manifest = as_mapping(
-        json.loads((output_dir / "remote_chain_manifest.json").read_text(encoding="utf-8")),
+        json.loads((output_dir / "remote" / "remote_chain_manifest.json").read_text(encoding="utf-8")),
         "remote_chain_manifest",
     )
     worker_inputs = as_sequence(worker["input_paths"], "worker_inputs")
@@ -146,7 +146,7 @@ def test_ui_http_writes_remote_execution_chain_when_ssh_target_is_present(
     assert "run_lammps_execution_plan.py" in script
     assert "postprocess_lammps_execution.py" in script
     assert manifest["stage_count"] == 3
-    assert manifest["executable_script"] == str(output_dir / "remote_chain.sh")
+    assert manifest["executable_script"] == "remote_chain.sh"
     assert "source_payload.tar.gz" in worker_inputs
     assert source_payload_path.exists()
     with tarfile.open(source_payload_path, "r:gz") as archive:

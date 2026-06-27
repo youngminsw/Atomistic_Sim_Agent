@@ -57,6 +57,70 @@ def test_model_provider_config_sdk_spec_includes_normalized_provider_contract_fi
     assert spec.credential_source == "gateway_token"
 
 
+def test_model_provider_config_defaults_local_gateway_to_gateway_protocol() -> None:
+    config = ModelProviderConfig.from_mapping(
+        {
+            "provider": "local_gateway",
+            "model": "timeline-static",
+            "reasoning_effort": "high",
+            "base_url": "http://127.0.0.1:9/v1",
+            "auth_mode": "none",
+            "credential_source": "none",
+        }
+    )
+
+    assert config.api_protocol == "custom_gateway"
+    assert config.to_agents_sdk_model_spec().api_protocol == "custom_gateway"
+
+
+def test_model_provider_config_rejects_non_builtin_provider_without_api_protocol() -> None:
+    with pytest.raises(ModelPolicyError, match="explicit_api_protocol_required=deepseek"):
+        ModelProviderConfig.from_mapping(
+            {
+                "provider": "deepseek",
+                "model": "deepseek-v4-pro",
+                "reasoning_effort": "high",
+                "base_url": "https://api.deepseek.com/v1",
+                "auth_mode": "api_key",
+                "api_key_env": "DEEPSEEK_API_KEY",
+            }
+        )
+
+
+def test_model_provider_config_accepts_non_builtin_provider_with_explicit_api_protocol() -> None:
+    config = ModelProviderConfig.from_mapping(
+        {
+            "provider": "deepseek",
+            "model": "deepseek-v4-pro",
+            "api_protocol": "openai_compatible",
+            "reasoning_effort": "high",
+            "base_url": "https://api.deepseek.com/v1",
+            "auth_mode": "api_key",
+            "api_key_env": "DEEPSEEK_API_KEY",
+        }
+    )
+
+    assert config.provider == "deepseek"
+    assert config.api_protocol == "openai_compatible"
+    assert config.to_agents_sdk_model_spec().api_protocol == "openai_compatible"
+
+
+def test_model_provider_config_accepts_custom_gateway_default_protocol() -> None:
+    config = ModelProviderConfig.from_mapping(
+        {
+            "provider": "custom_gateway",
+            "model": "gateway-model",
+            "reasoning_effort": "high",
+            "base_url": "http://127.0.0.1:8787/v1",
+            "auth_mode": "none",
+            "credential_source": "none",
+        }
+    )
+
+    assert config.api_protocol == "custom_gateway"
+    assert config.to_agents_sdk_model_spec().api_protocol == "custom_gateway"
+
+
 def test_model_provider_config_accepts_canonical_transport_protocol_metadata() -> None:
     config = ModelProviderConfig.from_mapping(
         {
@@ -100,3 +164,13 @@ def test_model_catalog_entries_expose_normalized_provider_contract_fields() -> N
     assert entry.tool_choice_support is True
     assert entry.provider_session_support is True
     assert entry.credential_source == "api_key_env"
+
+
+def test_model_catalog_local_gateway_uses_gateway_protocol_metadata() -> None:
+    entry = find_model_catalog_entry("local_gateway/gpt-5.5")
+
+    assert entry is not None
+    assert entry.provider == "local_gateway"
+    assert entry.api_protocol == "custom_gateway"
+    assert entry.auth_mode == "none"
+    assert entry.credential_source == "none"

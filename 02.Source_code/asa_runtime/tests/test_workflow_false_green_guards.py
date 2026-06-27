@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -32,6 +33,35 @@ def test_workflow_gap_evidence_verifier_accepts_complete_manifest(tmp_path: Path
     # Then: the manifest is accepted with a machine-readable success line.
     assert result.returncode == 0, result.stdout + result.stderr
     assert "workflow_gap_evidence_status=passed" in result.stdout
+
+
+def test_committed_workflow_gap_fixture_uses_markdown_parity_command_and_negative_control(tmp_path: Path) -> None:
+    # Given: the committed Task 14 fixture is copied so the negative control can be sabotaged locally.
+    fixture_dir = tmp_path / "workflow_gap"
+    shutil.copytree(SOURCE_ROOT / "tests" / "fixtures" / "workflow_gap", fixture_dir)
+    fixture = VerifierFixture(
+        evidence_dir=fixture_dir,
+        manifest=fixture_dir / "final-manifest.json",
+        parity=SOURCE_ROOT / "tests" / "fixtures" / "workflow_parity" / "gajae-workflow-parity-matrix.md",
+        run_id="run-task-14-fixture",
+    )
+
+    # When: the verifier receives the markdown parity path from the plan.
+    result = _run_verifier(fixture)
+
+    # Then: it resolves the fixture-local parity JSON and accepts the complete fixture.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "workflow_gap_evidence_status=passed" in result.stdout
+
+    # When: the parity negative control is removed from the fixture.
+    parity_payload = _read_json(fixture_dir / "parity.json")
+    parity_payload["rows"][0].pop("anti_false_green")
+    _write_json(fixture_dir / "parity.json", parity_payload)
+    sabotaged = _run_verifier(fixture)
+
+    # Then: the verifier blocks the fixture rather than accepting weak artifact proof.
+    assert sabotaged.returncode == 1, sabotaged.stdout + sabotaged.stderr
+    assert "workflow_gap_evidence_blocker=parity_negative_control_missing" in sabotaged.stdout
 
 
 def test_workflow_gap_evidence_verifier_rejects_false_green_inputs(tmp_path: Path) -> None:

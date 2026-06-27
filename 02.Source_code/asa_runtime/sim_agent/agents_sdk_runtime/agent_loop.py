@@ -200,7 +200,10 @@ class AgentLoop:
                         correlation_id=call_id,
                         parent_id=turn_id,
                     )
-            blockers = tuple(result.blocker for result in tool_results if result.blocker is not None)
+                    blockers = (result.blocker,)
+                    break
+            if not blockers:
+                blockers = tuple(result.blocker for result in tool_results if result.blocker is not None)
             if blockers or not supports_tool_result_continuation(self.model):
                 final_output = final_output_for_session(self.model, self.session, tuple(tool_results))
                 if final_output:

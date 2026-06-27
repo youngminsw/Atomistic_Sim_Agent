@@ -43,7 +43,13 @@ def test_openai_codex_transport_uses_chatgpt_codex_endpoint(tmp_path: Path) -> N
 
 
 def test_openai_compatible_transport_uses_chat_completions_endpoint(tmp_path: Path) -> None:
-    session = _session(tmp_path, provider="deepseek", model="deepseek-v4-pro", base_url="https://api.deepseek.com/v1")
+    session = _session(
+        tmp_path,
+        provider="deepseek",
+        model="deepseek-v4-pro",
+        base_url="https://api.deepseek.com/v1",
+        api_protocol="openai_compatible",
+    )
 
     request = provider_transport_request(session, _tools(session))
 
@@ -134,7 +140,8 @@ def test_provider_transport_exposes_subagent_control_schema(tmp_path: Path) -> N
     request = provider_transport_request(session, _tools(session))
 
     subagent_control = next(tool for tool in request.payload["tools"] if tool["name"] == "subagent_control")
-    assert subagent_control["parameters"]["required"] == ["action", "caller_agent"]
+    assert subagent_control["parameters"]["required"] == ["action"]
+    assert "caller_agent" not in subagent_control["parameters"]["properties"]
     assert "pause" in subagent_control["parameters"]["properties"]["action"]["enum"]
     assert "steer" in subagent_control["parameters"]["properties"]["action"]["enum"]
 
@@ -147,17 +154,19 @@ def _session(
     model: str = "gpt-5.5",
     auth_mode: str = "api_key",
     api_key_env: str = "MODEL_TOKEN",
+    api_protocol: str | None = None,
 ) -> AsaAgentSession:
-    endpoint = ModelProviderConfig.from_mapping(
-        {
-            "provider": provider,
-            "model": model,
-            "reasoning_effort": "high",
-            "base_url": base_url,
-            "auth_mode": auth_mode,
-            "api_key_env": api_key_env,
-        }
-    )
+    config = {
+        "provider": provider,
+        "model": model,
+        "reasoning_effort": "high",
+        "base_url": base_url,
+        "auth_mode": auth_mode,
+        "api_key_env": api_key_env,
+    }
+    if api_protocol is not None:
+        config["api_protocol"] = api_protocol
+    endpoint = ModelProviderConfig.from_mapping(config)
     return AsaAgentSession(
         run_id="provider-transport-test",
         session_id="provider-transport-session",

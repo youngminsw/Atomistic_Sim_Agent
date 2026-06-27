@@ -83,7 +83,9 @@ def test_agent_cli_uses_5090_inventory_default_for_remote_manifest(tmp_path: Pat
     )
 
     ledger = json.loads((output_dir / "agent_run_ledger.json").read_text(encoding="utf-8"))
-    manifest = json.loads((output_dir / "remote_chain_manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (output_dir / "remote" / "remote_chain_manifest.json").read_text(encoding="utf-8")
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert ledger["artifact_paths"]["remote_execution_manifest_path"].endswith(
         "remote_chain_manifest.json"

@@ -80,7 +80,7 @@ def test_provider_tool_choice_model_uses_stored_credential_token_when_no_explici
         _tool_call_response("artifact_write", {"relative_path": "provider/stored-token.txt", "content": "ok"}),
         expected_token="stored-provider-token",
     ) as gateway:
-        result = AgentLoop(_session(tmp_path, gateway.base_url), ProviderToolChoiceModel()).run()
+        result = AgentLoop(_session(tmp_path, gateway.base_url, auth_mode="oauth"), ProviderToolChoiceModel()).run()
 
     assert result.status == "succeeded"
     assert (tmp_path / "artifacts" / "provider" / "stored-token.txt").read_text(encoding="utf-8") == "ok"

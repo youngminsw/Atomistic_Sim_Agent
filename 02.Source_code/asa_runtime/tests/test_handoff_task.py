@@ -68,7 +68,6 @@ def test_handoff_task_runtime_tool_executes_against_target_agent_session(tmp_pat
         RuntimeToolCall(
             tool_name="handoff_task",
             arguments={
-                "from_agent": "orchestrator",
                 "target_agent": "qa_agent",
                 "task": "Audit the run evidence",
                 "thread_id": "thread-qa",
@@ -76,6 +75,7 @@ def test_handoff_task_runtime_tool_executes_against_target_agent_session(tmp_pat
             },
             run_id="handoff-run",
             session_id=state.session_id,
+            caller_agent_id="orchestrator",
         ),
         registry,
         state.session_dir,

@@ -140,7 +140,7 @@ def test_direct_agent_mention_appends_target_agent_transcript(tmp_path: Path) ->
         for message in messages
     )
     assert messages[-1]["role"] == "assistant"
-    assert "agent loop blocked: endpoint_unreachable" in str(messages[-1]["content"])
+    assert "agent loop blocked: missing_oauth_token" in str(messages[-1]["content"])
     assert events[-1]["event_type"] == "agent_message_appended"
 
 
@@ -166,7 +166,7 @@ def test_direct_agent_mention_runs_target_agent_loop(tmp_path: Path) -> None:
     assert "agent_loop_completed" in event_types
     assert any(message["role"] == "assistant" and "agent loop" in str(message["content"]) for message in messages)
     assert "agent_loop_status=blocked" in result.stdout
-    assert "endpoint_unreachable" in result.stdout
+    assert "missing_oauth_token" in result.stdout
     assert "agent_loop_tools=" in result.stdout
     assert "ASA Activity Rail" in result.stdout
     assert "Progress" in result.stdout

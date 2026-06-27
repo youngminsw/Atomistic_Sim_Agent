@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": {
+    "artifacts/workflow-state.json": "2857914fd0b7846733181f28269c02c21154a7b90333633755fac2d148ddd648"
+  },
+  "ledger_paths": [
+    "full-e2e/workflow-ledger.json"
+  ],
+  "run_id": "run-task-14-fixture",
+  "schema_version": "workflow_e2e_ledger_v1",
+  "status": "succeeded",
+  "workflow_ids": [
+    "/ralplan"
+  ]
+}

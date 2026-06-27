@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sim_agent.schemas._parse import JsonMap
+from sim_agent.agents_sdk_runtime.workflow_artifact_validation import (
+    workflow_artifact_missing_evidence,
+    workflow_artifact_validation_blocker,
+)
 from sim_agent.agents_sdk_runtime.workflow_harness_artifacts import (
     RalplanArtifactError,
     UltragoalArtifactError,
@@ -150,6 +154,74 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
         )
         write_workflow_ledger(context.workflow_dir, result, workflow, payload)
         return result
+    gate_payload = optional_gate(payload)
+    artifact_blocker = workflow_artifact_validation_blocker(output_dir, workflow.workflow_id, payload)
+    if artifact_blocker:
+        events = (
+            workflow_event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:{artifact_blocker}",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status="blocked",
+            evidence_keys=present_evidence,
+            missing_evidence=workflow_artifact_missing_evidence(output_dir, workflow.workflow_id, payload)
+            if artifact_blocker == "ralplan_artifact_missing"
+            else (),
+            resumable=True,
+            ledger_ref=context.ledger_ref,
+            blockers=(artifact_blocker,),
+            events=events,
+            actor_agent_id=context.actor_agent_id,
+            owner_agent_id=context.owner_agent_id,
+            target_agent_id=context.target_agent_id,
+            goal_id=context.goal_id,
+            artifact_refs=artifact_refs,
+        )
+        write_workflow_ledger(context.workflow_dir, result, workflow, payload)
+        return result
+    if _requires_gate_payload(workflow) and gate_payload is None:
+        events = (
+            workflow_event(workflow, "initialized", False),
+            WorkflowHarnessEvent(
+                time.time(),
+                workflow.workflow_id,
+                "blocked",
+                workflow.hook,
+                f"{workflow.verification_gate}:workflow_gate_payload_missing",
+                terminal=True,
+            ),
+        )
+        result = WorkflowHarnessResult(
+            workflow_id=workflow.workflow_id,
+            status="blocked",
+            current_state="blocked",
+            verification_gate=workflow.verification_gate,
+            gate_status="blocked",
+            evidence_keys=present_evidence,
+            missing_evidence=(),
+            resumable=True,
+            ledger_ref=context.ledger_ref,
+            blockers=("workflow_gate_payload_missing",),
+            events=events,
+            actor_agent_id=context.actor_agent_id,
+            owner_agent_id=context.owner_agent_id,
+            target_agent_id=context.target_agent_id,
+            goal_id=context.goal_id,
+            artifact_refs=artifact_refs,
+        )
+        write_workflow_ledger(context.workflow_dir, result, workflow, payload)
+        return result
     runtime = start_workflow_runtime(
         WorkflowRuntimeStartRequest(
             output_dir,
@@ -159,7 +231,7 @@ def run_workflow_harness_smoke(workflow_id: str, payload: JsonMap, output_dir: P
             context.target_agent_id,
             context.goal_id,
             payload,
-            optional_gate(payload),
+            gate_payload,
         )
     )
     if runtime.status == "blocked":
@@ -231,6 +303,10 @@ def _artifact_refs(workflow: WorkflowDefinition, payload: JsonMap, context: Harn
             context.goal_id,
         )
     )
+
+
+def _requires_gate_payload(workflow: WorkflowDefinition) -> bool:
+    return workflow.workflow_id in {"ralplan", "ultragoal"}
 
 
 def _harness_context(workflow: WorkflowDefinition, payload: JsonMap, output_dir: Path) -> HarnessContext:

@@ -20,6 +20,7 @@ from .remote_plan import (
     build_remote_execution_plan,
     load_worker_bundle,
     remote_execution_chain_payload,
+    remote_execution_plan_manifest_payload,
     remote_execution_plan_payload,
 )
 from .remote_script import RemoteExecutionScriptBundle, write_remote_execution_script_bundle
@@ -85,6 +86,7 @@ __all__ = [
     "load_job_bundle",
     "load_worker_bundle",
     "remote_execution_chain_payload",
+    "remote_execution_plan_manifest_payload",
     "remote_execution_plan_payload",
     "prepare_remote_capability_probe",
     "require_allowed_host",

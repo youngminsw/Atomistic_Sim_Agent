@@ -6,6 +6,7 @@ from os import walk
 from pathlib import Path
 from threading import Lock
 
+from sim_agent.md.legacy_assets import runtime_legacy_asset
 from sim_agent.schemas._parse import JsonMap
 
 from .types import ComputePolicyError
@@ -78,7 +79,7 @@ def _source_code_root(source_root: Path) -> Path:
     resolved = source_root.resolve()
     if (resolved / "asa_runtime").is_dir() and (resolved / "mss_agent").is_dir():
         return resolved
-    if resolved.name == "asa_runtime" and (resolved.parent / "mss_agent").is_dir():
+    if resolved.name == "asa_runtime":
         return resolved.parent
     return resolved
 
@@ -90,6 +91,12 @@ def _cached_snapshot(source_root: Path) -> SourcePayloadSnapshot | None:
 
 def _add_entry(tar: tarfile.TarFile, source_root: Path, relative_root: Path) -> list[str]:
     root = source_root / relative_root
+    if not root.exists():
+        runtime_asset = runtime_legacy_asset(relative_root)
+        if runtime_asset is not None:
+            archive_name = f"{SOURCE_PAYLOAD_ROOT}/{relative_root.as_posix()}"
+            tar.add(runtime_asset, arcname=archive_name)
+            return [archive_name]
     if not root.exists():
         raise ComputePolicyError(f"source_payload_missing={relative_root.as_posix()}")
     if root.is_file():

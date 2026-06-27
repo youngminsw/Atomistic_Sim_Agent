@@ -1,0 +1,31 @@
+{
+  "matrix": "gajae_workflow_parity",
+  "rows": [
+    {
+      "anti_false_green": {
+        "blocker": "workflow_gate_payload_missing",
+        "detected_by": "tests/test_workflow_readiness_hardening.py",
+        "sabotage": "Remove the workflow gate payload while leaving PRD/test-spec evidence present."
+      },
+      "asa_target": [
+        "sim_agent/agents_sdk_runtime/workflow_harness.py",
+        "sim_agent/agents_sdk_runtime/workflow_artifact_validation.py",
+        "sim_agent/agents_sdk_runtime/workflow_gap_evidence.py"
+      ],
+      "behavioral_contract": "Workflow readiness requires durable gate evidence and strong artifacts; execution success alone is not readiness.",
+      "gajae_reference": [
+        "task-14-runtime-spine-hardening-plan"
+      ],
+      "id": "task_14_workflow_readiness",
+      "status": "implemented",
+      "tests": [
+        "tests/test_workflow_readiness_hardening.py",
+        "tests/test_workflow_false_green_guards.py"
+      ],
+      "verification_evidence": [
+        "workflow-green.txt"
+      ]
+    }
+  ],
+  "schema_version": 1
+}

@@ -66,6 +66,18 @@ def _run_workflow(workflow_id: str, output_dir: Path, run_id: str) -> WorkflowHa
             },
         )
         return run_workflow_harness_smoke(workflow_id, payload, output_dir)
+    if workflow_id in {"ralplan", "ultragoal"} and result.gate is not None:
+        respond_workflow_gate(
+            output_dir,
+            {
+                "workflow_id": workflow_id,
+                "gate_id": result.gate["gate_id"],
+                "responder_agent_id": "orchestrator",
+                "idempotency_key": f"{run_id}-{workflow_id}",
+                "value": _approval_value(),
+            },
+        )
+        return run_workflow_harness_smoke(workflow_id, payload, output_dir)
     return result
 
 
@@ -91,10 +103,17 @@ def _workflow_payload(workflow_id: str, run_id: str) -> JsonMap:
                 }
             }
         case "ralplan":
-            return base | {"evidence": {"prd_path": "plans/prd.md", "test_spec_path": "plans/test-spec.md"}}
+            return base | {
+                "evidence": {"prd_path": "plans/prd.md", "test_spec_path": "plans/test-spec.md"},
+                "gate": _approval_gate(),
+            }
         case "ultragoal":
             goal: JsonMap = {"id": f"G-{run_id}", "title": "workflow parity", "status": "in_progress"}
-            return base | {"evidence": {"codex_goal_snapshot": "active"}, "goals": [goal]}
+            return base | {
+                "evidence": {"codex_goal_snapshot": "active"},
+                "goals": [goal],
+                "gate": _signoff_gate(),
+            }
         case "visual-qa":
             verdict: JsonMap = {
                 "passed": True,
@@ -111,6 +130,42 @@ def _workflow_payload(workflow_id: str, run_id: str) -> JsonMap:
             return base | {"evidence": _ultraresearch_evidence(run_id)}
         case _:
             return base
+
+
+def _approval_gate() -> JsonMap:
+    return {
+        "gate_id": "approval",
+        "gate_kind": "response_schema",
+        "response_schema": {
+            "type": "object",
+            "required": ["decision"],
+            "additionalProperties": False,
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "request-changes", "reject"]},
+                "comments": {"type": "string"},
+            },
+        },
+    }
+
+
+def _signoff_gate() -> JsonMap:
+    return {
+        "gate_id": "signoff",
+        "gate_kind": "response_schema",
+        "response_schema": {
+            "type": "object",
+            "required": ["decision"],
+            "additionalProperties": False,
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "decline"]},
+                "reason": {"type": "string"},
+            },
+        },
+    }
+
+
+def _approval_value() -> JsonMap:
+    return {"decision": "approve"}
 
 
 def _write_visual_capture(output_dir: Path, run_id: str) -> None:

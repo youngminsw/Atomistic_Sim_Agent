@@ -28,7 +28,7 @@ class ProviderVisibleAgentContext:
 def provider_visible_agent_context(handle: AgentSessionHandle) -> ProviderVisibleAgentContext:
     records = read_jsonl(handle.messages_path)
     if records is None:
-        return ProviderVisibleAgentContext((), "", None, 0)
+        raise ProviderContextCompactionBlocked("corrupt_messages_jsonl")
     summary = read_json(handle.session_dir / COMPACT_SUMMARY_NAME)
     if summary is None:
         return ProviderVisibleAgentContext(_chat_records(records), "", None, len(records))

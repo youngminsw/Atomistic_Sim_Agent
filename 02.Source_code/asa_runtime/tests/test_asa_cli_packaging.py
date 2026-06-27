@@ -5,12 +5,15 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT
+CLI_SUBPROCESS_TIMEOUT_S = 30
+CREDENTIAL_STORE_ENV = "ATOMISTIC_SIM_AGENT_PROVIDER_CREDENTIAL_STORE"
 
 
 def test_pyproject_exports_asa_console_scripts() -> None:
@@ -269,14 +272,17 @@ def test_asa_interactive_accepts_session_dir_cli_option(tmp_path: Path) -> None:
 def _run_module(args: list[str]) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
-    return subprocess.run(
-        [sys.executable, "-m", "sim_agent", *args],
-        cwd=PROJECT_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    with tempfile.TemporaryDirectory(prefix="asa-test-credentials-") as credentials_dir:
+        env[CREDENTIAL_STORE_ENV] = str(Path(credentials_dir) / "provider-credentials.json")
+        return subprocess.run(
+            [sys.executable, "-m", "sim_agent", *args],
+            cwd=PROJECT_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=CLI_SUBPROCESS_TIMEOUT_S,
+        )
 
 
 def _run_module_interactive(
@@ -289,15 +295,18 @@ def _run_module_interactive(
     env["PYTHONPATH"] = str(SOURCE_ROOT)
     if session_dir is not None:
         env["ASA_SESSION_DIR"] = str(session_dir)
-    return subprocess.run(
-        [sys.executable, "-m", "sim_agent", *(extra_args or [])],
-        cwd=PROJECT_ROOT,
-        env=env,
-        input="\n".join(lines) + "\n",
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    with tempfile.TemporaryDirectory(prefix="asa-test-credentials-") as credentials_dir:
+        env[CREDENTIAL_STORE_ENV] = str(Path(credentials_dir) / "provider-credentials.json")
+        return subprocess.run(
+            [sys.executable, "-m", "sim_agent", *(extra_args or [])],
+            cwd=PROJECT_ROOT,
+            env=env,
+            input="\n".join(lines) + "\n",
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=CLI_SUBPROCESS_TIMEOUT_S,
+        )
 
 def _jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

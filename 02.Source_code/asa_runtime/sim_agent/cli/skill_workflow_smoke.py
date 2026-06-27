@@ -132,7 +132,11 @@ def _run_tui_surface(
             "/codex-probe Route this markdown skill to the QA agent.",
             "/claude-probe Route this markdown skill to the research agent.",
             f"/workflow ralplan --output-dir {missing_workflow_dir}",
-            f"/workflow ralplan --evidence-key prd_path,test_spec_path --output-dir {passed_workflow_dir}",
+            f"/workflow ralplan --evidence-key prd_path,test_spec_path --gate-id approval "
+            f"--gate-kind enum --allowed-values approve,revise --output-dir {passed_workflow_dir}",
+            f"/workflow-response approval approve --workflow-id ralplan --output-dir {passed_workflow_dir}",
+            f"/workflow ralplan --evidence-key prd_path,test_spec_path --gate-id approval "
+            f"--gate-kind enum --allowed-values approve,revise --output-dir {passed_workflow_dir}",
             "/exit",
             "",
         )

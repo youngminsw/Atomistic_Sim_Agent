@@ -125,6 +125,10 @@ def test_mcp_call_tool_runs_fake_http_initialize_list_and_call(
                                 {
                                     "name": "read-cypher",
                                     "description": "Read Neo4j memory with Cypher.",
+                                    "side_effect_class": "read",
+                                    "read_only": True,
+                                    "requires_approval": False,
+                                    "allow_without_approval": True,
                                     "inputSchema": {
                                         "type": "object",
                                         "properties": {"query": {"type": "string"}},
@@ -182,15 +186,30 @@ def test_mcp_call_tool_runs_fake_http_initialize_list_and_call(
     assert result["tool_name"] == "read-cypher"
     assert result["request_methods"] == ["initialize", "tools/list", "tools/call"]
     assert result["call_result"]["structuredContent"] == {"rows": [{"n": 1}]}
+    assert result["call_result"]["capability"] == {
+        "tool_name": "read-cypher",
+        "side_effect_class": "read",
+        "read_only": True,
+        "requires_approval": False,
+        "allow_without_approval": True,
+    }
     assert server.methods == ["initialize", "tools/list", "tools/call"]
     tool = as_mapping(as_sequence(result["listed_tools"], "listed_tools")[0], "tool")
     assert as_str(tool["name"], "name") == "read-cypher"
     assert blocked_result.status == "blocked"
-    assert blocked_result.blocker == "mcp_tool_write_not_allowed"
+    assert blocked_result.blocker == "mcp_tool_capability_unknown"
     assert (tmp_path / blocked_result.artifact_ref).is_file()
     assert blocked["tool_name"] == "write-cypher"
     assert blocked["request_methods"] == []
-    assert blocked["call_result"] == {}
+    assert blocked["call_result"] == {
+        "capability": {
+            "tool_name": "write-cypher",
+            "side_effect_class": "unknown",
+            "read_only": False,
+            "requires_approval": True,
+            "allow_without_approval": False,
+        }
+    }
     assert server.methods == ["initialize", "tools/list", "tools/call"]
 
 
@@ -222,7 +241,7 @@ def test_mcp_call_tool_blocks_unsafe_browser_code_tool(
     result = mcp_call_tool_payload(call_mcp_tool("playwright", "browser_run_code_unsafe", {}))
 
     assert result["status"] == "blocked"
-    assert result["blocker"] == "mcp_tool_write_not_allowed"
+    assert result["blocker"] == "mcp_tool_capability_unknown"
     assert result["request_methods"] == []
 
 
@@ -247,7 +266,7 @@ for raw in sys.stdin:
     if method == "initialize":
         result = {"protocolVersion": "2025-06-18", "serverInfo": {"name": "fake-stdio", "version": "0.1"}}
     elif method == "tools/list":
-        result = {"tools": [{"name": "env-check", "description": "Check env.", "inputSchema": {"type": "object", "properties": {}}}]}
+        result = {"tools": [{"name": "env-check", "description": "Check env.", "inputSchema": {"type": "object", "properties": {}}, "side_effect_class": "read", "read_only": True, "requires_approval": False, "allow_without_approval": True}]}
     elif method == "tools/call":
         result = {"structuredContent": {"neo4j_uri": os.environ.get("NEO4J_URI"), "read_only": os.environ.get("NEO4J_READ_ONLY")}, "isError": False}
     else:
@@ -271,6 +290,15 @@ for raw in sys.stdin:
                         "command": sys.executable,
                         "args": [str(fake_server)],
                         "envFile": str(env_file),
+                        "tools": [
+                            {
+                                "name": "env-check",
+                                "side_effect_class": "read",
+                                "read_only": True,
+                                "requires_approval": False,
+                                "allow_without_approval": True,
+                            }
+                        ],
                     }
                 }
             }
@@ -353,6 +381,10 @@ def _result_for_method(method: str) -> dict[str, object]:
                 {
                     "name": "read-cypher",
                     "description": "Read Neo4j memory with Cypher.",
+                    "side_effect_class": "read",
+                    "read_only": True,
+                    "requires_approval": False,
+                    "allow_without_approval": True,
                     "inputSchema": {
                         "type": "object",
                         "properties": {"query": {"type": "string"}},

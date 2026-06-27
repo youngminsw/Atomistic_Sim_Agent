@@ -8,16 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from sim_agent.md.legacy_assets import LEGACY_SI_POTENTIAL_SOURCE, resolve_repo_relative_path
 from sim_agent.schemas._parse import JsonMap
 
 
 AVOGADRO_PER_MOL: Final = 6.022_140_76e23
 SI_ATOMIC_MASS_G_PER_MOL: Final = 28.0855
 SI_AMORPHOUS_DENSITY_G_CM3: Final = 2.28
-SI_POTENTIAL_SOURCE: Final = (
-    "02.Source_code/mss_agent/md_agent_window/Reference/force_field_library/potentials/Si.tersoff"
-)
-LEGACY_SOURCE_PREFIX: Final = "02.Source_code/mss_agent/"
+SI_POTENTIAL_SOURCE: Final = LEGACY_SI_POTENTIAL_SOURCE
 POTENTIAL_FILENAME: Final = "Si.tersoff"
 INPUT_FILENAME: Final = "in.amorphous_prep"
 OUTPUT_STRUCTURE_FILENAME: Final = "a_si_melt_quench_relaxed.data"
@@ -97,14 +95,7 @@ def _ensure_supported(config: AmorphousStructurePrepConfig) -> None:
 
 
 def _repo_relative_path(relative: str, repo_root: Path) -> Path:
-    candidate = repo_root / relative
-    if candidate.exists() or not relative.startswith(LEGACY_SOURCE_PREFIX):
-        return candidate
-    stripped = relative.removeprefix(LEGACY_SOURCE_PREFIX)
-    legacy_candidate = repo_root.parent / "mss_agent" / stripped
-    if legacy_candidate.exists():
-        return legacy_candidate
-    return repo_root / stripped
+    return resolve_repo_relative_path(relative, repo_root)
 
 
 def _input_script(config: AmorphousStructurePrepConfig) -> str:

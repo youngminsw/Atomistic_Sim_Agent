@@ -14,6 +14,7 @@ from sim_agent.cli.tui import run_tui
 from sim_agent.cli.tui_control_room_smoke import TuiControlRoomSmokeRequest, run_tui_control_room_smoke
 from sim_agent.cli.workflow_e2e_smoke import WorkflowE2ESmokeRequest, run_workflow_e2e_smoke
 from sim_agent.cli.workflow_live_llm_e2e import WorkflowLiveLlmE2ERequest, run_workflow_live_llm_e2e
+from sim_agent.project_layout import ensure_project_state_layout
 from sim_agent.ui import build_ui_api_status
 from sim_agent.ui.server import build_ui_http_server
 
@@ -94,7 +95,7 @@ def _run_e2e_runtime_smoke(args: argparse.Namespace) -> int:
         print("e2e_runtime_smoke_error=output_json_required")
         return 2
     try:
-        evidence_path = run_e2e_runtime_smoke(
+        result = run_e2e_runtime_smoke(
             E2ERuntimeSmokeRequest(
                 model_profile=args.model_profile,
                 scenario=args.scenario,
@@ -106,10 +107,15 @@ def _run_e2e_runtime_smoke(args: argparse.Namespace) -> int:
     except E2ERuntimeSmokeError as exc:
         print(f"e2e_runtime_smoke_error={exc}")
         return 2
-    print("e2e_runtime_smoke=true")
-    print(f"e2e_runtime_smoke_json={evidence_path}")
+    if result.status == "succeeded":
+        print("e2e_runtime_smoke=true")
+    else:
+        print(f"e2e_runtime_smoke_status={result.status}")
+        for blocker in result.blockers:
+            print(f"e2e_runtime_smoke_blocker={blocker}")
+    print(f"e2e_runtime_smoke_json={result.evidence_path}")
     print("destructive_writes_ran=none")
-    return 0
+    return 0 if result.status == "succeeded" else 1
 
 
 def _run_skill_workflow_smoke(args: argparse.Namespace) -> int:
@@ -143,10 +149,8 @@ def _run_compaction_smoke(args: argparse.Namespace) -> int:
 
 
 def _run_adversarial_e2e_smoke(args: argparse.Namespace) -> int:
-    if args.output_dir is None:
-        print("adversarial_e2e_smoke_error=output_dir_required")
-        return 2
-    result = run_adversarial_e2e_smoke(AdversarialE2ESmokeRequest(output_dir=args.output_dir))
+    output_dir = args.output_dir or ensure_project_state_layout().evidence_root / "adversarial-e2e-smoke"
+    result = run_adversarial_e2e_smoke(AdversarialE2ESmokeRequest(output_dir=output_dir))
     print("adversarial_e2e_smoke=true")
     print(f"adversarial_e2e_smoke_status={result.status}")
     print(f"adversarial_e2e_smoke_json={result.output_json}")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -199,15 +200,37 @@ def _write_credentials(
 
 def _write_credentials_file(items: dict[str, JsonMap], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    path.chmod(0o600)
+    _refuse_symlink(path)
+    content = json.dumps(items, indent=2, sort_keys=True) + "\n"
+    temp_path: Path | None = None
+    fd, raw_temp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, text=True)
+    temp_path = Path(raw_temp_path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o600)
+        _refuse_symlink(path)
+        os.replace(temp_path, path)
+        _fsync_directory(path.parent)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def _read_credentials(path: Path) -> dict[str, JsonMap]:
     try:
+        _refuse_symlink(path)
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except json.JSONDecodeError as exc:
+        raise ModelAuthError("provider_credential_store_corrupt") from exc
     if not isinstance(raw, dict):
         raise ModelAuthError("provider_credential_store_object_required")
     items: dict[str, JsonMap] = {}
@@ -259,6 +282,25 @@ def _smoke_output_dir() -> Path:
     if configured:
         return Path(configured)
     return Path(__file__).resolve().parents[2] / "evidence" / "controller-model-gateway-smoke"
+
+
+def _refuse_symlink(path: Path) -> None:
+    try:
+        if path.is_symlink():
+            raise ModelAuthError("provider_credential_store_symlink_refused")
+    except OSError as exc:
+        raise ModelAuthError("provider_credential_store_stat_failed") from exc
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _optional_str(payload: JsonMap, field: str) -> str | None:

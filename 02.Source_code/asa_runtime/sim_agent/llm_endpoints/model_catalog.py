@@ -69,7 +69,7 @@ def _local(model: str, reasoning_effort: str, role_hint: str) -> ModelCatalogEnt
         provider="local_gateway",
         provider_id="local_gateway",
         model=model,
-        api_protocol="openai_compatible",
+        api_protocol="custom_gateway",
         reasoning_effort=reasoning_effort,
         thinking_mode=_thinking_mode(reasoning_effort),
         base_url=LOCAL_GATEWAY_BASE_URL,
@@ -97,6 +97,8 @@ def _api_protocol(provider: str) -> str:
         return "anthropic_messages"
     if provider in {"google-gemini-cli", "google-antigravity"}:
         return "gemini"
+    if provider == "local_gateway":
+        return "custom_gateway"
     return "openai_compatible"
 
 

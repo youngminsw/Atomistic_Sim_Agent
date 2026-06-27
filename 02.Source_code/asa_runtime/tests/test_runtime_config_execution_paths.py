@@ -144,9 +144,9 @@ def test_agents_runtime_skill_registry_invokes_handlers_and_persists_session(tmp
     assert Path(ledger["session_path"]).is_file()
     assert ledger["session_path"].endswith("sim-agent-sdk-skill-ledger.sqlite")
     assert ledger["skill_registry"]["dispatch_mode"] == "callable_handlers"
-    assert len(ledger["skill_invocations"]) == 6
+    assert len(ledger["skill_invocations"]) == 7
     adapter_actions = {invocation["result"]["adapter_action"] for invocation in ledger["skill_invocations"]}
-    assert len(adapter_actions) == 6
+    assert len(adapter_actions) == 7
     for invocation in ledger["skill_invocations"]:
         assert invocation["status"] in {"ready", "blocked"}
         assert invocation["execution_status"] in {"adapter_contract_ready", "adapter_preflight_blocked"}

@@ -79,10 +79,11 @@ def test_workflow_start_tool_writes_resumable_workflow_ledger(tmp_path: Path) ->
         state.session_dir,
     )
 
-    assert result.status == "ready"
+    assert result.status == "blocked"
     assert result.output["workflow_id"] == "ralplan"
     assert result.output["resumable"] is True
-    assert result.output["gate_status"] == "passed"
+    assert result.output["gate_status"] == "blocked"
+    assert result.blocker == "workflow_gate_payload_missing"
     assert (state.session_dir / result.output["ledger_ref"]).is_file()
 
 

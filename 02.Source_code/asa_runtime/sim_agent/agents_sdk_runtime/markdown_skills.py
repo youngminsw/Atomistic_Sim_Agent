@@ -110,10 +110,18 @@ def _spec_from_path(path: Path) -> MarkdownSkillSpec | None:
 
 def _skill_paths(root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    if (root / "SKILL.md").is_file():
-        paths.append(root / "SKILL.md")
-    paths.extend(path for path in sorted(root.glob("*.md")) if path.name not in {"AGENTS.md", "README.md", "SKILLS.md"})
-    paths.extend(sorted(root.glob("*/SKILL.md")))
+    ignored_root_files = {"AGENTS.md", "README.md", "SKILLS.md", "SKILL.md"}
+    try:
+        children = sorted(root.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return ()
+    root_skill = root / "SKILL.md"
+    if root_skill.is_file():
+        paths.append(root_skill)
+    paths.extend(
+        path for path in children if path.suffix == ".md" and path.name not in ignored_root_files and path.is_file()
+    )
+    paths.extend(path / "SKILL.md" for path in children if (path / "SKILL.md").is_file())
     return tuple(_unique_paths(paths))
 
 
@@ -158,11 +166,15 @@ def _unique_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
     seen: set[str] = set()
     unique: list[Path] = []
     for path in paths:
-        key = str(path.expanduser().resolve()) if path.exists() else str(path.expanduser())
+        key = _lexical_path_key(path)
         if key not in seen:
             unique.append(path.expanduser())
             seen.add(key)
     return tuple(unique)
+
+
+def _lexical_path_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path.expanduser())))
 
 
 def _frontmatter(text: str) -> tuple[JsonMap, str]:

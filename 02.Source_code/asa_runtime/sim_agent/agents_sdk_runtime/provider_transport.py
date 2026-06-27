@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import quote
 
+from sim_agent.provider_registry import provider_ids
 from sim_agent.schemas._parse import JsonMap
 
 from .agent_loop import AsaAgentSession
@@ -19,6 +20,7 @@ from .provider_transport_parsers import (
     openai_responses_tool_calls,
 )
 from .provider_transport_payloads import (
+    ProviderToolSchemaError,
     anthropic_messages_payload,
     gemini_generate_content_payload,
     openai_chat_payload,
@@ -27,6 +29,24 @@ from .provider_transport_payloads import (
 )
 
 CODEX_BASE_URL = "https://chatgpt.com/backend-api"
+_SUPPORTED_PROVIDER_IDS = frozenset(provider_ids(include_legacy=True)) | {"custom_gateway"}
+_DEFAULT_PROTOCOL_PROVIDER_IDS = frozenset(
+    {
+        "openai",
+        "openai-codex",
+        "oauth_gateway",
+        "openclaw",
+        "anthropic",
+        "google-gemini-cli",
+        "google-antigravity",
+        "ollama",
+        "lm-studio",
+        "vllm",
+        "local_gateway",
+        "custom_gateway",
+    }
+)
+_OPENAI_COMPATIBLE_PROVIDER_IDS = _SUPPORTED_PROVIDER_IDS - _DEFAULT_PROTOCOL_PROVIDER_IDS
 
 
 class ProviderApiProtocol(StrEnum):
@@ -56,50 +76,54 @@ class ProviderTransportPolicyError(ValueError):
 
 def provider_transport_request(session: AsaAgentSession, tool_schemas: tuple[JsonMap, ...]) -> ProviderHttpRequest:
     protocol = api_protocol_for_session(session)
-    match protocol:
-        case ProviderApiProtocol.OPENAI_RESPONSES:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=gateway_url(session.endpoint.base_url, "/v1/responses"),
-                payload=openai_responses_payload(session, tool_schemas),
-            )
-        case ProviderApiProtocol.OPENAI_CODEX_RESPONSES:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=_codex_responses_url(session.endpoint.base_url),
-                payload=openai_codex_responses_payload(session, tool_schemas),
-            )
-        case ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS | ProviderApiProtocol.OLLAMA_OPENAI_COMPATIBLE:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=gateway_url(session.endpoint.base_url, "/v1/chat/completions"),
-                payload=openai_chat_payload(session, tool_schemas),
-            )
-        case ProviderApiProtocol.ANTHROPIC_MESSAGES:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=gateway_url(session.endpoint.base_url, "/v1/messages"),
-                payload=anthropic_messages_payload(session, tool_schemas),
-            )
-        case ProviderApiProtocol.GEMINI_GENERATE_CONTENT:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=_gemini_generate_content_url(session.endpoint.base_url, session.endpoint.model),
-                payload=gemini_generate_content_payload(session, tool_schemas),
-            )
-        case ProviderApiProtocol.CUSTOM_GATEWAY:
-            return ProviderHttpRequest(
-                protocol=protocol,
-                url=gateway_url(session.endpoint.base_url, "/v1/agent/responses"),
-                payload=openai_responses_payload(session, tool_schemas),
-            )
+    try:
+        match protocol:
+            case ProviderApiProtocol.OPENAI_RESPONSES:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=gateway_url(session.endpoint.base_url, "/v1/responses"),
+                    payload=openai_responses_payload(session, tool_schemas),
+                )
+            case ProviderApiProtocol.OPENAI_CODEX_RESPONSES:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=_codex_responses_url(session.endpoint.base_url),
+                    payload=openai_codex_responses_payload(session, tool_schemas),
+                )
+            case ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS | ProviderApiProtocol.OLLAMA_OPENAI_COMPATIBLE:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=gateway_url(session.endpoint.base_url, "/v1/chat/completions"),
+                    payload=openai_chat_payload(session, tool_schemas),
+                )
+            case ProviderApiProtocol.ANTHROPIC_MESSAGES:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=gateway_url(session.endpoint.base_url, "/v1/messages"),
+                    payload=anthropic_messages_payload(session, tool_schemas),
+                )
+            case ProviderApiProtocol.GEMINI_GENERATE_CONTENT:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=_gemini_generate_content_url(session.endpoint.base_url, session.endpoint.model),
+                    payload=gemini_generate_content_payload(session, tool_schemas),
+                )
+            case ProviderApiProtocol.CUSTOM_GATEWAY:
+                return ProviderHttpRequest(
+                    protocol=protocol,
+                    url=gateway_url(session.endpoint.base_url, "/v1/agent/responses"),
+                    payload=openai_responses_payload(session, tool_schemas),
+                )
+    except ProviderToolSchemaError as exc:
+        raise ProviderTransportPolicyError(str(exc)) from exc
 
 
 def api_protocol_for_session(session: AsaAgentSession) -> ProviderApiProtocol:
+    provider = _supported_provider(session.endpoint.provider)
     explicit = getattr(session.endpoint, "api_protocol", None)
     if isinstance(explicit, str) and explicit:
-        return _parse_protocol(explicit, session.endpoint.provider)
-    return _default_protocol_for_provider(session.endpoint.provider)
+        return _parse_protocol(explicit, provider)
+    return _default_protocol_for_provider(provider)
 
 
 def transport_tool_calls(protocol: ProviderApiProtocol, response: JsonMap) -> tuple[JsonMap, ...]:
@@ -128,24 +152,26 @@ def transport_final_text(protocol: ProviderApiProtocol, response: JsonMap) -> st
 
 def _parse_protocol(value: str, provider: str = "") -> ProviderApiProtocol:
     normalized = value.strip().lower()
+    normalized_provider = _supported_provider(provider)
     try:
         return ProviderApiProtocol(normalized)
     except ValueError:
         pass
     match normalized:
         case "responses":
-            if provider.strip().lower() == "openai-codex":
+            if normalized_provider == "openai-codex":
                 return ProviderApiProtocol.OPENAI_CODEX_RESPONSES
             return ProviderApiProtocol.OPENAI_RESPONSES
         case "chat_completions":
             return ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS
         case "openai_compatible":
-            normalized_provider = provider.strip().lower()
             if normalized_provider in {"oauth_gateway", "openclaw"}:
                 return ProviderApiProtocol.OPENAI_RESPONSES
             if normalized_provider in {"ollama", "lm-studio", "vllm"}:
                 return ProviderApiProtocol.OLLAMA_OPENAI_COMPATIBLE
-            return ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS
+            if normalized_provider in _OPENAI_COMPATIBLE_PROVIDER_IDS:
+                return ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS
+            raise ProviderTransportPolicyError(f"unsupported_provider_protocol={provider}")
         case "gemini":
             return ProviderApiProtocol.GEMINI_GENERATE_CONTENT
         case _:
@@ -154,7 +180,9 @@ def _parse_protocol(value: str, provider: str = "") -> ProviderApiProtocol:
 
 
 def _default_protocol_for_provider(provider: str) -> ProviderApiProtocol:
-    normalized = provider.strip().lower()
+    normalized = _supported_provider(provider)
+    if normalized not in _DEFAULT_PROTOCOL_PROVIDER_IDS:
+        raise ProviderTransportPolicyError(f"unsupported_provider_protocol={provider}")
     if normalized == "openai-codex":
         return ProviderApiProtocol.OPENAI_CODEX_RESPONSES
     if normalized in {"openai", "oauth_gateway", "openclaw"}:
@@ -167,7 +195,14 @@ def _default_protocol_for_provider(provider: str) -> ProviderApiProtocol:
         return ProviderApiProtocol.OLLAMA_OPENAI_COMPATIBLE
     if normalized in {"local_gateway", "custom_gateway"}:
         return ProviderApiProtocol.CUSTOM_GATEWAY
-    return ProviderApiProtocol.OPENAI_CHAT_COMPLETIONS
+    raise ProviderTransportPolicyError(f"unsupported_provider_protocol={provider}")
+
+
+def _supported_provider(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized not in _SUPPORTED_PROVIDER_IDS:
+        raise ProviderTransportPolicyError(f"unsupported_provider_protocol={provider}")
+    return normalized
 
 
 def _codex_responses_url(base_url: str) -> str:

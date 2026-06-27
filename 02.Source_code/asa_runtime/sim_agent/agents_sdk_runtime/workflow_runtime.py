@@ -22,6 +22,7 @@ from .workflow_gate_protocol import (
     WORKFLOW_GATE_SCHEMA_VERSION,
     WorkflowGate,
     WorkflowGateKind,
+    WorkflowGateReadBlocker,
     WorkflowGateResponseResult,
     WorkflowGoalAuthorityResult,
     allowed_values,
@@ -29,6 +30,7 @@ from .workflow_gate_protocol import (
     gate_kind,
     gate_ledger_ref,
     gate_response_blocked,
+    gate_response_for_read_blocker,
     gate_response_for_gate,
     now,
     read_gate,
@@ -64,7 +66,7 @@ class WorkflowRuntimeStartResult:
     status: str
     gate_status: str
     blockers: tuple[str, ...]
-    gate: WorkflowGate | None
+    gate: WorkflowGate | WorkflowGateReadBlocker | None
     missing_evidence: tuple[str, ...] = ()
 
 
@@ -96,7 +98,15 @@ def start_workflow_runtime(request: WorkflowRuntimeStartRequest) -> WorkflowRunt
         return WorkflowRuntimeStartResult("blocked", "blocked", ("workflow_gate_malformed",), None)
     gate_path = request.output_dir / gate.ledger_ref
     existing = read_gate(gate_path)
-    active_gate = existing or gate
+    match existing:
+        case WorkflowGateReadBlocker() as blocker:
+            return WorkflowRuntimeStartResult("blocked", "blocked", blocker.blockers, blocker)
+        case WorkflowGate() as existing_gate:
+            active_gate = existing_gate
+        case None:
+            active_gate = gate
+        case unreachable:
+            assert_never(unreachable)
     if active_gate.status == "accepted":
         return WorkflowRuntimeStartResult("ready", "passed", (), active_gate)
     write_json(gate_path, active_gate.to_json())
@@ -112,8 +122,15 @@ def respond_workflow_gate(output_dir: Path, payload: JsonMap) -> WorkflowGateRes
         return gate_response_blocked(workflow_id, gate_id, "workflow_gate_malformed_response")
     gate_path = output_dir / gate_ledger_ref(workflow_id, gate_id)
     gate = read_gate(gate_path)
-    if gate is None:
-        return gate_response_blocked(workflow_id, gate_id, "workflow_gate_unknown")
+    match gate:
+        case WorkflowGateReadBlocker() as blocker:
+            return gate_response_for_read_blocker(workflow_id, gate_id, blocker)
+        case WorkflowGate() as active_gate:
+            gate = active_gate
+        case None:
+            return gate_response_blocked(workflow_id, gate_id, "workflow_gate_unknown")
+        case unreachable:
+            assert_never(unreachable)
     if responder_agent_id != gate.target_agent_id:
         return gate_response_for_gate(gate, "blocked", ("workflow_gate_responder_denied",), "")
     value = payload["value"]
@@ -186,20 +203,27 @@ def _start_deep_interview_runtime(request: WorkflowRuntimeStartRequest) -> Workf
         request.payload,
     )
     existing = read_gate(request.output_dir / gate.ledger_ref)
-    if existing is not None:
-        if existing.status == "accepted":
+    match existing:
+        case WorkflowGateReadBlocker() as blocker:
+            return WorkflowRuntimeStartResult("blocked", "blocked", blocker.blockers, blocker)
+        case WorkflowGate() as existing_gate:
+            if existing_gate.status == "accepted":
+                return WorkflowRuntimeStartResult(
+                    "blocked",
+                    "accepted",
+                    ("deep_interview_next_round_required",),
+                    existing_gate,
+                )
             return WorkflowRuntimeStartResult(
                 "blocked",
-                "accepted",
-                ("deep_interview_next_round_required",),
-                existing,
+                existing_gate.status or "blocked",
+                ("workflow_gate_response_required",),
+                existing_gate,
             )
-        return WorkflowRuntimeStartResult(
-            "blocked",
-            existing.status or "blocked",
-            ("workflow_gate_response_required",),
-            existing,
-        )
+        case None:
+            pass
+        case unreachable:
+            assert_never(unreachable)
     gate_path = request.output_dir / gate.ledger_ref
     write_json(gate_path, gate.to_json())
     ensure_pending_action(request.output_dir, gate)

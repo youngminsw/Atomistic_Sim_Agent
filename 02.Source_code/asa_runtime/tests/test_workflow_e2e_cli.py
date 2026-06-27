@@ -123,7 +123,8 @@ def test_workflow_live_llm_e2e_cli_drives_provider_selected_workflow_start_tools
         assert row["status"] == "passed"
         assert row["selected_tools"] == ["workflow_start"]
         assert row["tool_results"][0]["tool_name"] == "workflow_start"
-        expected_agent_status = "blocked" if row["workflow"] == "/deep-interview" else "succeeded"
+        gated_workflows = {"/deep-interview", "/ralplan", "/ultragoal"}
+        expected_agent_status = "blocked" if row["workflow"] in gated_workflows else "succeeded"
         assert row["agent_loop_status"] == expected_agent_status
     assert "workflow_gate_response_required" in provider_events
     assert (output_dir / "sessions" / "visual-qa" / "workflows" / "visual-qa-live-screenshot.txt").is_file()

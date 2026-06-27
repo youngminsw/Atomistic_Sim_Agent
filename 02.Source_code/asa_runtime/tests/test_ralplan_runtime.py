@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from sim_agent.agents_sdk_runtime import WorkflowHarnessResult
+
 
 def test_ralplan_materializes_consensus_stage_index_and_pending_approval(tmp_path: Path) -> None:
-    from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
-
-    result = run_workflow_harness_smoke("ralplan", _payload(), tmp_path)
+    result = _ready_ralplan(tmp_path)
 
     assert result.status == "ready"
     assert result.gate_status == "passed"
@@ -29,12 +29,13 @@ def test_ralplan_materializes_consensus_stage_index_and_pending_approval(tmp_pat
 def test_ralplan_artifacts_are_idempotent_and_block_tampered_stage(tmp_path: Path) -> None:
     from sim_agent.agents_sdk_runtime import run_workflow_harness_smoke
 
-    first = run_workflow_harness_smoke("ralplan", _payload(), tmp_path)
+    payload = _payload(gate=_approval_gate())
+    first = _ready_ralplan(tmp_path)
     stage = tmp_path / "ralplan" / "plans" / "ralplan-rich" / "stage-01-planner.md"
     original_index = (tmp_path / "ralplan" / "plans" / "ralplan-rich" / "index.jsonl").read_text(encoding="utf-8")
     stage.write_text("# tampered\n", encoding="utf-8")
 
-    second = run_workflow_harness_smoke("ralplan", _payload(), tmp_path)
+    second = run_workflow_harness_smoke("ralplan", payload, tmp_path)
 
     assert first.status == "ready"
     assert second.status == "blocked"
@@ -109,6 +110,43 @@ def _payload(*, gate: dict[str, object] | None = None) -> dict[str, object]:
     if gate is not None:
         payload["gate"] = gate
     return payload
+
+
+def _approval_gate() -> dict[str, object]:
+    return {
+        "gate_id": "approval",
+        "gate_kind": "response_schema",
+        "response_schema": {
+            "type": "object",
+            "required": ["decision"],
+            "additionalProperties": False,
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "request-changes", "reject"]},
+                "comments": {"type": "string"},
+            },
+        },
+    }
+
+
+def _ready_ralplan(tmp_path: Path) -> WorkflowHarnessResult:
+    from sim_agent.agents_sdk_runtime import respond_workflow_gate, run_workflow_harness_smoke
+
+    payload = _payload(gate=_approval_gate())
+    pending = run_workflow_harness_smoke("ralplan", payload, tmp_path)
+    accepted = respond_workflow_gate(
+        tmp_path,
+        {
+            "workflow_id": "ralplan",
+            "gate_id": "approval",
+            "responder_agent_id": "orchestrator",
+            "value": {"decision": "approve"},
+            "idempotency_key": "ralplan-test-approve",
+        },
+    )
+    assert pending.status == "blocked"
+    assert pending.gate_status == "awaiting_response"
+    assert accepted.status == "accepted"
+    return run_workflow_harness_smoke("ralplan", payload, tmp_path)
 
 
 def _read_json(path: Path) -> dict[str, object]:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from sim_agent.cli.tui_semantic import filter_semantic_tty_output
 from sim_agent.cli.tui_tools import handle_tools
+from sim_agent.cli.tui_control_room_smoke import _stop_process
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +79,17 @@ def test_tui_tools_human_rows_survive_tty_semantic_filter() -> None:
     assert "approval_required=" not in rendered
 
 
+def test_tui_smoke_cleanup_kills_child_when_terminate_times_out() -> None:
+    process = _TerminateTimeoutProcess()
+
+    killed = _stop_process(process)
+
+    assert killed is True
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.returncode == -9
+
+
 class _TtyStringIO(StringIO):
     @property
     def encoding(self) -> str:
@@ -85,3 +97,29 @@ class _TtyStringIO(StringIO):
 
     def isatty(self) -> bool:
         return True
+
+
+class _TerminateTimeoutProcess:
+    pid = 12345
+
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+        self.wait_calls = 0
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise subprocess.TimeoutExpired("fake-sim-agent", timeout)
+        self.returncode = -9
+        return self.returncode

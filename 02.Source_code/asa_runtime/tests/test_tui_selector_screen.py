@@ -20,7 +20,7 @@ import pty
 
 SOURCE_ROOT: Final = Path(__file__).resolve().parents[1]
 PROJECT_ROOT: Final = SOURCE_ROOT
-ENTER: Final = b"\n"
+ENTER: Final = b"\r"
 DOWN: Final = b"\x1b[B"
 CSI_PATTERN: Final = re.compile(r"\x1b\[([?0-9;]*)([A-Za-z])")
 
@@ -29,6 +29,27 @@ CSI_PATTERN: Final = re.compile(r"\x1b\[([?0-9;]*)([A-Za-z])")
 class TuiProcess:
     process: subprocess.Popen[bytes]
     master_fd: int
+    argv: tuple[str, ...]
+
+
+class TuiReadTimeout(AssertionError):
+    def __init__(self, marker: str, timeout_s: float, output: str) -> None:
+        super().__init__(f"Timed out waiting for {marker!r}. Output:\n{output}")
+        self.marker = marker
+        self.timeout_s = timeout_s
+        self.output = output
+
+
+@dataclass(frozen=True, slots=True)
+class PtyDiagnostic:
+    argv: tuple[str, ...]
+    key_sequence: tuple[str, ...]
+    timeout_s: float
+    marker: str
+    transcript: str
+    process_status: str
+    cleanup_status: str
+    expected_failure_signature: str
 
 
 def test_wizard_nested_selectors_replace_previous_menu(tmp_path: Path) -> None:
@@ -36,8 +57,8 @@ def test_wizard_nested_selectors_replace_previous_menu(tmp_path: Path) -> None:
     session = _spawn_tui(config_path, tmp_path / "session")
 
     try:
-        output = _read_until(session.master_fd, "asa>")
-        os.write(session.master_fd, b"/wizard\n")
+        output = _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/wizard"))
         output += _read_menu_until(session.master_fd, "return to shell")
         os.write(session.master_fd, DOWN + ENTER)
         output += _read_menu_until(session.master_fd, "Login Company")
@@ -46,9 +67,10 @@ def test_wizard_nested_selectors_replace_previous_menu(tmp_path: Path) -> None:
         output += _read_menu_until(session.master_fd, "Login Provider")
         provider_screen = _rendered_screen(output)
         os.write(session.master_fd, b"\x1b")
-        output += _read_until(session.master_fd, "asa>")
-        os.write(session.master_fd, b"/exit\n")
+        output += _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/exit"))
         _read_until(session.master_fd, "bye")
+        _wait_for_exit(session)
     finally:
         _stop_tui(session)
 
@@ -65,13 +87,14 @@ def test_model_thinking_menu_can_select_xhigh(tmp_path: Path) -> None:
     session = _spawn_tui(config_path, tmp_path / "session")
 
     try:
-        output = _read_until(session.master_fd, "asa>")
-        os.write(session.master_fd, b"/model thinking\n")
+        output = _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/model thinking"))
         output += _read_menu_until(session.master_fd, "xhigh")
         os.write(session.master_fd, DOWN + ENTER)
-        output += _read_until(session.master_fd, "asa>")
-        os.write(session.master_fd, b"/model status\n/exit\n")
+        output += _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/model status") + _command("/exit"))
         output += _read_until(session.master_fd, "bye")
+        _wait_for_exit(session)
     finally:
         _stop_tui(session)
 
@@ -79,6 +102,65 @@ def test_model_thinking_menu_can_select_xhigh(tmp_path: Path) -> None:
     assert "model_thinking_level_saved=true" in output
     assert "thinking_level=xhigh reasoning_effort=xhigh" in output
     assert "provider=openai-codex model=gpt-5-codex reasoning_effort=xhigh" in output
+
+
+def test_tui_selector_timeout_repro_has_diagnostic(tmp_path: Path) -> None:
+    config_path = _write_runtime_config(tmp_path / "runtime-config.json")
+    session = _spawn_tui(config_path, tmp_path / "session")
+    key_sequence = ("/wizard", "ENTER", "ESC", "/exit", "ENTER")
+    expected_signature = "wizard selector should render after one terminal Enter"
+    output = ""
+    failure: TuiReadTimeout | None = None
+    process_status = "not_observed"
+
+    try:
+        output = _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/wizard"))
+        output += _read_menu_until(session.master_fd, "return to shell", timeout_s=4.0)
+        os.write(session.master_fd, b"\x1b")
+        output += _read_prompt(session.master_fd)
+        os.write(session.master_fd, _command("/exit"))
+        output += _read_until(session.master_fd, "bye")
+        _wait_for_exit(session)
+        process_status = _process_status(session)
+    except TuiReadTimeout as exc:
+        failure = exc
+        process_status = _process_status(session)
+    finally:
+        cleanup_status = _stop_tui(session)
+
+    if failure is not None:
+        raise AssertionError(
+            _format_pty_diagnostic(
+                PtyDiagnostic(
+                    argv=session.argv,
+                    key_sequence=key_sequence,
+                    timeout_s=failure.timeout_s,
+                    marker=failure.marker,
+                    transcript=failure.output,
+                    process_status=process_status,
+                    cleanup_status=cleanup_status,
+                    expected_failure_signature=expected_signature,
+                )
+            )
+        ) from failure
+
+    _write_optional_diagnostic(
+        PtyDiagnostic(
+            argv=session.argv,
+            key_sequence=key_sequence,
+            timeout_s=4.0,
+            marker="bye",
+            transcript=output,
+            process_status=process_status,
+            cleanup_status=cleanup_status,
+            expected_failure_signature="selector accepted intended key sequence and exited cleanly",
+        )
+    )
+    assert "ASA Wizard" in output
+    assert "return to shell" in output
+    assert "bye" in output
+    assert cleanup_status == "already_exited:returncode=0"
 
 
 def _rendered_screen(output: str) -> str:
@@ -146,6 +228,10 @@ def _write_runtime_config(path: Path) -> Path:
     return path
 
 
+def _command(value: str) -> bytes:
+    return value.encode("utf-8") + ENTER
+
+
 def _spawn_tui(config_path: Path, session_dir: Path) -> TuiProcess:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SOURCE_ROOT)
@@ -155,8 +241,9 @@ def _spawn_tui(config_path: Path, session_dir: Path) -> TuiProcess:
     env["ASA_STARTUP_WIZARD"] = "0"
     env["ATOMISTIC_SIM_AGENT_RUNTIME_CONFIG"] = str(config_path)
     master_fd, slave_fd = pty.openpty()
+    argv = (sys.executable, "-m", "sim_agent")
     process = subprocess.Popen(
-        [sys.executable, "-m", "sim_agent"],
+        argv,
         cwd=PROJECT_ROOT,
         env=env,
         stdin=slave_fd,
@@ -165,7 +252,7 @@ def _spawn_tui(config_path: Path, session_dir: Path) -> TuiProcess:
         close_fds=True,
     )
     os.close(slave_fd)
-    return TuiProcess(process=process, master_fd=master_fd)
+    return TuiProcess(process=process, master_fd=master_fd, argv=argv)
 
 
 def _read_until(fd: int, marker: str, timeout_s: float = 8.0) -> str:
@@ -184,11 +271,15 @@ def _read_until(fd: int, marker: str, timeout_s: float = 8.0) -> str:
         if marker in output:
             return output
     output = b"".join(chunks).decode("utf-8", errors="replace")
-    raise AssertionError(f"Timed out waiting for {marker!r}. Output:\n{output}")
+    raise TuiReadTimeout(marker, timeout_s, output)
 
 
-def _read_menu_until(fd: int, marker: str) -> str:
-    return _read_until(fd, marker) + _read_until_idle(fd)
+def _read_prompt(fd: int) -> str:
+    return _read_until(fd, "asa>") + _read_until_idle(fd)
+
+
+def _read_menu_until(fd: int, marker: str, timeout_s: float = 8.0) -> str:
+    return _read_until(fd, marker, timeout_s=timeout_s) + _read_until_idle(fd)
 
 
 def _read_until_idle(fd: int, quiet_s: float = 0.12, timeout_s: float = 2.0) -> str:
@@ -205,9 +296,59 @@ def _read_until_idle(fd: int, quiet_s: float = 0.12, timeout_s: float = 2.0) -> 
     return b"".join(chunks).decode("utf-8", errors="replace")
 
 
-def _stop_tui(session: TuiProcess) -> None:
+def _stop_tui(session: TuiProcess) -> str:
+    cleanup_status = "already_exited"
     if session.process.poll() is None:
-        os.write(session.master_fd, b"/exit\n")
+        cleanup_status = "terminated_after_exit_request"
+        try:
+            os.write(session.master_fd, _command("/exit"))
+        except OSError:
+            cleanup_status = "terminated_after_closed_pty"
         session.process.terminate()
-    session.process.wait(timeout=5)
+    try:
+        session.process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        cleanup_status = f"{cleanup_status}:killed_after_wait_timeout"
+        session.process.kill()
+        session.process.wait(timeout=5)
     os.close(session.master_fd)
+    return f"{cleanup_status}:returncode={session.process.returncode}"
+
+
+def _wait_for_exit(session: TuiProcess, timeout_s: float = 2.0) -> None:
+    try:
+        session.process.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(f"TUI process did not exit after bye; status={_process_status(session)}") from exc
+
+
+def _process_status(session: TuiProcess) -> str:
+    return "running" if session.process.poll() is None else f"exited:returncode={session.process.returncode}"
+
+
+def _format_pty_diagnostic(diagnostic: PtyDiagnostic) -> str:
+    transcript = diagnostic.transcript or "<empty>"
+    screen = _rendered_screen(diagnostic.transcript).strip() or "<empty>"
+    return "\n".join(
+        (
+            "PTY selector diagnostic",
+            f"pty_argv={list(diagnostic.argv)!r}",
+            f"key_sequence={list(diagnostic.key_sequence)!r}",
+            f"timeout_budget_s={diagnostic.timeout_s}",
+            f"expected_marker={diagnostic.marker!r}",
+            f"expected_failure_signature={diagnostic.expected_failure_signature}",
+            f"process_status={diagnostic.process_status}",
+            f"cleanup_status={diagnostic.cleanup_status}",
+            "last_screen_snapshot:",
+            screen,
+            "raw_transcript:",
+            transcript,
+        )
+    )
+
+
+def _write_optional_diagnostic(diagnostic: PtyDiagnostic) -> None:
+    path = os.environ.get("ASA_TUI_SELECTOR_DIAGNOSTIC_PATH")
+    if path is None:
+        return
+    Path(path).write_text(f"{_format_pty_diagnostic(diagnostic)}\n", encoding="utf-8")

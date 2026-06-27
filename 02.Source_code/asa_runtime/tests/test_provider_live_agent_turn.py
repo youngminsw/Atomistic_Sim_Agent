@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -223,6 +224,8 @@ class _LiveTurnGateway:
         return body
 
     def __enter__(self) -> "_LiveTurnGateway":
+        self._previous_token = os.environ.get("MODEL_GATEWAY_TOKEN")
+        os.environ["MODEL_GATEWAY_TOKEN"] = "test-gateway-token"
         self._thread.start()
         return self
 
@@ -230,6 +233,10 @@ class _LiveTurnGateway:
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=5)
+        if self._previous_token is None:
+            os.environ.pop("MODEL_GATEWAY_TOKEN", None)
+        else:
+            os.environ["MODEL_GATEWAY_TOKEN"] = self._previous_token
 
 
 class _LiveTurnGatewayHandler(BaseHTTPRequestHandler):

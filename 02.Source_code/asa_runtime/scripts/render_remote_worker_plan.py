@@ -14,7 +14,7 @@ from sim_agent.compute import (
     ComputePolicyError,
     build_remote_execution_plan,
     load_worker_bundle,
-    remote_execution_plan_payload,
+    remote_execution_plan_manifest_payload,
 )
 from sim_agent.schemas._parse import JsonMap
 
@@ -25,12 +25,19 @@ def main() -> int:
     parser.add_argument("--ssh-target", required=True)
     parser.add_argument("--ssh-port", type=int, default=22)
     parser.add_argument("--out")
+    parser.add_argument("--source-root", default=str(SOURCE_ROOT))
+    parser.add_argument("--output-root")
     args = parser.parse_args()
 
     try:
         worker = load_worker_bundle(Path(args.worker))
         plan = build_remote_execution_plan(worker, ssh_target=args.ssh_target, ssh_port=args.ssh_port)
-        payload = remote_execution_plan_payload(plan)
+        output_root = _output_root(args.out, args.output_root)
+        payload = remote_execution_plan_manifest_payload(
+            plan,
+            source_root=Path(args.source_root),
+            output_root=output_root,
+        )
         if args.out:
             _write_json(Path(args.out), payload)
     except (ComputePolicyError, OSError) as exc:
@@ -48,6 +55,17 @@ def main() -> int:
 def _write_json(path: Path, payload: JsonMap) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _output_root(out: str | None, output_root: str | None) -> Path:
+    if output_root is not None:
+        return Path(output_root)
+    if out is None:
+        return Path.cwd()
+    out_path = Path(out)
+    if out_path.parent.name == "remote":
+        return out_path.parent.parent
+    return out_path.parent
 
 
 if __name__ == "__main__":

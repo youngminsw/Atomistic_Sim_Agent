@@ -18,7 +18,7 @@ def read_jsonl(path: Path) -> list[JsonMap] | None:
             if not isinstance(value, dict):
                 return None
             records.append(value)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
     return records
 

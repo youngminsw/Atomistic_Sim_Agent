@@ -61,13 +61,13 @@ def test_timeline_collects_subagent_run_and_control_events(tmp_path: Path) -> No
         RuntimeToolCall(
             tool_name="subagent_task",
             arguments={
-                "caller_agent": "qa_agent",
                 "preset": "critic",
                 "task_id": "timeline-review",
                 "task": "Review timeline evidence.",
             },
             run_id="subagent-run",
             session_id=state.session_id,
+            caller_agent_id="qa_agent",
         ),
         registry,
         state.session_dir,
@@ -78,18 +78,18 @@ def test_timeline_collects_subagent_run_and_control_events(tmp_path: Path) -> No
         json.dumps({"caller_agent": "qa_agent", "preset": "critic", "subagent_id": "timeline-live"}) + "\n",
         encoding="utf-8",
     )
-    execute_runtime_tool(
+    steered = execute_runtime_tool(
         RuntimeToolCall(
             tool_name="subagent_control",
             arguments={
                 "action": "steer",
-                "caller_agent": "qa_agent",
                 "preset": "critic",
                 "subagent_id": "timeline-live",
                 "content": "Inspect runtime spine evidence.",
             },
             run_id="steer-run",
             session_id=state.session_id,
+            caller_agent_id="qa_agent",
         ),
         registry,
         state.session_dir,
@@ -97,8 +97,10 @@ def test_timeline_collects_subagent_run_and_control_events(tmp_path: Path) -> No
 
     events = timeline_events(state, limit=50)
 
+    assert steered.status == "blocked"
+    assert steered.blocker == "subagent_control_unsupported"
     assert any(event.source == "subagent" and event.event_type == "subagent_run" for event in events)
-    assert any(event.source == "subagent" and event.event_type == "subagent_steer" for event in events)
+    assert not any(event.source == "subagent" and event.event_type == "subagent_steer" for event in events)
 
 
 def _run_module_interactive(

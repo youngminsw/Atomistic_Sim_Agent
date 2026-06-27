@@ -106,6 +106,84 @@ def test_markdown_skill_discovery_ignores_boundaries_and_defaults_commands(tmp_p
     assert skill_context_body({"content": "not string"}) == ""
 
 
+def test_markdown_skill_discovery_keeps_symlinked_skill_dirs_off_resolve_hot_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from sim_agent.agents_sdk_runtime.markdown_skills import markdown_skill_by_command, markdown_skill_specs
+
+    root = tmp_path / "skills"
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "SKILL.md").write_text(
+        "\n".join(
+            (
+                "---",
+                "name: linked-skill",
+                "command: /linked-skill",
+                "agent_id: qa_agent",
+                "summary: linked skill summary",
+                "---",
+                "# linked-skill",
+                "",
+                "linked body",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    root.mkdir()
+    (root / "linked").symlink_to(target, target_is_directory=True)
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise AssertionError(f"Path.resolve() should not run during skill discovery: {self}")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+
+    specs = markdown_skill_specs((root,))
+
+    assert {spec.command for spec in specs} == {"/linked-skill"}
+    assert markdown_skill_by_command("/linked-skill", (root,)).agent_id == "qa_agent"
+
+
+def test_live_turn_skill_names_reuses_discovered_registry_for_agent(monkeypatch) -> None:
+    from sim_agent.agent_runtime import live_agent_context
+    from sim_agent.agents_sdk_runtime.markdown_skills import MarkdownSkillSpec
+
+    calls = 0
+
+    def fake_markdown_skill_specs() -> tuple[MarkdownSkillSpec, ...]:
+        nonlocal calls
+        calls += 1
+        return (
+            MarkdownSkillSpec(
+                name="qa-skill",
+                command="/qa-skill",
+                agent_id="qa_agent",
+                summary="qa skill",
+                path=Path("qa.md"),
+                body="qa body",
+            ),
+            MarkdownSkillSpec(
+                name="md-skill",
+                command="/md-skill",
+                agent_id="md_agent",
+                summary="md skill",
+                path=Path("md.md"),
+                body="md body",
+            ),
+        )
+
+    live_agent_context.live_turn_skill_names.cache_clear()
+    monkeypatch.setattr(live_agent_context, "markdown_skill_specs", fake_markdown_skill_specs)
+
+    assert live_agent_context.live_turn_skill_names("qa_agent") == ("/qa-skill",)
+    assert live_agent_context.live_turn_skill_names("qa_agent") == ("/qa-skill",)
+    assert calls == 1
+
+    live_agent_context.live_turn_skill_names.cache_clear()
+
+
 def _write_skill(root: Path, name: str, command: str | None, agent_id: str, *, body: str | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{name}.md"

@@ -14,10 +14,11 @@ from sim_agent.llm_endpoints import ModelProviderConfig
 
 
 @pytest.mark.parametrize(
-    ("provider", "expected_path", "response", "artifact", "checks"),
+    ("provider", "api_protocol", "expected_path", "response", "artifact", "checks"),
     (
         pytest.param(
             "deepseek",
+            "openai_compatible",
             "/v1/chat/completions",
             {"choices": [{"message": {"tool_calls": [{"function": {"name": "artifact_write", "arguments": json.dumps({"relative_path": "provider/chat.txt", "content": "ok"})}}]}}]},
             "provider/chat.txt",
@@ -26,6 +27,7 @@ from sim_agent.llm_endpoints import ModelProviderConfig
         ),
         pytest.param(
             "anthropic",
+            None,
             "/v1/messages",
             {"content": [{"type": "tool_use", "name": "artifact_write", "input": {"relative_path": "provider/anthropic.txt", "content": "ok"}}]},
             "provider/anthropic.txt",
@@ -34,6 +36,7 @@ from sim_agent.llm_endpoints import ModelProviderConfig
         ),
         pytest.param(
             "google-gemini-cli",
+            None,
             "/v1beta/models/gpt-5.5:generateContent",
             {"candidates": [{"content": {"parts": [{"functionCall": {"name": "artifact_write", "args": {"relative_path": "provider/gemini.txt", "content": "ok"}}}]}}]},
             "provider/gemini.txt",
@@ -45,13 +48,14 @@ from sim_agent.llm_endpoints import ModelProviderConfig
 def test_provider_tool_choice_model_posts_protocol_specific_payloads(
     tmp_path: Path,
     provider: str,
+    api_protocol: str | None,
     expected_path: str,
     response: dict[str, object],
     artifact: str,
     checks: tuple[tuple[str, object], ...],
-) -> None:
+    ) -> None:
     with _ToolChoiceGateway(response, expected_path=expected_path) as gateway:
-        session = _session(tmp_path, gateway.base_url, provider)
+        session = _session(tmp_path, gateway.base_url, provider, api_protocol)
         result = AgentLoop(session, ProviderToolChoiceModel(api_key="test-token")).run()
 
     assert result.status == "succeeded"
@@ -60,16 +64,19 @@ def test_provider_tool_choice_model_posts_protocol_specific_payloads(
     assert (tmp_path / "artifacts" / artifact).read_text(encoding="utf-8") == "ok"
 
 
-def _session(tmp_path: Path, base_url: str, provider: str) -> AsaAgentSession:
+def _session(tmp_path: Path, base_url: str, provider: str, api_protocol: str | None) -> AsaAgentSession:
+    config: dict[str, object] = {
+        "provider": provider,
+        "model": "gpt-5.5",
+        "reasoning_effort": "high",
+        "base_url": base_url,
+        "auth_mode": "gateway",
+        "api_key_env": "MODEL_GATEWAY_TOKEN",
+    }
+    if api_protocol is not None:
+        config["api_protocol"] = api_protocol
     endpoint = ModelProviderConfig.from_mapping(
-        {
-            "provider": provider,
-            "model": "gpt-5.5",
-            "reasoning_effort": "high",
-            "base_url": base_url,
-            "auth_mode": "gateway",
-            "api_key_env": "MODEL_GATEWAY_TOKEN",
-        }
+        config
     )
     return AsaAgentSession(
         run_id="provider-parity-run",

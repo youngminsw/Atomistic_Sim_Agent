@@ -402,8 +402,18 @@ def _session_record(root: Path):
 
 
 def _run_tool(session_id: str, session_dir: Path, tool_name: str, arguments: JsonMap, registry):
+    caller_agent = arguments.get("caller_agent")
+    trusted_caller = caller_agent if isinstance(caller_agent, str) else ""
+    tool_arguments = dict(arguments)
+    tool_arguments.pop("caller_agent", None)
     return execute_runtime_tool(
-        RuntimeToolCall(tool_name=tool_name, arguments=arguments, run_id=f"adversarial-{tool_name}", session_id=session_id),
+        RuntimeToolCall(
+            tool_name=tool_name,
+            arguments=tool_arguments,
+            run_id=f"adversarial-{tool_name}",
+            session_id=session_id,
+            caller_agent_id=trusted_caller,
+        ),
         registry,
         session_dir,
     )
